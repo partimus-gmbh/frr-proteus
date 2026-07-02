@@ -23,6 +23,11 @@ router bgp {{ bgp.global_.local_as }}{{ vrf_clause }}
 {% endif %}
 {% endfor %}
 {% for _, afi_safi in bgp.global_.afi_safis.afi_safi.items() %}
+{% set name = afi_safi_name(afi_safi) %}
+{% if name == "l2vpn-evpn" %}
+{% set evpn = afi_safi.l2vpn_evpn %}
+{% include "bgp_evpn_af.j2" %}
+{% else %}
 {% set networks = afi_safi_networks(afi_safi) %}
 {% if networks %}
  !
@@ -31,6 +36,7 @@ router bgp {{ bgp.global_.local_as }}{{ vrf_clause }}
   network {{ prefix }}
 {% endfor %}
  exit-address-family
+{% endif %}
 {% endif %}
 {% endfor %}
 !

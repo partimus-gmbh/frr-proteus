@@ -17,6 +17,7 @@ from __future__ import annotations
 _AFI_SAFI_CLI_TEXT = {
     "ipv4-unicast": "ipv4 unicast",
     "ipv6-unicast": "ipv6 unicast",
+    "l2vpn-evpn": "l2vpn evpn",
 }
 
 
@@ -45,6 +46,19 @@ def afi_safi_networks(afi_safi) -> list[str]:
     e.g. from `bgp.global_.afi_safis.afi_safi["frr-rt:ipv4-unicast"]`."""
     container = getattr(afi_safi, afi_safi_name(afi_safi).replace("-", "_"))
     return list(container.network_config)
+
+
+def neighbor_afi_safi(neighbor, name: str):
+    """`neighbor`'s afi-safi list entry named `name` (e.g. "l2vpn-evpn",
+    with or without the "frr-rt:" prefix), or None if this neighbor has
+    no configuration for that AFI-SAFI at all. pyangbind's dict-like
+    `.get()` returns an empty OrderedDict rather than None on a miss (not
+    something a template can easily branch on), so this normalizes that
+    to a plain `in` check."""
+    key = name if ":" in name else f"frr-rt:{name}"
+    if key not in neighbor.afi_safis.afi_safi:
+        return None
+    return neighbor.afi_safis.afi_safi[key]
 
 
 def remote_as_text(neighbor) -> str | None:

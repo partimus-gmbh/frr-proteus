@@ -1,0 +1,212 @@
+module frr-proteus-bgp-evpn {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/bgp-evpn";
+  prefix fp-bgp-evpn;
+
+  import frr-routing {
+    prefix frr-rt;
+  }
+
+  import frr-bgp {
+    prefix frr-bgp;
+  }
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "Project-authored YANG augmentation covering FRR bgpd's L2VPN EVPN
+     address-family configuration. Upstream frr-bgp.yang (see the frr git
+     submodule) defines the 'l2vpn-evpn' container as an empty placeholder
+     with zero fields -- it augments every *other* AFI-SAFI
+     (ipv4-unicast, l3vpn-ipv4-unicast, ...) with real content, but never
+     l2vpn-evpn itself. This module fills exactly that gap, and only
+     that gap: per-neighbor EVPN knobs (activate, route-reflector-client,
+     route-map, maximum-prefix, addpath-tx-all-paths, ...) are already
+     modeled upstream via frr-bgp.yang's existing augments of
+     '.../neighbor/afi-safis/afi-safi/l2vpn-evpn' -- do not duplicate
+     those here.
+
+     Modeled by reading frr/bgpd/bgp_evpn_vty.c directly (DEFUN/DEFPY
+     definitions referenced by name below), against the config actually
+     exercised by frr/tests/topotests/bgp_evpn_*, evpn_pim_*, and
+     bgp_evpn_mh. Not modeled (not exercised by those topotests, or
+     out of scope for a BGP-only project): 'autort rfc8365-compatible',
+     per-VNI 'advertise-default-gw'/'advertise-svi-ip' overrides,
+     'advertise-pip', PIM/multicast EVPN options. Zebra-side Ethernet
+     Segment (multihoming) config is out of scope entirely -- it's
+     zebra's 'evpn mh' surface, not bgpd's.";
+
+  revision 2026-07-02 {
+    description
+      "Initial revision, covering the EVPN config surface exercised by
+       FRR's own EVPN topotests.";
+  }
+
+  grouping route-target-list {
+    description
+      "One RT_TYPE_IMPORT/EXPORT/BOTH route-target list. Shared by the
+       per-VRF container (bgp_evpn_vrf_rt_cmd: 'route-target
+       <both|import|export> RTLIST...', accepts several RTs per line,
+       plus the VRF-only wildcard form '*:NN' and the sentinel 'auto'
+       via the separate bgp_evpn_vrf_rt_auto_cmd) and the per-VNI
+       container (bgp_evpn_vni_rt_cmd: 'route-target
+       <both|import|export> RT', one RT per line, no 'auto'/wildcard
+       support). Kept as plain strings rather than a stricter
+       route-target type since FRR's own grammar mixes literal RTs with
+       the 'auto'/'*:NN' keywords in the same argument position, and a
+       renderer just needs to emit one 'route-target <type> <value>'
+       line per list entry either way.";
+
+    leaf-list route-target-import {
+      type string;
+      description "route-target import <RT|*:NN|auto>";
+    }
+    leaf-list route-target-export {
+      type string;
+      description "route-target export <RT|auto>";
+    }
+    leaf-list route-target-both {
+      type string;
+      description "route-target both <RT|auto>";
+    }
+  }
+
+  augment "/frr-rt:routing/frr-rt:control-plane-protocols/frr-rt:control-plane-protocol/frr-bgp:bgp/frr-bgp:global/frr-bgp:afi-safis/frr-bgp:afi-safi/frr-bgp:l2vpn-evpn" {
+    description
+      "BGP L2VPN EVPN address-family configuration. FRR distinguishes
+       the default/global BGP instance's EVPN role (advertise-all-vni,
+       per-VNI settings) from a per-VRF BGP instance's EVPN role (rd,
+       route-target, advertise ipv4/ipv6 unicast for L3VPN route
+       leaking) by which VRF the enclosing 'router bgp' belongs to, not
+       by YANG structure -- both sets of leaves below coexist in this
+       one container the same way frr-bgp.yang itself reuses one
+       'global' container shape across default and VRF BGP instances.";
+
+    leaf advertise-all-vni {
+      type boolean;
+      default "false";
+      description
+        "advertise-all-vni. Default-instance only.
+         (bgp_evpn_advertise_all_vni_cmd)";
+    }
+
+    leaf advertise-default-gw {
+      type boolean;
+      default "false";
+      description
+        "advertise-default-gw. Default-instance only; FRR also allows a
+         per-VNI override (bgp_evpn_advertise_default_gw_vni_cmd), not
+         modeled here. (bgp_evpn_advertise_default_gw_cmd)";
+    }
+
+    leaf advertise-svi-ip {
+      type boolean;
+      default "false";
+      description
+        "advertise-svi-ip. Default-instance only; FRR also allows a
+         per-VNI override (bgp_evpn_advertise_svi_ip_vni_cmd), not
+         modeled here. (bgp_evpn_advertise_svi_ip_cmd)";
+    }
+
+    leaf enable-resolve-overlay-index {
+      type boolean;
+      default "false";
+      description
+        "enable-resolve-overlay-index. Default-instance only.
+         (bgp_evpn_enable_resolve_overlay_index_cmd)";
+    }
+
+    leaf flooding {
+      type enumeration {
+        enum disable;
+        enum head-end-replication;
+      }
+      description
+        "flooding <disable|head-end-replication> at the default-instance
+         level; unset means FRR's own default (head-end-replication).
+         Also settable per-VNI, see vni/flooding.
+         (bgp_evpn_flood_control_vni_cmd)";
+    }
+
+    list vni {
+      key "vni-id";
+      description
+        "vni <N> / exit-vni. Default-instance only.
+         (bgp_evpn_vni_cmd/exit_vni_cmd)";
+
+      leaf vni-id {
+        type uint32 {
+          range "1..16777215";
+        }
+        description "VXLAN Network Identifier.";
+      }
+
+      leaf rd {
+        type string;
+        description
+          "rd ASN:NN_OR_IP-ADDRESS:NN (bgp_evpn_vni_rd_cmd).";
+      }
+
+      leaf flooding {
+        type enumeration {
+          enum disable;
+          enum head-end-replication;
+        }
+        description "Per-VNI flooding override.";
+      }
+
+      uses route-target-list;
+    }
+
+    leaf rd {
+      type string;
+      description
+        "rd ASN:NN_OR_IP-ADDRESS:NN. Per-VRF instance only.
+         (bgp_evpn_vrf_rd_cmd)";
+    }
+
+    uses route-target-list {
+      description "Per-VRF instance only (bgp_evpn_vrf_rt_cmd).";
+    }
+
+    container advertise-ipv4-unicast {
+      description
+        "advertise ipv4 unicast [gateway-ip] [route-map RMAP_NAME].
+         Per-VRF instance only. (bgp_evpn_advertise_type5_cmd)";
+
+      leaf enabled {
+        type boolean;
+        default "false";
+      }
+      leaf gateway-ip {
+        type boolean;
+        default "false";
+        description "advertise gateway IP overlay index.";
+      }
+      leaf route-map {
+        type string;
+      }
+    }
+
+    container advertise-ipv6-unicast {
+      description
+        "advertise ipv6 unicast [gateway-ip] [route-map RMAP_NAME].
+         Per-VRF instance only. (bgp_evpn_advertise_type5_cmd)";
+
+      leaf enabled {
+        type boolean;
+        default "false";
+      }
+      leaf gateway-ip {
+        type boolean;
+        default "false";
+        description "advertise gateway IP overlay index.";
+      }
+      leaf route-map {
+        type string;
+      }
+    }
+  }
+}

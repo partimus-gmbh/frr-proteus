@@ -1,0 +1,91 @@
+{# L2VPN EVPN address-family body. Included from bgp.conf.j2 when the
+current afi-safi entry is l2vpn-evpn; `bgp` and `evpn` (the
+afi_safi.l2vpn_evpn pyangbind container, see
+yang/frr-proteus-bgp-evpn.yang) are in scope from the caller.
+
+FRR distinguishes the default-instance EVPN role (advertise-all-vni, the
+per-VNI list, flooding, ...) from a per-VRF instance's EVPN role (rd,
+route-target, advertise ipv4/ipv6 unicast for L3VPN route leaking) by
+which VRF the enclosing `router bgp` belongs to, not by YANG structure --
+so this template just renders whichever fields are actually set,
+regardless of instance role. Per-neighbor EVPN knobs (activate,
+route-reflector-client, route-map in/out) come from frr-bgp.yang's own
+augment of the neighbor's l2vpn-evpn afi-safi entry, not from our
+augmentation -- see helpers.neighbor_afi_safi(). #}
+ !
+ address-family l2vpn evpn
+{% for addr, neighbor in bgp.neighbors.neighbor.items() %}
+{% set n_afi = neighbor_afi_safi(neighbor, "l2vpn-evpn") %}
+{% if n_afi and n_afi.enabled %}
+  neighbor {{ addr }} activate
+{% endif %}
+{% if n_afi and n_afi.l2vpn_evpn.route_reflector.route_reflector_client %}
+  neighbor {{ addr }} route-reflector-client
+{% endif %}
+{% if n_afi and n_afi.l2vpn_evpn.filter_config.rmap_import %}
+  neighbor {{ addr }} route-map {{ n_afi.l2vpn_evpn.filter_config.rmap_import }} in
+{% endif %}
+{% if n_afi and n_afi.l2vpn_evpn.filter_config.rmap_export %}
+  neighbor {{ addr }} route-map {{ n_afi.l2vpn_evpn.filter_config.rmap_export }} out
+{% endif %}
+{% if n_afi and n_afi.l2vpn_evpn.as_path_options.allow_own_as %}
+  neighbor {{ addr }} allowas-in {{ n_afi.l2vpn_evpn.as_path_options.allow_own_as }}
+{% endif %}
+{% endfor %}
+{% if evpn.advertise_all_vni %}
+  advertise-all-vni
+{% endif %}
+{% if evpn.advertise_default_gw %}
+  advertise-default-gw
+{% endif %}
+{% if evpn.advertise_svi_ip %}
+  advertise-svi-ip
+{% endif %}
+{% if evpn.enable_resolve_overlay_index %}
+  enable-resolve-overlay-index
+{% endif %}
+{% if evpn.flooding %}
+  flooding {{ evpn.flooding }}
+{% endif %}
+{% for _, vni in evpn.vni.items() %}
+  vni {{ vni.vni_id }}
+{% if vni.rd %}
+   rd {{ vni.rd }}
+{% endif %}
+{% for rt in vni.route_target_import %}
+   route-target import {{ rt }}
+{% endfor %}
+{% for rt in vni.route_target_export %}
+   route-target export {{ rt }}
+{% endfor %}
+{% for rt in vni.route_target_both %}
+   route-target both {{ rt }}
+{% endfor %}
+{% if vni.flooding %}
+   flooding {{ vni.flooding }}
+{% endif %}
+  exit-vni
+{% endfor %}
+{% if evpn.rd %}
+  rd {{ evpn.rd }}
+{% endif %}
+{% for rt in evpn.route_target_import %}
+  route-target import {{ rt }}
+{% endfor %}
+{% for rt in evpn.route_target_export %}
+  route-target export {{ rt }}
+{% endfor %}
+{% for rt in evpn.route_target_both %}
+  route-target both {{ rt }}
+{% endfor %}
+{% if evpn.advertise_ipv4_unicast.enabled %}
+{% set gw = " gateway-ip" if evpn.advertise_ipv4_unicast.gateway_ip else "" %}
+{% set rmap = " route-map " ~ evpn.advertise_ipv4_unicast.route_map if evpn.advertise_ipv4_unicast.route_map else "" %}
+  advertise ipv4 unicast{{ gw }}{{ rmap }}
+{% endif %}
+{% if evpn.advertise_ipv6_unicast.enabled %}
+{% set gw = " gateway-ip" if evpn.advertise_ipv6_unicast.gateway_ip else "" %}
+{% set rmap = " route-map " ~ evpn.advertise_ipv6_unicast.route_map if evpn.advertise_ipv6_unicast.route_map else "" %}
+  advertise ipv6 unicast{{ gw }}{{ rmap }}
+{% endif %}
+ exit-address-family

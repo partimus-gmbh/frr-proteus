@@ -17,17 +17,22 @@ import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 FRR_YANG_DIR = REPO_ROOT / "frr" / "yang"
+PROTEUS_YANG_DIR = REPO_ROOT / "yang"
 OUTPUT_DIR = REPO_ROOT / "src" / "frr_proteus" / "_generated"
 OUTPUT_FILE = OUTPUT_DIR / "frr_bgp.py"
 
 # YANG modules needed to fully resolve the BGP model (frr-bgp.yang includes
 # several submodules and imports these directly).
 BGP_YANG_MODULES = [
-    "frr-bgp.yang",
-    "frr-routing.yang",
-    "frr-interface.yang",
-    "frr-route-types.yang",
-    "frr-bgp-types.yang",
+    FRR_YANG_DIR / "frr-bgp.yang",
+    FRR_YANG_DIR / "frr-routing.yang",
+    FRR_YANG_DIR / "frr-interface.yang",
+    FRR_YANG_DIR / "frr-route-types.yang",
+    FRR_YANG_DIR / "frr-bgp-types.yang",
+    # frr-proteus's own augmentation of frr-bgp.yang's empty l2vpn-evpn
+    # placeholder container -- see yang/frr-proteus-bgp-evpn.yang for why
+    # this can't just be added to the vendored FRR YANG.
+    PROTEUS_YANG_DIR / "frr-proteus-bgp-evpn.yang",
 ]
 
 
@@ -120,9 +125,11 @@ def main() -> None:
         str(FRR_YANG_DIR),
         "-p",
         str(FRR_YANG_DIR / "ietf"),
+        "-p",
+        str(PROTEUS_YANG_DIR),
         "-o",
         str(OUTPUT_FILE),
-        *[str(FRR_YANG_DIR / m) for m in BGP_YANG_MODULES],
+        *[str(m) for m in BGP_YANG_MODULES],
     ]
     print("running (in-process):", " ".join(argv))
     old_argv = sys.argv

@@ -31,8 +31,10 @@ _env = jinja2.Environment(
 )
 _env.globals.update(
     remote_as_text=helpers.remote_as_text,
+    afi_safi_name=helpers.afi_safi_name,
     afi_safi_cli_text=helpers.afi_safi_cli_text,
     afi_safi_networks=helpers.afi_safi_networks,
+    neighbor_afi_safi=helpers.neighbor_afi_safi,
 )
 
 _bgp_template = _env.get_template("bgp.conf.j2")
