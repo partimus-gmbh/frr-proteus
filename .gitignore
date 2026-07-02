@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv*/
+*.egg-info/
+build/
+dist/
+
+# Generated pyangbind bindings -- reproducible via scripts/generate_bindings.py,
+# too large (multi-MB) and too noisy to usefully diff in git.
+src/frr_proteus/_generated/frr_bgp.py
