@@ -2,16 +2,21 @@
 data (via the pyangbind classes generated from FRR's own frr-bgp.yang) and
 render it to bgpd config text.
 
-Run with the generated bindings on the path, e.g.:
+Writes rendered bgpd config text to out/r1_bgpd.conf and out/r2_bgpd.conf
+(relative to the repo root) for evaluation. Run with the generated
+bindings on the path, e.g.:
     PYTHONPATH=src python3 examples/basic_bgp.py
 """
 
+import pathlib
 import sys
 
 sys.path.insert(0, "src")
 
 from frr_proteus._generated.frr_bgp import frr_routing
 from frr_proteus.render import render_bgp_instance
+
+OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
 
 def build_bgp_instance(*, local_as: int, router_id: str, neighbor_addr: str, neighbor_remote_as_type: str, network: str):
@@ -49,8 +54,12 @@ def main() -> None:
         network="198.51.100.0/24",
     )
 
-    print(render_bgp_instance(r1), end="")
-    print(render_bgp_instance(r2), end="")
+    OUT_DIR.mkdir(exist_ok=True)
+    for name, bgp in [("r1_bgpd.conf", r1), ("r2_bgpd.conf", r2)]:
+        text = render_bgp_instance(bgp)
+        (OUT_DIR / name).write_text(text)
+        print(f"--- {OUT_DIR / name} ---")
+        print(text, end="")
 
 
 if __name__ == "__main__":

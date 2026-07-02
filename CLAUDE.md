@@ -39,9 +39,17 @@ the canonical/full form: match `bgp_config_write*()`, not test fixtures).
 - `src/frr_proteus/_generated/` -- pyangbind output. Gitignored (7-8MB
   generated file, not diffable, trivially reproducible). Must be generated
   before running examples or tests.
-- `src/frr_proteus/render/` -- one module per protocol
-  (`bgp.py` so far). Each renderer function takes a pyangbind container
-  object and a bit of context (e.g. `vrf` name) and returns config text.
+- `src/frr_proteus/render/` -- rendering is Jinja2-first: templates under
+  `templates/*.j2` (one per protocol, e.g. `bgp.conf.j2`) walk pyangbind
+  objects close to directly, with minimal template logic. `helpers.py`
+  holds the small amount of Python glue templates can't express cleanly
+  (enum branching, identityref prefix stripping) and is exposed to
+  templates as Jinja globals. `bgp.py` (etc.) just wires up the Jinja
+  `Environment` and exposes a thin `render_*_instance(obj, **ctx)`
+  function -- keep new protocol renderers to that same shape rather than
+  building output with Python string concatenation. (The user was
+  explicit about this: an earlier all-Python string-building renderer got
+  replaced after they called it "completely unreadable.")
 - `examples/basic_bgp.py` -- builds a small two-router eBGP config and
   renders it; the standing smoke test for "does this look like real bgpd
   config".

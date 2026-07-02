@@ -79,6 +79,9 @@ def test_network_statement_under_address_family():
     assert " address-family ipv4 unicast\n" in text
     assert "  network 192.0.2.0/24\n" in text
     assert " exit-address-family\n" in text
+    # bgpd's vty_frame(" !\n address-family ...") only flushes once the
+    # block has content -- so a non-empty AF block is preceded by " !".
+    assert " !\n address-family ipv4 unicast\n" in text
 
 
 def test_address_family_omitted_when_no_networks():

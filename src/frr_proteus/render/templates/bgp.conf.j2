@@ -1,0 +1,36 @@
+{# BGP instance renderer.
+
+Traverses the pyangbind `bgp` container directly (frr-bgp.yang shape),
+mirroring the structure and content of bgpd/bgp_vty.c's bgp_config_write()
+/ bgp_config_write_family(). Field-picking logic that doesn't fit cleanly
+in a template (enum branching, identityref prefix stripping) lives in
+render/helpers.py and is exposed here as globals.
+
+Note the standalone " !" line before a non-empty address-family block:
+that mirrors bgp_vty.c's `vty_frame(vty, " !\n address-family ...")`,
+which FRR only flushes once the block has real content -- so an
+address-family with no networks/config produces no output at all,
+including no leading "!". #}
+{% set vrf_clause = " vrf " ~ vrf if vrf and vrf != "default" else "" %}
+router bgp {{ bgp.global_.local_as }}{{ vrf_clause }}
+{% if bgp.global_.router_id %}
+ bgp router-id {{ bgp.global_.router_id }}
+{% endif %}
+{% for addr, neighbor in bgp.neighbors.neighbor.items() %}
+{% set remote_as = remote_as_text(neighbor) %}
+{% if remote_as %}
+ neighbor {{ addr }} remote-as {{ remote_as }}
+{% endif %}
+{% endfor %}
+{% for _, afi_safi in bgp.global_.afi_safis.afi_safi.items() %}
+{% set networks = afi_safi_networks(afi_safi) %}
+{% if networks %}
+ !
+ address-family {{ afi_safi_cli_text(afi_safi) }}
+{% for prefix in networks %}
+  network {{ prefix }}
+{% endfor %}
+ exit-address-family
+{% endif %}
+{% endfor %}
+!
