@@ -85,8 +85,9 @@ same shape (one `.j2` template, thin Python glue module, thin
   actually uses; the classic dynamic `pybind` backend is kept working
   but unused here.
 - `scripts/generate_bindings.py` -- pyangbind codegen, runs on any
-  Python >=3.9 with the fork installed (the old python3.11-only
-  restriction applied to the unpatched PyPI release). Compiles
+  Python >=3.12 (the project's minimum) with the fork installed (the old
+  python3.11-only restriction applied to the unpatched PyPI release).
+  Compiles
   `frr/yang/frr-bgp.yang` + `yang/frr-proteus-bgp-evpn.yang` together
   into one bindings module. Gotcha: it locates the pyang plugin dir via
   `pyangbind.plugin.pybind.__file__`, not `pyangbind.__path__` -- with
@@ -190,7 +191,7 @@ Verified against most of `frr/tests/topotests/bgp_evpn_*`, `evpn_pim_*`,
 ## Commands
 
 ```sh
-# one venv for everything (any Python >=3.9). The codegen extra pulls pyang;
+# one venv for everything (Python >=3.12). The codegen extra pulls pyang;
 # the pyangbind fork is a local path submodule so it's a separate editable install.
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev,codegen]" -e ./pyangbind

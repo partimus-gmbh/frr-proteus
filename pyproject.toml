@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "frr-proteus"
 version = "0.1.0"
 description = "Generate FRR daemon text configuration from structured Python config data, using FRR's YANG models as the data schema."
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 # pyangbind (our fork, the pyangbind/ submodule) is a codegen-time tool
 # only -- the generated bindings are plain stdlib dataclasses with no
 # runtime dependency on it.

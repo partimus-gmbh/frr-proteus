@@ -4,8 +4,9 @@
 Uses the forked pyangbind vendored as the ``pyangbind/`` git submodule
 (install it into your venv with ``pip install -e ./pyangbind``). The fork
 carries our fixes directly (e.g. the bits-position TypeError that used to
-be monkeypatched here), so any Python >= 3.9 interpreter works -- the old
-"must be 3.11" restriction applied only to the unpatched PyPI release.
+be monkeypatched here), so any modern interpreter works (the project
+requires Python >= 3.12) -- the old "must be 3.11" restriction applied
+only to the unpatched PyPI release.
 
 A single venv covers codegen and the library -- pyang and the pyangbind
 fork are imported only here, never by ``src/frr_proteus``.

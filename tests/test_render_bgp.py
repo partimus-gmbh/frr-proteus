@@ -35,9 +35,9 @@ def _add_neighbor(bgp: Bgp, addr: str) -> Bgp.Neighbors.Neighbor:
     return neighbor
 
 
-# `name` is left unannotated (implicit): its true type is the afi-safi-name
-# Literal, which the generated module inlines rather than exporting as an alias,
-# so restating it here would be fragile. Callers pass valid literal strings.
+# `name` is left unannotated: its real type is the afi-safi-name Literal, which
+# the bindings inline with no exported alias -- restating it here would just
+# duplicate the generated source. Callers pass valid literal strings.
 def _add_afi_safi(bgp: Bgp, name) -> Bgp.Global.AfiSafis.AfiSafi:
     afi_safi = Bgp.Global.AfiSafis.AfiSafi(afi_safi_name=name)
     bgp.global_.afi_safis.afi_safi.append(afi_safi)
