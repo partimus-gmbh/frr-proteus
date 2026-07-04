@@ -69,12 +69,12 @@ def main() -> None:
         str(plugin_dir),
         "-f",
         "pybind-dataclass",
-        # Validate YANG type restrictions (ranges/patterns/enums/...) on
-        # every assignment. --dataclass-defaults stays OFF deliberately:
-        # renderers rely on "unset leaf is None / falsy means not
-        # explicitly configured", and applying YANG defaults would make
-        # default-valued knobs indistinguishable from configured ones.
-        "--dataclass-validation",
+        # The backend generates validation and YANG defaults by default;
+        # keep validation but opt out of defaults: renderers rely on
+        # "unset leaf is None / falsy means not explicitly configured",
+        # and applying YANG defaults would make default-valued knobs
+        # indistinguishable from configured ones.
+        "--no-dataclass-defaults",
         "-p",
         str(FRR_YANG_DIR),
         "-p",
