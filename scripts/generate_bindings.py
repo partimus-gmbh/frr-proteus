@@ -7,10 +7,13 @@ carries our fixes directly (e.g. the bits-position TypeError that used to
 be monkeypatched here), so any Python >= 3.9 interpreter works -- the old
 "must be 3.11" restriction applied only to the unpatched PyPI release.
 
+A single venv covers codegen and the library -- pyang and the pyangbind
+fork are imported only here, never by ``src/frr_proteus``.
+
 Usage:
-    python3 -m venv .venv-codegen
-    .venv-codegen/bin/pip install pyang -e ./pyangbind
-    .venv-codegen/bin/python scripts/generate_bindings.py
+    python3 -m venv .venv
+    .venv/bin/pip install -e ".[dev,codegen]" -e ./pyangbind
+    .venv/bin/python scripts/generate_bindings.py
 """
 
 import pathlib

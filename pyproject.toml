@@ -19,6 +19,14 @@ dev = [
     "pytest",
     "mypy",
 ]
+# Codegen-time only. pyang is the pyang framework; the pyangbind fork that
+# carries the `pybind-dataclass` plugin is a local path submodule, so install
+# it separately and editable: `pip install -e ".[dev,codegen]" -e ./pyangbind`.
+# Neither is imported by src/frr_proteus -- only by scripts/generate_bindings.py
+# -- so a single venv is fine; they can't leak into the runtime dep set.
+codegen = [
+    "pyang",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

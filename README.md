@@ -69,18 +69,26 @@ Codegen uses the forked pyangbind vendored as the `pyangbind/` submodule
 directly -- the bits-position bug that used to be monkeypatched in-memory,
 and Python 3.12+ support -- so any modern interpreter works for codegen now.
 
+A single venv covers both codegen and the library -- pyangbind and pyang
+are codegen-only tools, but they're imported solely by
+`scripts/generate_bindings.py` (never by `src/frr_proteus`), so they can't
+leak into the runtime dependency set.
+
 ```sh
 git submodule update --init
 
-python3 -m venv .venv-codegen
-.venv-codegen/bin/pip install pyang -e ./pyangbind
-.venv-codegen/bin/python scripts/generate_bindings.py
+python3 -m venv .venv
+# `.[codegen]` pulls pyang; the pyangbind fork is a local path submodule,
+# so it's a separate editable install.
+.venv/bin/pip install -e ".[dev,codegen]" -e ./pyangbind
 
-# now use any Python >=3.9 for the actual library:
-pip install -e ".[dev]"
-PYTHONPATH=src python3 examples/basic_bgp.py   # writes out/r1_bgpd.conf, out/r2_bgpd.conf
-PYTHONPATH=src python3 examples/evpn_bgp.py    # writes out/evpn_frr.conf
-pytest tests/
+# one-time codegen (regenerate whenever the YANG models change):
+.venv/bin/python scripts/generate_bindings.py
+
+# then use the library:
+PYTHONPATH=src .venv/bin/python examples/basic_bgp.py   # writes out/r1_bgpd.conf, out/r2_bgpd.conf
+PYTHONPATH=src .venv/bin/python examples/evpn_bgp.py    # writes out/evpn_frr.conf
+.venv/bin/pytest tests/
 ```
 
 ## Known limitations

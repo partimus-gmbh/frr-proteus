@@ -75,8 +75,11 @@ same shape (one `.j2` template, thin Python glue module, thin
   now (e.g. the bits-position TypeError that generate_bindings.py used
   to monkeypatch in-memory; 3.12+ support was already fixed on upstream
   master vs. the 0.8.7 PyPI release). Install it editable (`pip install
-  -e ./pyangbind`), never from PyPI -- and only into the codegen venv;
-  it is not a runtime dependency of frr-proteus. Carries our
+  -e ./pyangbind`), never from PyPI. It is a codegen-time tool, not a
+  runtime dependency of frr-proteus -- but a *single* venv is fine (no
+  separate codegen venv): pyangbind and pyang are imported only by
+  `scripts/generate_bindings.py`, never by `src/frr_proteus`, so they
+  can't leak into the runtime dep set regardless. Carries our
   `pybind-dataclass` pyang output plugin
   (`pyangbind/plugin/pybind_dataclass.py`) -- the backend this project
   actually uses; the classic dynamic `pybind` backend is kept working
@@ -187,13 +190,16 @@ Verified against most of `frr/tests/topotests/bgp_evpn_*`, `evpn_pim_*`,
 ## Commands
 
 ```sh
-# one-time codegen (any Python >=3.9; uses the forked pyangbind submodule)
-python3 -m venv .venv-codegen && .venv-codegen/bin/pip install pyang -e ./pyangbind
-.venv-codegen/bin/python scripts/generate_bindings.py
+# one venv for everything (any Python >=3.9). The codegen extra pulls pyang;
+# the pyangbind fork is a local path submodule so it's a separate editable install.
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev,codegen]" -e ./pyangbind
 
-# everyday dev, any Python >=3.9
-pip install -e ".[dev]"
-PYTHONPATH=src python3 examples/basic_bgp.py
-PYTHONPATH=src python3 examples/evpn_bgp.py
-pytest tests/
+# one-time codegen (uses the forked pyangbind submodule)
+.venv/bin/python scripts/generate_bindings.py
+
+# everyday dev
+PYTHONPATH=src .venv/bin/python examples/basic_bgp.py
+PYTHONPATH=src .venv/bin/python examples/evpn_bgp.py
+.venv/bin/pytest tests/
 ```

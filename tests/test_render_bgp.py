@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, TypeAlias
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -7,22 +10,35 @@ import pytest
 
 from frr_proteus.render import render_bgp_instance
 
-bindings = pytest.importorskip("frr_proteus._generated.frr_bgp")
+# Import statically for type checkers so the deeply-nested binding classes keep
+# their real types; at runtime use importorskip so the suite skips cleanly when
+# bindings haven't been generated. Both paths bind `bindings` to the same module.
+if TYPE_CHECKING:
+    from frr_proteus._generated import frr_bgp as bindings
+else:
+    bindings = pytest.importorskip("frr_proteus._generated.frr_bgp")
 
-Bgp = bindings.FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol.Bgp
+# This binding doubles as an annotation *and* is instantiated below (`Bgp()`,
+# `Bgp.Neighbors.Neighbor(...)`). `TypeAlias` marks it as an alias while keeping
+# a normal assignment, so the value stays callable. A PEP 695 `type Bgp = ...`
+# can't be used here: a TypeAliasType is neither callable nor attribute-accessible.
+Bgp: TypeAlias = bindings.FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol.Bgp
 
 
-def _new_bgp():
+def _new_bgp() -> Bgp:
     return Bgp()
 
 
-def _add_neighbor(bgp, addr):
+def _add_neighbor(bgp: Bgp, addr: str) -> Bgp.Neighbors.Neighbor:
     neighbor = Bgp.Neighbors.Neighbor(remote_address=addr)
     bgp.neighbors.neighbor.append(neighbor)
     return neighbor
 
 
-def _add_afi_safi(bgp, name):
+# `name` is left unannotated (implicit): its true type is the afi-safi-name
+# Literal, which the generated module inlines rather than exporting as an alias,
+# so restating it here would be fragile. Callers pass valid literal strings.
+def _add_afi_safi(bgp: Bgp, name) -> Bgp.Global.AfiSafis.AfiSafi:
     afi_safi = Bgp.Global.AfiSafis.AfiSafi(afi_safi_name=name)
     bgp.global_.afi_safis.afi_safi.append(afi_safi)
     return afi_safi

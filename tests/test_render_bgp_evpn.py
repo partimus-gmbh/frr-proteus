@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, TypeAlias
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -7,30 +10,41 @@ import pytest
 
 from frr_proteus.render import render_bgp_instance
 
-bindings = pytest.importorskip("frr_proteus._generated.frr_bgp")
+# Import statically for type checkers so the deeply-nested binding classes keep
+# their real types; at runtime use importorskip so the suite skips cleanly when
+# bindings haven't been generated. Both paths bind `bindings` to the same module.
+if TYPE_CHECKING:
+    from frr_proteus._generated import frr_bgp as bindings
+else:
+    bindings = pytest.importorskip("frr_proteus._generated.frr_bgp")
 
-Bgp = bindings.FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol.Bgp
-GlobalAfiSafi = Bgp.Global.AfiSafis.AfiSafi
-NeighborAfiSafi = Bgp.Neighbors.Neighbor.AfiSafis.AfiSafi
+# These bindings double as annotations *and* are instantiated below (`Bgp()`,
+# `GlobalAfiSafi(...)`, `NeighborAfiSafi(...)`). `TypeAlias` marks them as aliases
+# while keeping normal assignments, so the values stay callable. A PEP 695
+# `type X = ...` can't be used here: a TypeAliasType is neither callable nor
+# attribute-accessible.
+Bgp: TypeAlias = bindings.FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol.Bgp
+GlobalAfiSafi: TypeAlias = Bgp.Global.AfiSafis.AfiSafi
+NeighborAfiSafi: TypeAlias = Bgp.Neighbors.Neighbor.AfiSafis.AfiSafi
 
 
-def _new_bgp():
+def _new_bgp() -> Bgp:
     return Bgp()
 
 
-def _evpn_af(bgp):
+def _evpn_af(bgp: Bgp) -> GlobalAfiSafi.L2vpnEvpn:
     afi_safi = GlobalAfiSafi(afi_safi_name="l2vpn-evpn")
     bgp.global_.afi_safis.afi_safi.append(afi_safi)
     return afi_safi.l2vpn_evpn
 
 
-def _add_neighbor(bgp, addr):
+def _add_neighbor(bgp: Bgp, addr: str) -> Bgp.Neighbors.Neighbor:
     neighbor = Bgp.Neighbors.Neighbor(remote_address=addr)
     bgp.neighbors.neighbor.append(neighbor)
     return neighbor
 
 
-def _add_neighbor_evpn_af(neighbor):
+def _add_neighbor_evpn_af(neighbor: Bgp.Neighbors.Neighbor) -> NeighborAfiSafi:
     n_afi = NeighborAfiSafi(afi_safi_name="l2vpn-evpn")
     neighbor.afi_safis.afi_safi.append(n_afi)
     return n_afi
