@@ -10,7 +10,7 @@ bindings on the path, e.g.:
 
 import pathlib
 import sys
-from typing import Literal
+from typing import Literal, TypeAlias
 
 sys.path.insert(0, "src")
 
@@ -19,8 +19,8 @@ from frr_proteus.render import render_bgp_instance
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
-Proto = FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol
-Bgp = Proto.Bgp
+Proto: TypeAlias = FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol
+BGP: TypeAlias = Proto.Bgp
 
 
 def build_bgp_instance(
@@ -30,29 +30,31 @@ def build_bgp_instance(
     neighbor_addr: str,
     neighbor_remote_as_type: Literal["internal", "external"],
     network: str,
-) -> Bgp:
-    routing = FrrRouting()
-    proto = Proto(type="frr-bgp:bgp", name="default")
-    routing.routing.control_plane_protocols.control_plane_protocol.append(proto)
-    bgp = proto.bgp
+) -> BGP:
+    #FRR = FrrRouting()
+    #proto = Proto(type="frr-bgp:bgp", name="default")
+    #FRR.routing.control_plane_protocols.control_plane_protocol.append(proto)
+    # bgp = proto.bgp
+
+    bgp = BGP()
 
     bgp.global_.local_as = local_as
     bgp.global_.router_id = router_id
 
-    neighbor = Bgp.Neighbors.Neighbor(remote_address=neighbor_addr)
+    neighbor = BGP.Neighbors.Neighbor(remote_address=neighbor_addr)
     neighbor.neighbor_remote_as.remote_as_type = neighbor_remote_as_type
     bgp.neighbors.neighbor.append(neighbor)
 
-    afi_safi = Bgp.Global.AfiSafis.AfiSafi(afi_safi_name="ipv4-unicast")
+    afi_safi = BGP.Global.AfiSafis.AfiSafi(afi_safi_name="ipv4-unicast")
     afi_safi.ipv4_unicast.network_config.append(
-        Bgp.Global.AfiSafis.AfiSafi.Ipv4Unicast.NetworkConfig(prefix=network)
+        BGP.Global.AfiSafis.AfiSafi.Ipv4Unicast.NetworkConfig(prefix=network)
     )
     bgp.global_.afi_safis.afi_safi.append(afi_safi)
 
     return bgp
 
 
-def main() -> None:
+def main2() -> None:
     r1 = build_bgp_instance(
         local_as=65001,
         router_id="192.168.255.1",
@@ -75,6 +77,26 @@ def main() -> None:
         print(f"--- {OUT_DIR / name} ---")
         print(text, end="")
 
+BGP: TypeAlias = FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol.Bgp
+
+def main() -> None:
+
+    r1 = BGP()
+
+    r1.global_.local_as = 65001
+    r1.global_.router_id = "192.168.255.1"
+
+    neighbor = BGP.Neighbors.Neighbor(remote_address="192.168.255.2")
+    neighbor.neighbor_remote_as.remote_as_type = "external"
+    r1.neighbors.neighbor.append(neighbor)
+
+    afi_safi = BGP.Global.AfiSafis.AfiSafi(afi_safi_name="ipv4-unicast")
+    afi_safi.ipv4_unicast.network_config.append(
+        BGP.Global.AfiSafis.AfiSafi.Ipv4Unicast.NetworkConfig(prefix="192.0.2.0/24")
+    )
+    r1.global_.afi_safis.afi_safi.append(afi_safi)
+
+    print(render_bgp_instance(r1))
 
 if __name__ == "__main__":
     main()
