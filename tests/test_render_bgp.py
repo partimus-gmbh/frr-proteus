@@ -15,6 +15,7 @@ from frr_proteus.render import render_bgp_instance
 # bindings haven't been generated. Both paths bind `bindings` to the same module.
 if TYPE_CHECKING:
     from frr_proteus._generated import frr_bgp as bindings
+    from frr_proteus._generated.frr_bgp import AfiSafiType
 else:
     bindings = pytest.importorskip("frr_proteus._generated.frr_bgp")
 
@@ -34,11 +35,11 @@ def _add_neighbor(bgp: Bgp, addr: str) -> Bgp.Neighbors.Neighbor:
     bgp.neighbors.neighbor.append(neighbor)
     return neighbor
 
-
-# `name` is left unannotated: its real type is the afi-safi-name Literal, which
-# the bindings inline with no exported alias -- restating it here would just
-# duplicate the generated source. Callers pass valid literal strings.
-def _add_afi_safi(bgp: Bgp, name) -> Bgp.Global.AfiSafis.AfiSafi:
+# `AfiSafiType` is the generator-emitted alias for the afi-safi-name identityref
+# Literal (`type AfiSafiType = typing.Literal[...]`), so we annotate against it
+# directly instead of duplicating the union. Imported under TYPE_CHECKING; the
+# annotation stays a lazy string at runtime (`from __future__ import annotations`).
+def _add_afi_safi(bgp: Bgp, name: AfiSafiType) -> Bgp.Global.AfiSafis.AfiSafi:
     afi_safi = Bgp.Global.AfiSafis.AfiSafi(afi_safi_name=name)
     bgp.global_.afi_safis.afi_safi.append(afi_safi)
     return afi_safi

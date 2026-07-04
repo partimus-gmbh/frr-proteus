@@ -105,8 +105,14 @@ same shape (one `.j2` template, thin Python glue module, thin
   *not* applied, so templates can rely on "falsy means not explicitly
   configured"; enums and identityrefs are `typing.Literal` strings
   (identityref values accepted both bare and module-prefixed, e.g.
-  "l2vpn-evpn" or "frr-routing:l2vpn-evpn" -- helpers strip the prefix);
-  YANG lists are plain `list[Entry]` (key leaves are ordinary fields,
+  "l2vpn-evpn" or "frr-routing:l2vpn-evpn" -- helpers strip the prefix).
+  identityrefs and *named-typedef* enums are hoisted to module-level
+  reusable PEP 695 aliases (`type AfiSafiType = typing.Literal[...]`,
+  `type Direction = ...`) named from the base identity / typedef and
+  referenced by name -- importable, e.g. `from frr_proteus._generated.
+  frr_bgp import AfiSafiType` (this is why the bindings now require Python
+  >=3.12); inline anonymous enums stay inlined. YANG lists are plain
+  `list[Entry]` (key leaves are ordinary fields,
   e.g. `neighbor.remote_address`; keyed-ness/uniqueness not enforced);
   config-false subtrees are omitted. The backend generates validation
   and YANG defaults by default (opt-outs: `--no-dataclass-validation`,
