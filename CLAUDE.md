@@ -104,9 +104,17 @@ same shape (one `.j2` template, thin Python glue module, thin
   "l2vpn-evpn" or "frr-routing:l2vpn-evpn" -- helpers strip the prefix);
   YANG lists are plain `list[Entry]` (key leaves are ordinary fields,
   e.g. `neighbor.remote_address`; keyed-ness/uniqueness not enforced);
-  config-false subtrees are omitted; no validation of
-  ranges/patterns/mandatory (future work, restrictions could go in
-  field metadata).
+  config-false subtrees are omitted. Bindings are generated with the
+  fork's `--dataclass-validation` flag: YANG value restrictions
+  (ranges incl. built-in int bounds, patterns, lengths, enum/identityref
+  sets, unions, bits) are enforced on *assignment* (including
+  constructor kwargs), raising `YangValidationError`; `None` is always
+  accepted; leaf-list elements are checked on list assignment but not
+  on `.append()`; structural rules (mandatory, list keys, when/must)
+  are not checked. `--dataclass-defaults` (apply YANG defaults instead
+  of None) exists but stays OFF here -- it would break the
+  falsy-means-unconfigured contract. A feature-free variant backend
+  `pybind-dataclass-dumb` is kept in the fork.
 - `src/frr_proteus/render/` -- templates under `templates/*.j2` (one per
   protocol/AF, e.g. `bgp.conf.j2`, `bgp_evpn_af.j2`) walk the generated
   dataclasses close to directly, with minimal template logic. `helpers.py`

@@ -45,8 +45,12 @@ comments and are freely omitted.
    format: nested `@dataclass` classes mirroring the YANG tree,
    `typing.Literal` for enums/identityrefs, `T | None` leaves -- fully
    understood by mypy/pyright and IDEs, no runtime dependency beyond
-   the stdlib). This is a build artifact, not checked into git --
-   regenerate it before first use.
+   the stdlib). Generated with `--dataclass-validation`, so YANG value
+   restrictions (ranges, patterns, enum/identityref sets, ...) are also
+   enforced at runtime on assignment (`YangValidationError`); YANG
+   defaults are deliberately not applied (unset leaf == `None`). This
+   is a build artifact, not checked into git -- regenerate it before
+   first use.
 2. **Jinja2 renderer:** `src/frr_proteus/render/templates/*.j2` walk the
    generated dataclasses close to directly and emit bgpd config
    text; `render/bgp.py` sets up the Jinja environment, and
