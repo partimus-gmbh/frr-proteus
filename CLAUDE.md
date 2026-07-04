@@ -1,7 +1,8 @@
 # frr-proteus
 
-YANG-to-text-config generator for FRR. Structured Python config data (built
-via pyangbind classes generated from FRR's own YANG models, extended with
+YANG-to-text-config generator for FRR. Structured Python config data
+(fully type-hinted dataclasses generated from FRR's own YANG models via
+our pyangbind fork's `pybind-dataclass` backend, extended with
 project-authored YANG where FRR's own is incomplete) in, FRR daemon
 config text out. See README.md for the full pitch and setup steps.
 
@@ -38,7 +39,8 @@ output `address-family ipv4 unicast` -- both parse fine, but don't infer
 CLI syntax purely from a fixture without checking the DEFUN/DEFPY too).
 
 **Rendering is Jinja2-first, not Python string-building.** Templates
-under `render/templates/*.j2` walk pyangbind objects close to directly;
+under `render/templates/*.j2` walk the generated dataclasses close to
+directly;
 `render/helpers.py` holds only the handful of functions a template
 genuinely can't express (enum branching, identityref prefix stripping).
 The user was explicit about this after rejecting an earlier all-Python
@@ -60,23 +62,25 @@ same shape (one `.j2` template, thin Python glue module, thin
   `frr-proteus-bgp-evpn.yang` fills in FRR's `l2vpn-evpn` afi-safi
   container, which upstream ships as a genuinely empty placeholder (every
   *other* afi-safi -- ipv4-unicast, l3vpn-ipv4-unicast, ... -- gets real
-  content augmented onto it in `frr-bgp.yang`; l2vpn-evpn never does).
-  pyangbind silently omits a container from codegen entirely if it ends
-  up with zero fields, which is why `l2vpn_evpn` doesn't show up as an
-  attribute on the *global* afi-safi entry pre-augmentation, even though
-  it does show up on the *neighbor's* afi-safi entry (FRR's own
-  `frr-bgp.yang` already augments the neighbor side with
-  `route-reflector-client`/`route-map`/`allowas-in`/etc, generically,
-  same as every other afi-safi -- only the instance side was empty).
-  Don't rediscover this by grepping the generated bindings again; it's
-  documented here and in the yang file's own description.
+  content augmented onto it in `frr-bgp.yang`; l2vpn-evpn never does;
+  the *neighbor*-side l2vpn-evpn container is augmented generically by
+  FRR itself with `route-reflector-client`/`route-map`/`allowas-in`/etc,
+  so only the instance side needed filling in). The augment is what puts
+  actual fields (advertise-all-vni, vni list, ...) on the instance-side
+  `l2vpn_evpn` dataclass; without it the class would be empty (the old
+  pyangbind backend omitted zero-field containers entirely; the
+  pybind-dataclass backend emits them as empty dataclasses).
 - `pyangbind/` -- git submodule pinned to our pyangbind fork
   (github.com/robinchrist/pyangbind). Fixes go into the fork directly
   now (e.g. the bits-position TypeError that generate_bindings.py used
   to monkeypatch in-memory; 3.12+ support was already fixed on upstream
   master vs. the 0.8.7 PyPI release). Install it editable (`pip install
-  -e ./pyangbind`), never from PyPI. Long-term goal: rewrite its pybind
-  plugin to emit dataclass-style, fully type-hinted bindings.
+  -e ./pyangbind`), never from PyPI -- and only into the codegen venv;
+  it is not a runtime dependency of frr-proteus. Carries our
+  `pybind-dataclass` pyang output plugin
+  (`pyangbind/plugin/pybind_dataclass.py`) -- the backend this project
+  actually uses; the classic dynamic `pybind` backend is kept working
+  but unused here.
 - `scripts/generate_bindings.py` -- pyangbind codegen, runs on any
   Python >=3.9 with the fork installed (the old python3.11-only
   restriction applied to the unpatched PyPI release). Compiles
@@ -87,12 +91,25 @@ same shape (one `.j2` template, thin Python glue module, thin
   submodule checkout dir (which holds the package one level down) as a
   same-named namespace package, and `__path__` then points at the wrong
   level.
-- `src/frr_proteus/_generated/` -- pyangbind output. Gitignored (~8MB
-  generated file, not diffable, trivially reproducible). Must be
-  generated before running examples or tests.
+- `src/frr_proteus/_generated/` -- generated bindings. Gitignored
+  (~335KB, trivially reproducible). Must be generated before running
+  examples or tests. Shape: plain stdlib dataclasses, nested to mirror
+  the YANG tree (`FrrRouting.Routing.ControlPlaneProtocols.
+  ControlPlaneProtocol.Bgp...`), zero runtime deps, understood
+  end-to-end by mypy/pyright (the package ships `py.typed`). Semantics
+  to keep in mind: an unset leaf is always `None` -- YANG defaults are
+  *not* applied, so templates can rely on "falsy means not explicitly
+  configured"; enums and identityrefs are `typing.Literal` strings
+  (identityref values accepted both bare and module-prefixed, e.g.
+  "l2vpn-evpn" or "frr-routing:l2vpn-evpn" -- helpers strip the prefix);
+  YANG lists are plain `list[Entry]` (key leaves are ordinary fields,
+  e.g. `neighbor.remote_address`; keyed-ness/uniqueness not enforced);
+  config-false subtrees are omitted; no validation of
+  ranges/patterns/mandatory (future work, restrictions could go in
+  field metadata).
 - `src/frr_proteus/render/` -- templates under `templates/*.j2` (one per
-  protocol/AF, e.g. `bgp.conf.j2`, `bgp_evpn_af.j2`) walk pyangbind
-  objects close to directly, with minimal template logic. `helpers.py`
+  protocol/AF, e.g. `bgp.conf.j2`, `bgp_evpn_af.j2`) walk the generated
+  dataclasses close to directly, with minimal template logic. `helpers.py`
   holds the small amount of Python glue templates can't express cleanly
   and is exposed to templates as Jinja globals. `bgp.py` wires up the
   Jinja `Environment` and exposes `render_bgp_instance()`.

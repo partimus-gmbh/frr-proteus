@@ -1,11 +1,10 @@
-"""Small pyangbind-to-Jinja glue functions for the bgp.conf.j2 template.
+"""Small bindings-to-Jinja glue functions for the bgp.conf.j2 template.
 
 Kept deliberately thin: anything that's just "read this YANG field and
 print it" belongs in the template. What lives here is logic the template
 can't reasonably express -- picking apart an enum-typed leaf
-(remote-as-type), or FRR's `identityref` string values (which the
-underlying libyang/pyangbind stack always renders module-prefixed, e.g.
-"frr-rt:ipv4-unicast").
+(remote-as-type), or YANG `identityref` string values (which may be
+written module-prefixed, e.g. "frr-routing:ipv4-unicast", or bare).
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ _AFI_SAFI_CLI_TEXT = {
 
 
 def strip_yang_prefix(identityref: object) -> str:
-    """"frr-rt:ipv4-unicast" -> "ipv4-unicast"."""
+    """"frr-routing:ipv4-unicast" -> "ipv4-unicast"."""
     return str(identityref).split(":", 1)[-1]
 
 
@@ -43,22 +42,20 @@ def afi_safi_cli_text(afi_safi) -> str:
 
 def afi_safi_networks(afi_safi) -> list[str]:
     """Prefixes configured under this afi-safi's `network-config` list,
-    e.g. from `bgp.global_.afi_safis.afi_safi["frr-rt:ipv4-unicast"]`."""
+    e.g. from the ipv4-unicast entry of `bgp.global_.afi_safis.afi_safi`."""
     container = getattr(afi_safi, afi_safi_name(afi_safi).replace("-", "_"))
-    return list(container.network_config)
+    return [entry.prefix for entry in container.network_config]
 
 
 def neighbor_afi_safi(neighbor, name: str):
     """`neighbor`'s afi-safi list entry named `name` (e.g. "l2vpn-evpn",
-    with or without the "frr-rt:" prefix), or None if this neighbor has
-    no configuration for that AFI-SAFI at all. pyangbind's dict-like
-    `.get()` returns an empty OrderedDict rather than None on a miss (not
-    something a template can easily branch on), so this normalizes that
-    to a plain `in` check."""
-    key = name if ":" in name else f"frr-rt:{name}"
-    if key not in neighbor.afi_safis.afi_safi:
-        return None
-    return neighbor.afi_safis.afi_safi[key]
+    with or without a module prefix), or None if this neighbor has no
+    configuration for that AFI-SAFI at all."""
+    bare = strip_yang_prefix(name)
+    for entry in neighbor.afi_safis.afi_safi:
+        if strip_yang_prefix(entry.afi_safi_name) == bare:
+            return entry
+    return None
 
 
 def remote_as_text(neighbor) -> str | None:

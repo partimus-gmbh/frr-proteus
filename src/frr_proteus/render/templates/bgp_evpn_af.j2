@@ -1,6 +1,6 @@
 {# L2VPN EVPN address-family body. Included from bgp.conf.j2 when the
 current afi-safi entry is l2vpn-evpn; `bgp` and `evpn` (the
-afi_safi.l2vpn_evpn pyangbind container, see
+afi_safi.l2vpn_evpn generated dataclass, see
 yang/frr-proteus-bgp-evpn.yang) are in scope from the caller.
 
 FRR distinguishes the default-instance EVPN role (advertise-all-vni, the
@@ -14,7 +14,8 @@ augment of the neighbor's l2vpn-evpn afi-safi entry, not from our
 augmentation -- see helpers.neighbor_afi_safi(). #}
  !
  address-family l2vpn evpn
-{% for addr, neighbor in bgp.neighbors.neighbor.items() %}
+{% for neighbor in bgp.neighbors.neighbor %}
+{% set addr = neighbor.remote_address %}
 {% set n_afi = neighbor_afi_safi(neighbor, "l2vpn-evpn") %}
 {% if n_afi and n_afi.enabled %}
   neighbor {{ addr }} activate
@@ -47,7 +48,7 @@ augmentation -- see helpers.neighbor_afi_safi(). #}
 {% if evpn.flooding %}
   flooding {{ evpn.flooding }}
 {% endif %}
-{% for _, vni in evpn.vni.items() %}
+{% for vni in evpn.vni %}
   vni {{ vni.vni_id }}
 {% if vni.rd %}
    rd {{ vni.rd }}

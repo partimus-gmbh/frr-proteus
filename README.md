@@ -40,11 +40,15 @@ comments and are freely omitted.
    `pyangbind/` git submodule) as plugin against
    `frr/yang/frr-bgp.yang` (a git submodule pinned to FRR master) plus
    `yang/frr-proteus-bgp-evpn.yang` (this project's own EVPN
-   augmentation), producing typed, validated Python classes under
-   `src/frr_proteus/_generated/`. This is a build artifact, not checked
-   into git -- regenerate it before first use.
+   augmentation), producing plain, fully type-hinted dataclasses under
+   `src/frr_proteus/_generated/` (the fork's `pybind-dataclass` output
+   format: nested `@dataclass` classes mirroring the YANG tree,
+   `typing.Literal` for enums/identityrefs, `T | None` leaves -- fully
+   understood by mypy/pyright and IDEs, no runtime dependency beyond
+   the stdlib). This is a build artifact, not checked into git --
+   regenerate it before first use.
 2. **Jinja2 renderer:** `src/frr_proteus/render/templates/*.j2` walk the
-   generated pyangbind objects close to directly and emit bgpd config
+   generated dataclasses close to directly and emit bgpd config
    text; `render/bgp.py` sets up the Jinja environment, and
    `render/helpers.py` holds the handful of functions (exposed to
    templates as globals) that don't fit cleanly in template syntax --
@@ -110,9 +114,13 @@ doing before trusting this beyond evaluation:
 - `yang/` -- project-authored YANG, for config surface FRR's own YANG
   doesn't cover (EVPN so far). Augments FRR's modules from outside rather
   than editing the vendored submodule.
-- `src/frr_proteus/_generated/` -- pyangbind output (gitignored).
+- `pyangbind/` -- git submodule, our pyangbind fork; carries the
+  `pybind-dataclass` codegen backend (and fixes). Codegen-time only.
+- `src/frr_proteus/_generated/` -- generated dataclass bindings
+  (gitignored).
 - `src/frr_proteus/render/` -- Jinja2 templates (`templates/*.j2`) plus
-  the Python glue that wires them to pyangbind (`bgp.py`, `helpers.py`).
+  the Python glue that wires them to the bindings (`bgp.py`,
+  `helpers.py`).
 - `scripts/generate_bindings.py` -- codegen entry point.
 - `examples/` -- runnable scripts building config data and rendering it.
 - `tests/` -- renderer tests against the generated bindings.

@@ -7,15 +7,25 @@ import pytest
 
 from frr_proteus.render import render_bgp_instance
 
-pyangbind_bindings = pytest.importorskip("frr_proteus._generated.frr_bgp")
+bindings = pytest.importorskip("frr_proteus._generated.frr_bgp")
+
+Bgp = bindings.FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol.Bgp
 
 
-def _new_bgp(vrf="default"):
-    routing = pyangbind_bindings.frr_routing()
-    proto = routing.routing.control_plane_protocols.control_plane_protocol.add(
-        f"frr-bgp:bgp bgp {vrf}"
-    )
-    return proto.bgp
+def _new_bgp():
+    return Bgp()
+
+
+def _add_neighbor(bgp, addr):
+    neighbor = Bgp.Neighbors.Neighbor(remote_address=addr)
+    bgp.neighbors.neighbor.append(neighbor)
+    return neighbor
+
+
+def _add_afi_safi(bgp, name):
+    afi_safi = Bgp.Global.AfiSafis.AfiSafi(afi_safi_name=name)
+    bgp.global_.afi_safis.afi_safi.append(afi_safi)
+    return afi_safi
 
 
 def test_router_bgp_header_and_trailing_bang():
@@ -55,7 +65,7 @@ def test_router_id_rendered_when_set():
 def test_neighbor_remote_as_type(as_type, expected):
     bgp = _new_bgp()
     bgp.global_.local_as = 65001
-    n = bgp.neighbors.neighbor.add("192.0.2.1")
+    n = _add_neighbor(bgp, "192.0.2.1")
     n.neighbor_remote_as.remote_as_type = as_type
     assert expected in render_bgp_instance(bgp)
 
@@ -63,7 +73,7 @@ def test_neighbor_remote_as_type(as_type, expected):
 def test_neighbor_remote_as_specified():
     bgp = _new_bgp()
     bgp.global_.local_as = 65001
-    n = bgp.neighbors.neighbor.add("192.0.2.1")
+    n = _add_neighbor(bgp, "192.0.2.1")
     n.neighbor_remote_as.remote_as_type = "as-specified"
     n.neighbor_remote_as.remote_as = 65099
     assert "neighbor 192.0.2.1 remote-as 65099" in render_bgp_instance(bgp)
@@ -72,8 +82,10 @@ def test_neighbor_remote_as_specified():
 def test_network_statement_under_address_family():
     bgp = _new_bgp()
     bgp.global_.local_as = 65001
-    afi_safi = bgp.global_.afi_safis.afi_safi.add("frr-rt:ipv4-unicast")
-    afi_safi.ipv4_unicast.network_config.add("192.0.2.0/24")
+    afi_safi = _add_afi_safi(bgp, "ipv4-unicast")
+    afi_safi.ipv4_unicast.network_config.append(
+        Bgp.Global.AfiSafis.AfiSafi.Ipv4Unicast.NetworkConfig(prefix="192.0.2.0/24")
+    )
 
     text = render_bgp_instance(bgp)
     assert " address-family ipv4 unicast\n" in text
@@ -87,12 +99,12 @@ def test_network_statement_under_address_family():
 def test_address_family_omitted_when_no_networks():
     bgp = _new_bgp()
     bgp.global_.local_as = 65001
-    bgp.global_.afi_safis.afi_safi.add("frr-rt:ipv4-unicast")
+    _add_afi_safi(bgp, "ipv4-unicast")
     assert "address-family" not in render_bgp_instance(bgp)
 
 
 def test_vrf_clause():
-    bgp = _new_bgp(vrf="RED")
+    bgp = _new_bgp()
     bgp.global_.local_as = 65001
     text = render_bgp_instance(bgp, vrf="RED")
     assert text.startswith("router bgp 65001 vrf RED\n")

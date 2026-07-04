@@ -1,6 +1,6 @@
 {# BGP instance renderer.
 
-Traverses the pyangbind `bgp` container directly (frr-bgp.yang shape),
+Traverses the generated `bgp` dataclass directly (frr-bgp.yang shape),
 mirroring the structure and content of bgpd/bgp_vty.c's bgp_config_write()
 / bgp_config_write_family(). Field-picking logic that doesn't fit cleanly
 in a template (enum branching, identityref prefix stripping) lives in
@@ -16,13 +16,13 @@ router bgp {{ bgp.global_.local_as }}{{ vrf_clause }}
 {% if bgp.global_.router_id %}
  bgp router-id {{ bgp.global_.router_id }}
 {% endif %}
-{% for addr, neighbor in bgp.neighbors.neighbor.items() %}
+{% for neighbor in bgp.neighbors.neighbor %}
 {% set remote_as = remote_as_text(neighbor) %}
 {% if remote_as %}
- neighbor {{ addr }} remote-as {{ remote_as }}
+ neighbor {{ neighbor.remote_address }} remote-as {{ remote_as }}
 {% endif %}
 {% endfor %}
-{% for _, afi_safi in bgp.global_.afi_safis.afi_safi.items() %}
+{% for afi_safi in bgp.global_.afi_safis.afi_safi %}
 {% set name = afi_safi_name(afi_safi) %}
 {% if name == "l2vpn-evpn" %}
 {% set evpn = afi_safi.l2vpn_evpn %}

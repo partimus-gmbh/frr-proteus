@@ -1,4 +1,4 @@
-"""Render a pyangbind FRR-BGP YANG instance into bgpd CLI config text.
+"""Render a generated FRR-BGP YANG instance into bgpd CLI config text.
 
 FRR's bgpd has no northbound backend: unlike staticd, ripd, and other
 YANG-converted daemons, there is no bgpd/bgp_nb.c and no `cli_show`
@@ -8,8 +8,8 @@ automatically. templates/bgp.conf.j2 hand-replicates the relevant
 `vty_out` calls from bgpd/bgp_vty.c (`bgp_config_write`,
 `bgp_config_write_family`, the neighbor remote-as printing block); the
 Jinja environment setup and field-picking helpers live here and in
-helpers.py. Codegen (pyangbind) only gets us the typed, validated input
-structure -- not this rendering layer.
+helpers.py. Codegen (the pybind-dataclass plugin in our pyangbind fork)
+only gets us the typed input structure -- not this rendering layer.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ _bgp_template = _env.get_template("bgp.conf.j2")
 def render_bgp_instance(bgp, *, vrf: str | None = None) -> str:
     """Render one BGP YANG instance into bgpd config text.
 
-    `bgp` is the pyangbind `bgp` container reachable at
+    `bgp` is the generated `bgp` dataclass reachable at
     `.../control-plane-protocol/bgp` (i.e. `control_plane_protocol.bgp`,
     not the list entry itself). `vrf` is the name of the VRF this instance
     is bound to; leave it as None (or pass "default") for bgpd's default

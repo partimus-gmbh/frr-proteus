@@ -68,7 +68,7 @@ def main() -> None:
         "--plugindir",
         str(plugin_dir),
         "-f",
-        "pybind",
+        "pybind-dataclass",
         "-p",
         str(FRR_YANG_DIR),
         "-p",

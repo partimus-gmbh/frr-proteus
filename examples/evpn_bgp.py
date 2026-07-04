@@ -19,67 +19,79 @@ import sys
 
 sys.path.insert(0, "src")
 
-from frr_proteus._generated.frr_bgp import frr_routing
+from frr_proteus._generated.frr_bgp import FrrRouting
 from frr_proteus.render import render_bgp_instance
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
+Proto = FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol
+Bgp = Proto.Bgp
+GlobalAfiSafi = Bgp.Global.AfiSafis.AfiSafi
+NeighborAfiSafi = Bgp.Neighbors.Neighbor.AfiSafis.AfiSafi
 
-def build_default_instance(routing, *, local_as: int, router_id: str):
-    proto = routing.routing.control_plane_protocols.control_plane_protocol.add(
-        "frr-bgp:bgp bgp default"
-    )
-    bgp = proto.bgp
-    bgp.global_.local_as = local_as
+
+def _new_bgp_instance(routing: FrrRouting, *, name: str, local_as: int) -> Bgp:
+    proto = Proto(type="frr-bgp:bgp", name=name)
+    routing.routing.control_plane_protocols.control_plane_protocol.append(proto)
+    proto.bgp.global_.local_as = local_as
+    return proto.bgp
+
+
+def _evpn_af(bgp: Bgp) -> GlobalAfiSafi.L2vpnEvpn:
+    afi_safi = GlobalAfiSafi(afi_safi_name="l2vpn-evpn")
+    bgp.global_.afi_safis.afi_safi.append(afi_safi)
+    return afi_safi.l2vpn_evpn
+
+
+def build_default_instance(routing: FrrRouting, *, local_as: int, router_id: str) -> Bgp:
+    bgp = _new_bgp_instance(routing, name="default", local_as=local_as)
     bgp.global_.router_id = router_id
 
-    neighbor = bgp.neighbors.neighbor.add("10.30.30.30")
+    neighbor = Bgp.Neighbors.Neighbor(remote_address="10.30.30.30")
     neighbor.neighbor_remote_as.remote_as_type = "internal"
-    evpn_neighbor = neighbor.afi_safis.afi_safi.add("frr-rt:l2vpn-evpn")
-    evpn_neighbor.enabled = True
+    neighbor.afi_safis.afi_safi.append(
+        NeighborAfiSafi(afi_safi_name="l2vpn-evpn", enabled=True)
+    )
+    bgp.neighbors.neighbor.append(neighbor)
 
-    evpn = bgp.global_.afi_safis.afi_safi.add("frr-rt:l2vpn-evpn").l2vpn_evpn
+    evpn = _evpn_af(bgp)
     evpn.advertise_all_vni = True
     evpn.advertise_svi_ip = True
 
     for vni_id, rd_ip in [(101, "10.10.10.10"), (102, "10.10.10.10")]:
-        vni = evpn.vni.add(vni_id)
-        vni.rd = f"{rd_ip}:{vni_id}"
-        vni.route_target_import.append(f"65000:{vni_id}")
-        vni.route_target_export.append(f"65000:{vni_id}")
+        evpn.vni.append(
+            GlobalAfiSafi.L2vpnEvpn.Vni(
+                vni_id=vni_id,
+                rd=f"{rd_ip}:{vni_id}",
+                route_target_import=[f"65000:{vni_id}"],
+                route_target_export=[f"65000:{vni_id}"],
+            )
+        )
 
     return bgp
 
 
-def build_vrf_instance_auto_rt(routing, *, local_as: int, vrf: str):
-    proto = routing.routing.control_plane_protocols.control_plane_protocol.add(
-        f"frr-bgp:bgp bgp {vrf}"
-    )
-    bgp = proto.bgp
-    bgp.global_.local_as = local_as
+def build_vrf_instance_auto_rt(routing: FrrRouting, *, local_as: int, vrf: str) -> Bgp:
+    bgp = _new_bgp_instance(routing, name=vrf, local_as=local_as)
 
-    evpn = bgp.global_.afi_safis.afi_safi.add("frr-rt:l2vpn-evpn").l2vpn_evpn
+    evpn = _evpn_af(bgp)
     evpn.route_target_import.append("*:300")
     evpn.route_target_import.append("auto")
 
     return bgp
 
 
-def build_vrf_instance_type5(routing, *, local_as: int, vrf: str):
-    proto = routing.routing.control_plane_protocols.control_plane_protocol.add(
-        f"frr-bgp:bgp bgp {vrf}"
-    )
-    bgp = proto.bgp
-    bgp.global_.local_as = local_as
+def build_vrf_instance_type5(routing: FrrRouting, *, local_as: int, vrf: str) -> Bgp:
+    bgp = _new_bgp_instance(routing, name=vrf, local_as=local_as)
 
-    evpn = bgp.global_.afi_safis.afi_safi.add("frr-rt:l2vpn-evpn").l2vpn_evpn
+    evpn = _evpn_af(bgp)
     evpn.advertise_ipv4_unicast.enabled = True
 
     return bgp
 
 
 def main() -> None:
-    routing = frr_routing()
+    routing = FrrRouting()
 
     default = build_default_instance(routing, local_as=65000, router_id="10.10.10.10")
     vrf_red = build_vrf_instance_auto_rt(routing, local_as=65000, vrf="vrf-red")

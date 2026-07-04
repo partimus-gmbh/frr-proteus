@@ -1,5 +1,5 @@
 """Step 1 prototype: build a two-router eBGP config as structured Python
-data (via the pyangbind classes generated from FRR's own frr-bgp.yang) and
+data (via the typed dataclasses generated from FRR's own frr-bgp.yang) and
 render it to bgpd config text.
 
 Writes rendered bgpd config text to out/r1_bgpd.conf and out/r2_bgpd.conf
@@ -10,30 +10,44 @@ bindings on the path, e.g.:
 
 import pathlib
 import sys
+from typing import Literal
 
 sys.path.insert(0, "src")
 
-from frr_proteus._generated.frr_bgp import frr_routing
+from frr_proteus._generated.frr_bgp import FrrRouting
 from frr_proteus.render import render_bgp_instance
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
+Proto = FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol
+Bgp = Proto.Bgp
 
-def build_bgp_instance(*, local_as: int, router_id: str, neighbor_addr: str, neighbor_remote_as_type: str, network: str):
-    routing = frr_routing()
-    proto = routing.routing.control_plane_protocols.control_plane_protocol.add(
-        "frr-bgp:bgp bgp default"
-    )
+
+def build_bgp_instance(
+    *,
+    local_as: int,
+    router_id: str,
+    neighbor_addr: str,
+    neighbor_remote_as_type: Literal["internal", "external"],
+    network: str,
+) -> Bgp:
+    routing = FrrRouting()
+    proto = Proto(type="frr-bgp:bgp", name="default")
+    routing.routing.control_plane_protocols.control_plane_protocol.append(proto)
     bgp = proto.bgp
 
     bgp.global_.local_as = local_as
     bgp.global_.router_id = router_id
 
-    neighbor = bgp.neighbors.neighbor.add(neighbor_addr)
+    neighbor = Bgp.Neighbors.Neighbor(remote_address=neighbor_addr)
     neighbor.neighbor_remote_as.remote_as_type = neighbor_remote_as_type
+    bgp.neighbors.neighbor.append(neighbor)
 
-    afi_safi = bgp.global_.afi_safis.afi_safi.add("frr-rt:ipv4-unicast")
-    afi_safi.ipv4_unicast.network_config.add(network)
+    afi_safi = Bgp.Global.AfiSafis.AfiSafi(afi_safi_name="ipv4-unicast")
+    afi_safi.ipv4_unicast.network_config.append(
+        Bgp.Global.AfiSafis.AfiSafi.Ipv4Unicast.NetworkConfig(prefix=network)
+    )
+    bgp.global_.afi_safis.afi_safi.append(afi_safi)
 
     return bgp
 
