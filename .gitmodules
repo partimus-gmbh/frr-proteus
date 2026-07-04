@@ -1,3 +1,6 @@
 [submodule "frr"]
 	path = frr
 	url = git@github.com:robinchrist/frr.git
+[submodule "pyangbind"]
+	path = pyangbind
+	url = git@github.com:robinchrist/pyangbind.git

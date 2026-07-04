@@ -70,13 +70,23 @@ same shape (one `.j2` template, thin Python glue module, thin
   same as every other afi-safi -- only the instance side was empty).
   Don't rediscover this by grepping the generated bindings again; it's
   documented here and in the yang file's own description.
-- `scripts/generate_bindings.py` -- pyangbind codegen. Requires a Python
-  3.11 interpreter (see script docstring: pyangbind's pyang plugin breaks
-  on 3.12+, and hits a real upstream bug on bits-typedefs that this script
-  monkeypatches *in memory* -- it never edits the installed pyangbind
-  package on disk, so re-running always starts from a clean pip install).
-  Compiles `frr/yang/frr-bgp.yang` + `yang/frr-proteus-bgp-evpn.yang`
-  together into one bindings module.
+- `pyangbind/` -- git submodule pinned to our pyangbind fork
+  (github.com/robinchrist/pyangbind). Fixes go into the fork directly
+  now (e.g. the bits-position TypeError that generate_bindings.py used
+  to monkeypatch in-memory; 3.12+ support was already fixed on upstream
+  master vs. the 0.8.7 PyPI release). Install it editable (`pip install
+  -e ./pyangbind`), never from PyPI. Long-term goal: rewrite its pybind
+  plugin to emit dataclass-style, fully type-hinted bindings.
+- `scripts/generate_bindings.py` -- pyangbind codegen, runs on any
+  Python >=3.9 with the fork installed (the old python3.11-only
+  restriction applied to the unpatched PyPI release). Compiles
+  `frr/yang/frr-bgp.yang` + `yang/frr-proteus-bgp-evpn.yang` together
+  into one bindings module. Gotcha: it locates the pyang plugin dir via
+  `pyangbind.plugin.pybind.__file__`, not `pyangbind.__path__` -- with
+  the editable install, a process cwd'd at the repo root sees the
+  submodule checkout dir (which holds the package one level down) as a
+  same-named namespace package, and `__path__` then points at the wrong
+  level.
 - `src/frr_proteus/_generated/` -- pyangbind output. Gitignored (~8MB
   generated file, not diffable, trivially reproducible). Must be
   generated before running examples or tests.
@@ -148,8 +158,8 @@ Verified against most of `frr/tests/topotests/bgp_evpn_*`, `evpn_pim_*`,
 ## Commands
 
 ```sh
-# one-time codegen (needs python3.11 specifically)
-python3.11 -m venv .venv-codegen && .venv-codegen/bin/pip install pyang pyangbind
+# one-time codegen (any Python >=3.9; uses the forked pyangbind submodule)
+python3 -m venv .venv-codegen && .venv-codegen/bin/pip install pyang -e ./pyangbind
 .venv-codegen/bin/python scripts/generate_bindings.py
 
 # everyday dev, any Python >=3.9

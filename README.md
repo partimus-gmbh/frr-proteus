@@ -35,8 +35,9 @@ comments and are freely omitted.
 ## How it works
 
 1. **Codegen (pyangbind):** `scripts/generate_bindings.py` runs
-   [pyang](https://github.com/mbj4668/pyang) with the
-   [pyangbind](https://github.com/robshakir/pyangbind) plugin against
+   [pyang](https://github.com/mbj4668/pyang) with our
+   [pyangbind fork](https://github.com/robinchrist/pyangbind) (the
+   `pyangbind/` git submodule) as plugin against
    `frr/yang/frr-bgp.yang` (a git submodule pinned to FRR master) plus
    `yang/frr-proteus-bgp-evpn.yang` (this project's own EVPN
    augmentation), producing typed, validated Python classes under
@@ -55,17 +56,16 @@ comments and are freely omitted.
 
 ## Setup
 
-Generating the pyangbind bindings needs a Python 3.11 interpreter
-specifically -- pyangbind's `pyang` plugin doesn't run on 3.12+, and hits a
-real upstream bug on 3.14 that `scripts/generate_bindings.py` monkeypatches
-in-memory (see that file's docstring for why, and why it's not a simple
-version issue). The bindings it produces run fine on any modern Python.
+Codegen uses the forked pyangbind vendored as the `pyangbind/` submodule
+(installed editable, never the PyPI release). The fork carries our fixes
+directly -- the bits-position bug that used to be monkeypatched in-memory,
+and Python 3.12+ support -- so any modern interpreter works for codegen now.
 
 ```sh
 git submodule update --init
 
-python3.11 -m venv .venv-codegen
-.venv-codegen/bin/pip install pyang pyangbind
+python3 -m venv .venv-codegen
+.venv-codegen/bin/pip install pyang -e ./pyangbind
 .venv-codegen/bin/python scripts/generate_bindings.py
 
 # now use any Python >=3.9 for the actual library:
