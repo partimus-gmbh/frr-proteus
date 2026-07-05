@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Generate pyangbind Python classes from FRR's YANG models.
+"""Generate pyangbind Python classes for frr-proteus's YANG models.
+
+Two model sets, two generated packages:
+
+* ``frr_bgp`` -- FRR's own frr-bgp.yang plus our augment of its empty
+  l2vpn-evpn placeholder (yang/augments/). The original input schema;
+  the current renderers still consume this.
+* ``proteus`` -- the self-contained rewrite under yang/custom/
+  (proteus-bgp.yang + proteus-bgp-evpn.yang). Imports nothing from
+  frr/yang/; this is the schema new work targets.
 
 Uses the forked pyangbind vendored as the ``pyangbind/`` git submodule
 (install it into your venv with ``pip install -e ./pyangbind``). The fork
@@ -22,26 +31,49 @@ import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 FRR_YANG_DIR = REPO_ROOT / "frr" / "yang"
-PROTEUS_YANG_DIR = REPO_ROOT / "yang"
+AUGMENTS_YANG_DIR = REPO_ROOT / "yang" / "augments"
+CUSTOM_YANG_DIR = REPO_ROOT / "yang" / "custom"
 OUTPUT_DIR = REPO_ROOT / "src" / "frr_proteus" / "_generated"
-# A multi-file package (--dataclass-split-dir): _runtime.py/_types.py hold
-# the shared code once, one file per data-defining YANG module, and
-# __init__.py re-exports everything -- so imports of
-# frr_proteus._generated.frr_bgp are unchanged from the single-file days.
-OUTPUT_PACKAGE = OUTPUT_DIR / "frr_bgp"
 
-# YANG modules needed to fully resolve the BGP model (frr-bgp.yang includes
-# several submodules and imports these directly).
-BGP_YANG_MODULES = [
+# Options shared by both runs. The backend generates validation and YANG
+# defaults by default; keep validation (which includes the validate_tree()
+# whole-tree pass) but opt out of defaults: renderers rely on "unset leaf
+# is None / falsy means not explicitly configured", and applying YANG
+# defaults would make default-valued knobs indistinguishable from
+# configured ones.
+COMMON_FLAGS = [
+    "--no-dataclass-defaults",
+    # Annotate each generated node with where it comes from (grouping/
+    # augment provenance) -- essential for the augment-heavy FRR model,
+    # cheap for the custom one.
+    "--dataclass-origin-comments",
+    # RFC 7951 JSON (to_ietf_json/from_ietf_json) and schema/instance
+    # paths (_yang_schema_path, data_path) -- cheap to carry, useful
+    # for debugging and tests.
+    "--dataclass-serde",
+    "--dataclass-xpaths",
+]
+
+# YANG modules needed to fully resolve the FRR BGP model (frr-bgp.yang
+# includes several submodules and imports these directly).
+FRR_BGP_MODULES = [
     FRR_YANG_DIR / "frr-bgp.yang",
     FRR_YANG_DIR / "frr-routing.yang",
     FRR_YANG_DIR / "frr-interface.yang",
     FRR_YANG_DIR / "frr-route-types.yang",
     FRR_YANG_DIR / "frr-bgp-types.yang",
     # frr-proteus's own augmentation of frr-bgp.yang's empty l2vpn-evpn
-    # placeholder container -- see yang/frr-proteus-bgp-evpn.yang for why
-    # this can't just be added to the vendored FRR YANG.
-    PROTEUS_YANG_DIR / "frr-proteus-bgp-evpn.yang",
+    # placeholder container -- see the module's description for why this
+    # can't just be added to the vendored FRR YANG.
+    AUGMENTS_YANG_DIR / "frr-proteus-bgp-evpn.yang",
+]
+
+# The self-contained custom model: no FRR imports, so the only search
+# path it needs is its own directory.
+CUSTOM_MODULES = [
+    CUSTOM_YANG_DIR / "proteus-bgp.yang",
+    CUSTOM_YANG_DIR / "proteus-bgp-evpn.yang",
+    CUSTOM_YANG_DIR / "proteus-route-map.yang",
 ]
 
 
@@ -65,10 +97,30 @@ def _plugin_dir() -> pathlib.Path:
     return pathlib.Path(pyangbind.plugin.pybind.__file__).resolve().parent
 
 
-def main() -> None:
-    plugin_dir = _plugin_dir()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Each pyang invocation must run in a fresh process: pyang registers its
+# plugins' optparse options globally, so a second in-process run raises
+# OptionConflictError. main() therefore re-execs this script once per
+# model set.
+MODEL_SETS = {
+    "frr": lambda: (
+        [FRR_YANG_DIR, FRR_YANG_DIR / "ietf", AUGMENTS_YANG_DIR],
+        FRR_BGP_MODULES,
+        OUTPUT_DIR / "frr_bgp",
+    ),
+    "custom": lambda: (
+        [CUSTOM_YANG_DIR],
+        CUSTOM_MODULES,
+        OUTPUT_DIR / "proteus",
+    ),
+}
 
+
+def _run_pyang(
+    plugin_dir: pathlib.Path,
+    search_paths: list[pathlib.Path],
+    modules: list[pathlib.Path],
+    output_package: pathlib.Path,
+) -> None:
     import pyang.scripts.pyang_tool
 
     argv = [
@@ -77,30 +129,14 @@ def main() -> None:
         str(plugin_dir),
         "-f",
         "pybind-dataclass",
-        # The backend generates validation and YANG defaults by default;
-        # keep validation (which includes the validate_tree() whole-tree
-        # pass) but opt out of defaults: renderers rely on "unset leaf is
-        # None / falsy means not explicitly configured", and applying
-        # YANG defaults would make default-valued knobs indistinguishable
-        # from configured ones.
-        "--no-dataclass-defaults",
-        # FRR's model is nearly all augments/groupings; annotate each
-        # generated node with where it actually comes from.
-        "--dataclass-origin-comments",
-        # RFC 7951 JSON (to_ietf_json/from_ietf_json) and schema/instance
-        # paths (_yang_schema_path, data_path) -- cheap to carry, useful
-        # for debugging and tests.
-        "--dataclass-serde",
-        "--dataclass-xpaths",
-        "-p",
-        str(FRR_YANG_DIR),
-        "-p",
-        str(FRR_YANG_DIR / "ietf"),
-        "-p",
-        str(PROTEUS_YANG_DIR),
+        *COMMON_FLAGS,
+        *[arg for p in search_paths for arg in ("-p", str(p))],
+        # A multi-file package: _runtime.py/_types.py hold the shared
+        # code once, one file per data-defining YANG module, and
+        # __init__.py re-exports everything.
         "--dataclass-split-dir",
-        str(OUTPUT_PACKAGE),
-        *[str(m) for m in BGP_YANG_MODULES],
+        str(output_package),
+        *[str(m) for m in modules],
     ]
     print("running (in-process):", " ".join(argv))
     old_argv = sys.argv
@@ -112,9 +148,24 @@ def main() -> None:
             raise
     finally:
         sys.argv = old_argv
-    files = sorted(OUTPUT_PACKAGE.glob("*.py"))
+    files = sorted(output_package.glob("*.py"))
     total = sum(f.stat().st_size for f in files)
-    print(f"wrote {len(files)} files ({total} bytes) under {OUTPUT_PACKAGE}")
+    print(f"wrote {len(files)} files ({total} bytes) under {output_package}")
+
+
+def main() -> None:
+    if len(sys.argv) == 2 and sys.argv[1] in MODEL_SETS:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        _run_pyang(_plugin_dir(), *MODEL_SETS[sys.argv[1]]())
+        return
+
+    import subprocess
+
+    for name in MODEL_SETS:
+        subprocess.run(
+            [sys.executable, __file__, name],
+            check=True,
+        )
 
 
 if __name__ == "__main__":

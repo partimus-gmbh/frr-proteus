@@ -1,0 +1,2442 @@
+module proteus-bgp {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/bgp";
+  prefix proteus-bgp;
+
+  import proteus-types {
+    prefix pt;
+  }
+  import proteus-route-map {
+    prefix rmap;
+  }
+  import proteus-bgp-evpn {
+    prefix evpn;
+  }
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "Self-contained configuration model for FRR bgpd, replacing FRR's
+     own frr-bgp.yang module stack as frr-proteus's input schema.
+
+     Why a rewrite instead of reusing FRR's model: frr-bgp.yang and its
+     satellites are written almost entirely as 'augment' statements
+     onto frr-routing's generic control-plane-protocol list, with the
+     actual node definitions scattered across a dozen grouping files
+     -- the tree a user actually configures is invisible in any single
+     file. This module states the whole configuration tree directly,
+     top-down, in one place (with EVPN's field definitions split into
+     proteus-bgp-evpn.yang and route-maps into proteus-route-map.yang,
+     both pulled in with plain import + uses / leafref -- never
+     'augment').
+
+     Coverage: the full config surface that bgpd's own
+     bgp_config_write() emits (bgpd/bgp_vty.c), i.e. everything the
+     'router bgp' CLI tree can persist, with these deliberate
+     exclusions (each also marked where it would appear):
+     - SRv6 (segment-routing srv6, sid vpn export, per-AF 'sid
+       export', encapsulation-srv6 neighbor knobs) -- out of scope
+       until there's an SRv6 story.
+     - The MPLS L3VPN leaking detail block written by
+       bgp_vpn_policy_config_write_afi (rd vpn export, rt vpn
+       import/export, label vpn export, nexthop vpn export, route-map
+       vpn import/export) -- only the simple 'import|export vpn' /
+       'import vrf' knobs are modeled so far.
+     - Address families encap, flowspec, unreachability and
+       link-state, plus their per-family extras (pbr, distribute
+       bgp-fabric-link-state, retain route-target for encap).
+     - RPKI cache configuration (bgp_rpki.c), BMP (bgp_bmp.c), VNC,
+       SNMP notifications, conditional 'bgp snmp traps' -- separate
+       subsystems with their own config-write hooks.
+     - 'bgp asnotation' / asdot AS rendering (plain-decimal only) and
+       the hidden 'view' semantics beyond declaring the type.
+     - dynamic (listen-range) peers hold no config of their own; the
+       listen ranges live under the peer-group they bind to.
+
+     Structural departures from FRR's YANG, kept from the initial
+     revision: no control-plane-protocol wrapper (root is
+     /bgp/instance keyed by VRF); address families are nested
+     containers under 'afi-safis', not an identityref-keyed list;
+     neighbor remote-as is one union leaf mirroring the single CLI
+     token.
+
+     Semantics shared with the rest of the project: an unset leaf
+     means 'not explicitly configured' and produces no config text --
+     including knobs whose FRR default is 'on', where setting the leaf
+     to false renders the explicit 'no ...' form (each such leaf says
+     so). YANG defaults below document FRR's behavior but are not
+     applied by the generated bindings (--no-dataclass-defaults).
+     Every leaf corresponds to CLI text confirmed in bgpd's config
+     write path (bgp_config_write / bgp_config_write_peer_global /
+     bgp_config_write_peer_af / bgp_config_write_filter in bgp_vty.c,
+     bgp_config_write_network / _redistribute / _distance in
+     bgp_route.c, bgp_config_write_damp in bgp_damp.c,
+     bgp_bfd_peer_config_write in bgp_bfd.c); numeric ranges come from
+     the corresponding DEFPY grammars. Do not add leaves whose CLI
+     rendering has not been verified there.";
+
+  revision 2026-07-05 {
+    description
+      "Initial revision (step 1 scope), then expanded the same day to
+       the full bgp_config_write surface: process-level options,
+       instance-level policy/timer/bestpath/GR knobs, peer-groups,
+       the complete neighbor session and per-AF surface, and per-AF
+       network/aggregate/redistribute/distance/dampening.";
+  }
+
+  /*
+   * Session-level (not per-address-family) neighbor settings.
+   * Shared verbatim between real neighbors and peer-groups: in FRR a
+   * peer-group is configured with exactly the same 'neighbor PGNAME
+   * ...' commands, and members inherit anything they don't override.
+   */
+  grouping neighbor-session-parameters {
+    description
+      "Per-session neighbor settings ('neighbor X ...' lines at
+       'router bgp' level). Source: bgp_config_write_peer_global()
+       in bgpd/bgp_vty.c.";
+
+    leaf remote-as {
+      type union {
+        type pt:as-number;
+        type enumeration {
+          enum internal {
+            description
+              "iBGP: peer must be in the local AS.";
+          }
+          enum external {
+            description
+              "eBGP: peer must be outside the local AS.";
+          }
+          enum auto {
+            description
+              "Accept either; sort out the relationship from the
+               OPEN message.";
+          }
+        }
+      }
+      description
+        "'neighbor X remote-as <ASN|internal|external|auto>'. Not
+         mandatory in YANG because a peer-group member may inherit it
+         from the group -- but FRR rejects any other neighbor
+         configuration until a neighbor has remote-as from somewhere.
+         // A conditional-mandatory ('mandatory unless peer-group is
+         // set / this is a peer-group') needs 'when'/'must', which
+         // the generated validator never evaluates; validate in the
+         // renderer instead.";
+    }
+
+    container local-as {
+      description
+        "'neighbor X local-as ASN [no-prepend] [replace-as]
+         [dual-as]': present a different AS to this peer.";
+      leaf as {
+        type pt:as-number;
+      }
+      leaf no-prepend {
+        type boolean;
+        default "false";
+        description
+          "Do not prepend the local-as to routes received from the
+           peer.";
+      }
+      leaf replace-as {
+        type boolean;
+        default "false";
+        description
+          "Replace (not prepend to) the real AS in updates sent to
+           the peer.";
+      }
+      leaf dual-as {
+        type boolean;
+        default "false";
+        description
+          "Accept sessions addressed to either the local-as or the
+           real AS.";
+      }
+    }
+
+    leaf description {
+      type string;
+      description
+        "'neighbor X description LINE'.";
+    }
+
+    container shutdown {
+      description
+        "Administrative shutdown of the session.";
+      leaf enabled {
+        type boolean;
+        default "false";
+        description
+          "'neighbor X shutdown'.";
+      }
+      leaf message {
+        type string;
+        description
+          "'neighbor X shutdown message MSG...': sent in the CEASE
+           notification.";
+      }
+      container rtt {
+        description
+          "'neighbor X shutdown rtt (1-65535) [count (1-255)]':
+           shut the session down automatically when its round-trip
+           time exceeds the threshold.";
+        leaf threshold {
+          type uint16 {
+            range "1..65535";
+          }
+          units "milliseconds";
+        }
+        leaf count {
+          type uint8 {
+            range "1..255";
+          }
+          description
+            "Number of keepalive rounds the RTT must exceed the
+             threshold before shutting down.";
+        }
+      }
+    }
+
+    container bfd {
+      description
+        "BFD liveness tracking for the session
+         (bgp_bfd_peer_config_write in bgpd/bgp_bfd.c).";
+      leaf enabled {
+        type boolean;
+        default "false";
+        description
+          "'neighbor X bfd'.";
+      }
+      leaf check-control-plane-failure {
+        type boolean;
+        default "false";
+        description
+          "'neighbor X bfd check-control-plane-failure': also allow
+           BFD down events caused by control-plane restarts to reset
+           the session.";
+      }
+      leaf profile {
+        // TODO(leafref): BFD profiles (bfdd's 'bfd'/'profile' config)
+        // are not modeled; plain name until they are.
+        type string;
+        description
+          "'neighbor X bfd profile BFDPROF'.";
+      }
+    }
+
+    leaf password {
+      type string;
+      description
+        "'neighbor X password PASSWORD': TCP MD5 authentication.";
+    }
+
+    leaf solo {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X solo': do not reflect routes back that were
+         learned from this peer.";
+    }
+
+    leaf port {
+      type uint16;
+      description
+        "'neighbor X port (0-65535)': non-default TCP port.";
+    }
+
+    leaf source-interface {
+      // TODO(leafref): no interface model (zebra's surface).
+      type string;
+      description
+        "'neighbor X interface IFNAME' (peer->ifname, the 'Local
+         interface name' line in bgp_config_write_peer_global). Note
+         this is a legacy knob distinct from update-source and from
+         unnumbered interface peers.";
+    }
+
+    leaf tcp-mss {
+      type uint16 {
+        range "1..65535";
+      }
+      description
+        "'neighbor X tcp-mss (1-65535)'.";
+    }
+
+    leaf passive {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X passive': never open the connection, only
+         accept.";
+    }
+
+    leaf ebgp-multihop {
+      type uint8 {
+        range "1..255";
+      }
+      description
+        "'neighbor X ebgp-multihop [(1-255)]': allow eBGP over
+         multiple hops with this TTL. 255 renders as the bare
+         'ebgp-multihop' form (that is how FRR writes MAXTTL back).";
+    }
+
+    leaf aigp {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X aigp': send/receive the AIGP attribute.";
+    }
+
+    leaf graceful-shutdown {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X graceful-shutdown' (RFC 8326 per-peer).";
+    }
+
+    container local-role {
+      description
+        "'neighbor X local-role
+         <provider|rs-server|rs-client|customer|peer> [strict-mode]'
+         (RFC 9234 roles).";
+      leaf role {
+        type enumeration {
+          enum provider;
+          enum rs-server;
+          enum rs-client;
+          enum customer;
+          enum peer;
+        }
+      }
+      leaf strict-mode {
+        type boolean;
+        default "false";
+        description
+          "Refuse the session if the peer does not announce a
+           matching role.";
+      }
+    }
+
+    leaf oad {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X oad': treat this eBGP session as
+         One-Administrative-Domain (draft-ietf-idr-bgp-ct /
+         BGP_PEER_EBGP_OAD sub-sort).";
+    }
+
+    leaf ttl-security-hops {
+      type uint8 {
+        range "1..254";
+      }
+      description
+        "'neighbor X ttl-security hops (1-254)' (GTSM, RFC 5082).
+         Mutually exclusive with ebgp-multihop in FRR.
+         // Not expressible without 'must'; renderer/user beware.";
+    }
+
+    leaf disable-connected-check {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X disable-connected-check': allow single-hop eBGP
+         to a non-connected address without ebgp-multihop.";
+    }
+
+    leaf enforce-first-as {
+      type boolean;
+      description
+        "'neighbor X enforce-first-as' / 'no neighbor X
+         enforce-first-as'. Three-valued: unset inherits the
+         instance-level setting; true/false render the explicit
+         positive/negative form when they differ from it.";
+    }
+
+    leaf update-source {
+      type union {
+        type pt:ip-address;
+        type string;
+      }
+      description
+        "'neighbor X update-source <A.B.C.D|X:X::X:X|IFNAME>'.
+         // The interface-name branch stays a plain string: no
+         // interface model to leafref into yet.";
+    }
+
+    leaf ip-transparent {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X ip-transparent': source the TCP connection from
+         a foreign/transparent address.";
+    }
+
+    leaf advertisement-interval {
+      type uint16 {
+        range "0..600";
+      }
+      units "seconds";
+      description
+        "'neighbor X advertisement-interval (0-600)' (MRAI).";
+    }
+
+    container timers {
+      description
+        "Per-neighbor session timers.";
+      leaf keepalive {
+        type uint16;
+        units "seconds";
+        description
+          "First argument of 'neighbor X timers (0-65535) (0-65535)'.";
+      }
+      leaf holdtime {
+        type uint16;
+        units "seconds";
+        description
+          "Second argument of 'neighbor X timers'. Set both or
+           neither (one CLI line).
+           // One-line pairing not expressible without 'must'.";
+      }
+      leaf connect {
+        type uint16 {
+          range "1..65535";
+        }
+        units "seconds";
+        description
+          "'neighbor X timers connect (1-65535)': connect retry
+           interval.";
+      }
+      leaf delayopen {
+        type uint8 {
+          range "1..240";
+        }
+        units "seconds";
+        description
+          "'neighbor X timers delayopen (1-240)' (RFC 4271
+           DelayOpenTimer).";
+      }
+    }
+
+    container capabilities {
+      description
+        "Capability negotiation knobs. The three-valued booleans here
+         follow the same convention as enforce-first-as: unset =
+         inherit the instance-level 'bgp default ...' setting, and
+         the explicit form is rendered only on mismatch.";
+      leaf dynamic {
+        type boolean;
+        description
+          "'[no] neighbor X capability dynamic'.";
+      }
+      leaf extended-nexthop {
+        type boolean;
+        description
+          "'[no] neighbor X capability extended-nexthop' (RFC 8950;
+           implied on for unnumbered interface peers).";
+      }
+      leaf software-version {
+        type boolean;
+        description
+          "'[no] neighbor X capability software-version'.";
+      }
+      leaf software-version-latest-encoding {
+        type boolean;
+        description
+          "'[no] neighbor X capability software-version
+           latest-encoding'.";
+      }
+      leaf link-local {
+        type boolean;
+        description
+          "'[no] neighbor X capability link-local'.";
+      }
+      leaf fqdn {
+        type boolean;
+        description
+          "'no neighbor X capability fqdn' when false. FRR's default
+           is on and only the negative form is ever written.";
+      }
+      leaf dont-capability-negotiate {
+        type boolean;
+        default "false";
+        description
+          "'neighbor X dont-capability-negotiate'.";
+      }
+      leaf override-capability {
+        type boolean;
+        default "false";
+        description
+          "'neighbor X override-capability': ignore the peer's
+           capability announcement entirely.";
+      }
+      leaf strict-capability-match {
+        type boolean;
+        default "false";
+        description
+          "'neighbor X strict-capability-match'.";
+      }
+    }
+
+    leaf rpki-strict {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X rpki strict'.
+         // The RPKI cache-server configuration itself (bgp_rpki.c)
+         // is not modeled; this per-peer flag is independent of it.";
+    }
+
+    leaf sender-as-path-loop-detection {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X sender-as-path-loop-detection': do not send
+         routes whose AS path already contains the peer's AS.";
+    }
+
+    leaf-list path-attribute-discard {
+      type uint8 {
+        range "1..255";
+      }
+      description
+        "'neighbor X path-attribute discard (1-255)...': BGP path
+         attribute type codes to silently discard on receipt.";
+    }
+
+    leaf-list path-attribute-treat-as-withdraw {
+      type uint8 {
+        range "1..255";
+      }
+      description
+        "'neighbor X path-attribute treat-as-withdraw (1-255)...'.";
+    }
+
+    leaf graceful-restart-mode {
+      type enumeration {
+        enum restarter {
+          description
+            "'neighbor X graceful-restart'.";
+        }
+        enum helper {
+          description
+            "'neighbor X graceful-restart-helper'.";
+        }
+        enum disable {
+          description
+            "'neighbor X graceful-restart-disable'.";
+        }
+      }
+      description
+        "Per-neighbor graceful-restart role override; unset inherits
+         the instance-level mode.";
+    }
+
+    leaf send-nexthop-characteristics {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X send-nexthop-characteristics' (NHC attribute).";
+    }
+
+    leaf disable-link-bw-encoding-ieee {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X disable-link-bw-encoding-ieee'.";
+    }
+
+    leaf extended-link-bandwidth {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X extended-link-bandwidth' (IPv6-address-specific
+         link bandwidth communities, > 25 Gbps capable).";
+    }
+
+    leaf extended-optional-parameters {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X extended-optional-parameters' (RFC 9072
+         extended OPEN encoding, normally auto-detected).";
+    }
+  }
+
+  /*
+   * Per-address-family neighbor settings. One grouping for all
+   * families: FRR installs most of these commands in every AF node
+   * and the written text is identical; the few knobs that are
+   * meaningless in some family (e.g. ORF under l2vpn evpn) are simply
+   * never emitted by FRR there -- we do not restrict per family.
+   */
+  grouping neighbor-af {
+    description
+      "Per-neighbor settings inside an 'address-family' block
+       ('neighbor X ...' lines at AF level). Source:
+       bgp_config_write_peer_af() + bgp_config_write_filter() in
+       bgpd/bgp_vty.c, bgp_config_write_peer_damp() in bgp_damp.c.";
+
+    leaf activate {
+      type boolean;
+      description
+        "'neighbor X activate' / 'no neighbor X activate'.
+         Three-valued: unset follows FRR's per-AF default activation
+         ('bgp default ipv4-unicast' & friends -- on by default only
+         for ipv4-unicast); true/false force the explicit form.";
+    }
+
+    container addpath {
+      description
+        "ADD-PATH (RFC 7911) knobs.";
+      leaf tx {
+        type enumeration {
+          enum all-paths {
+            description
+              "'neighbor X addpath-tx-all-paths'.";
+          }
+          enum best-per-as {
+            description
+              "'neighbor X addpath-tx-bestpath-per-AS'.";
+          }
+          enum best-selected {
+            description
+              "'neighbor X addpath-tx-best-selected (1-6)'; the count
+               lives in tx-best-selected.";
+          }
+        }
+        description
+          "Which paths to advertise with ADD-PATH.";
+      }
+      leaf tx-best-selected {
+        type uint8 {
+          range "1..6";
+        }
+        description
+          "Path count for tx = best-selected. Meaningless otherwise.
+           // Pairing not expressible without 'must'.";
+      }
+      leaf disable-rx {
+        type boolean;
+        default "false";
+        description
+          "'neighbor X disable-addpath-rx'.";
+      }
+      leaf rx-paths-limit {
+        type uint16 {
+          range "1..65535";
+        }
+        description
+          "'neighbor X addpath-rx-paths-limit (1-65535)'
+           (paths-limit capability,
+           draft-ietf-idr-addpath-paths-limit).";
+      }
+    }
+
+    leaf orf-prefix-list {
+      type enumeration {
+        enum send;
+        enum receive;
+        enum both;
+      }
+      description
+        "'neighbor X capability orf prefix-list
+         <send|receive|both>'.";
+    }
+
+    leaf route-reflector-client {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X route-reflector-client'. iBGP neighbors only.";
+    }
+
+    container next-hop-self {
+      description
+        "'neighbor X next-hop-self [force]'. FRR writes 'force' as a
+         separate line; both leaves may be set.";
+      leaf enabled {
+        type boolean;
+        default "false";
+      }
+      leaf force {
+        type boolean;
+        default "false";
+        description
+          "Also self-source routes reflected from other iBGP peers.";
+      }
+    }
+
+    leaf remove-private-as {
+      type enumeration {
+        enum basic {
+          description
+            "'neighbor X remove-private-AS': strip private ASNs if
+             the path contains only private ASNs.";
+        }
+        enum all {
+          description
+            "'neighbor X remove-private-AS all'.";
+        }
+        enum replace-as {
+          description
+            "'neighbor X remove-private-AS replace-AS'.";
+        }
+        enum all-replace-as {
+          description
+            "'neighbor X remove-private-AS all replace-AS'.";
+        }
+      }
+      description
+        "Private-AS scrubbing on advertisements to this peer.";
+    }
+
+    leaf as-override {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X as-override': replace the peer's AS with our own
+         in advertisements.";
+    }
+
+    container send-community {
+      description
+        "Community propagation. FRR sends all community flavors by
+         default and only writes the 'no neighbor X send-community
+         <standard|extended|large|all>' negations, so these leaves are
+         three-valued: unset = FRR default (send), false = render the
+         'no' form. extended-rpki is the exception: off by default,
+         written positively.";
+      leaf standard {
+        type boolean;
+      }
+      leaf extended {
+        type boolean;
+      }
+      leaf large {
+        type boolean;
+      }
+      leaf extended-rpki {
+        type boolean;
+        default "false";
+        description
+          "'neighbor X send-community extended rpki' (RFC 8097 origin
+           validation state).";
+      }
+    }
+
+    container default-originate {
+      description
+        "'neighbor X default-originate [route-map NAME]'.";
+      leaf enabled {
+        type boolean;
+        default "false";
+      }
+      leaf route-map {
+        type leafref {
+          path "/rmap:route-maps/rmap:route-map/rmap:name";
+        }
+        description
+          "Advertise the default only if the route-map permits.";
+      }
+    }
+
+    leaf soft-reconfiguration-inbound {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X soft-reconfiguration inbound'.";
+    }
+
+    container maximum-prefix {
+      description
+        "'neighbor X maximum-prefix (1-4294967295) [(1-100)]
+         [restart (1-65535)] [warning-only] [force]'.";
+      leaf count {
+        type uint32 {
+          range "1..4294967295";
+        }
+        description
+          "Prefix limit; the rest of this container is meaningless
+           without it.";
+      }
+      leaf threshold {
+        type uint8 {
+          range "1..100";
+        }
+        units "percent";
+        description
+          "Warn at this percentage of the limit (FRR default 75,
+           which it does not write back).";
+      }
+      leaf warning-only {
+        type boolean;
+        default "false";
+        description
+          "Log instead of tearing the session down.";
+      }
+      leaf restart-interval {
+        type uint16 {
+          range "1..65535";
+        }
+        units "minutes";
+        description
+          "Re-establish automatically after this interval.";
+      }
+      leaf force {
+        type boolean;
+        default "false";
+        description
+          "Count all received prefixes, not just accepted ones
+           (needs soft-reconfiguration inbound).";
+      }
+    }
+
+    leaf maximum-prefix-out {
+      type uint32 {
+        range "1..4294967295";
+      }
+      description
+        "'neighbor X maximum-prefix-out (1-4294967295)'.";
+    }
+
+    leaf route-server-client {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X route-server-client'.";
+    }
+
+    leaf nexthop-local-unchanged {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X nexthop-local unchanged': keep the link-local
+         next hop instead of rewriting it.";
+    }
+
+    container allowas-in {
+      description
+        "'neighbor X allowas-in [<(1-10)|origin>]' and
+         'neighbor X allowas-in route-map NAME [<(1-10)|origin>]':
+         accept routes containing our own AS. Bare 'allowas-in'
+         (count unset, origin false) means FRR's default of 3.";
+      leaf enabled {
+        type boolean;
+        default "false";
+      }
+      leaf count {
+        type uint8 {
+          range "1..10";
+        }
+        description
+          "Maximum own-AS occurrences.";
+      }
+      leaf origin {
+        type boolean;
+        default "false";
+        description
+          "Only accept if our AS is the origin. Mutually exclusive
+           with count (one CLI slot).
+           // Not expressible without 'must'.";
+      }
+      leaf route-map {
+        type leafref {
+          path "/rmap:route-maps/rmap:route-map/rmap:name";
+        }
+        description
+          "Restrict allowas-in to routes the route-map permits.";
+      }
+    }
+
+    leaf accept-own {
+      type boolean;
+      default "false";
+      description
+        "'neighbor X accept-own' (RFC 7611 ACCEPT_OWN community;
+         VPN families).";
+    }
+
+    leaf soo {
+      type pt:route-target;
+      description
+        "'neighbor X soo ASN:NN_OR_IP-ADDRESS:NN': site-of-origin
+         extended community stamped on routes from this peer.";
+    }
+
+    leaf weight {
+      type uint16;
+      description
+        "'neighbor X weight (0-65535)'.";
+    }
+
+    container filters {
+      description
+        "Per-direction filtering (bgp_config_write_filter in
+         bgpd/bgp_vty.c). Note FRR's 'one slot' rule: distribute-list
+         and prefix-list are mutually exclusive per direction.
+         // Not expressible without 'must'.";
+      leaf distribute-list-in {
+        // TODO(leafref): access-lists are not modeled yet.
+        type string;
+        description
+          "'neighbor X distribute-list NAME in'.";
+      }
+      leaf distribute-list-out {
+        // TODO(leafref): access-lists are not modeled yet.
+        type string;
+        description
+          "'neighbor X distribute-list NAME out'.";
+      }
+      leaf prefix-list-in {
+        // TODO(leafref): prefix-lists are not modeled yet.
+        type string;
+        description
+          "'neighbor X prefix-list NAME in'.";
+      }
+      leaf prefix-list-out {
+        // TODO(leafref): prefix-lists are not modeled yet.
+        type string;
+        description
+          "'neighbor X prefix-list NAME out'.";
+      }
+      leaf filter-list-in {
+        // TODO(leafref): as-path access-lists are not modeled yet.
+        type string;
+        description
+          "'neighbor X filter-list NAME in' (AS-path filter).";
+      }
+      leaf filter-list-out {
+        // TODO(leafref): as-path access-lists are not modeled yet.
+        type string;
+        description
+          "'neighbor X filter-list NAME out'.";
+      }
+      leaf route-map-in {
+        type leafref {
+          path "/rmap:route-maps/rmap:route-map/rmap:name";
+        }
+        description
+          "'neighbor X route-map NAME in'.";
+      }
+      leaf route-map-out {
+        type leafref {
+          path "/rmap:route-maps/rmap:route-map/rmap:name";
+        }
+        description
+          "'neighbor X route-map NAME out'.";
+      }
+      leaf unsuppress-map {
+        type leafref {
+          path "/rmap:route-maps/rmap:route-map/rmap:name";
+        }
+        description
+          "'neighbor X unsuppress-map NAME': advertise
+           aggregate-suppressed routes the map permits.";
+      }
+      container conditional-advertisement {
+        description
+          "'neighbor X advertise-map NAME <exist-map|non-exist-map>
+           NAME' (conditional advertisement, always outbound).";
+        leaf advertise-map {
+          type leafref {
+            path "/rmap:route-maps/rmap:route-map/rmap:name";
+          }
+        }
+        leaf condition {
+          type enumeration {
+            enum exist {
+              description
+                "Advertise while the condition-map matches something
+                 in the BGP table.";
+            }
+            enum non-exist {
+              description
+                "Advertise while it does not.";
+            }
+          }
+        }
+        leaf condition-map {
+          type leafref {
+            path "/rmap:route-maps/rmap:route-map/rmap:name";
+          }
+        }
+      }
+    }
+
+    container attribute-unchanged {
+      description
+        "'neighbor X attribute-unchanged [as-path] [next-hop] [med]':
+         propagate these attributes unmodified.";
+      leaf as-path {
+        type boolean;
+        default "false";
+      }
+      leaf next-hop {
+        type boolean;
+        default "false";
+      }
+      leaf med {
+        type boolean;
+        default "false";
+      }
+    }
+
+    container dampening {
+      description
+        "'neighbor X dampening [(1-45) [(1-20000) (1-20000)
+         (1-255)]]': per-neighbor route-flap dampening
+         (bgp_config_write_peer_damp in bgp_damp.c). Either give none
+         of the numbers, only half-life, or all four.
+         // Grouping rule not expressible without 'must'.";
+      leaf enabled {
+        type boolean;
+        default "false";
+      }
+      leaf half-life {
+        type uint8 {
+          range "1..45";
+        }
+        units "minutes";
+      }
+      leaf reuse-threshold {
+        type uint16 {
+          range "1..20000";
+        }
+      }
+      leaf suppress-threshold {
+        type uint16 {
+          range "1..20000";
+        }
+      }
+      leaf max-suppress-time {
+        type uint8 {
+          range "1..255";
+        }
+        units "minutes";
+      }
+    }
+  }
+
+  /*
+   * Instance-level per-address-family building blocks.
+   */
+  grouping af-route-selection {
+    description
+      "Per-AF route selection / RIB interaction knobs common to every
+       address family we model.";
+
+    container maximum-paths {
+      description
+        "'maximum-paths ...' (bgp_config_write_maxpaths in
+         bgpd/bgp_vty.c). The CLI upper bound is the compile-time
+         MULTIPATH_NUM (commonly 64 or 128); modeled as uint16
+         without a tighter range on purpose.";
+      leaf ebgp {
+        type uint16 {
+          range "1..max";
+        }
+        description
+          "'maximum-paths N'.";
+      }
+      leaf ibgp {
+        type uint16 {
+          range "1..max";
+        }
+        description
+          "'maximum-paths ibgp N [equal-cluster-length]'.";
+      }
+      leaf ibgp-equal-cluster-length {
+        type boolean;
+        default "false";
+        description
+          "Only multipath iBGP routes whose cluster lists are the
+           same length.";
+      }
+    }
+
+    leaf table-map {
+      type leafref {
+        path "/rmap:route-maps/rmap:route-map/rmap:name";
+      }
+      description
+        "'table-map NAME': route-map filtering/modifying what BGP
+         downloads to the RIB (bgp_config_write_table_map in
+         bgp_route.c).";
+    }
+
+    container dampening {
+      description
+        "'bgp dampening [(1-45) [(1-20000) (1-50000) (1-255)]]':
+         AF-level route-flap dampening (bgp_config_write_damp in
+         bgp_damp.c). Same all-or-nothing parameter grouping as the
+         per-neighbor variant.";
+      leaf enabled {
+        type boolean;
+        default "false";
+      }
+      leaf half-life {
+        type uint8 {
+          range "1..45";
+        }
+        units "minutes";
+      }
+      leaf reuse-threshold {
+        type uint16 {
+          range "1..20000";
+        }
+      }
+      leaf suppress-threshold {
+        type uint16 {
+          range "1..50000";
+        }
+      }
+      leaf max-suppress-time {
+        type uint8 {
+          range "1..255";
+        }
+        units "minutes";
+      }
+    }
+
+    container distance {
+      description
+        "Administrative distance (bgp_config_write_distance in
+         bgp_route.c).";
+      leaf ebgp {
+        type uint8 {
+          range "1..255";
+        }
+        description
+          "'distance bgp (1-255) (1-255) (1-255)', first argument.
+           All three must be set together (one CLI line).
+           // Not expressible without 'must'.";
+      }
+      leaf ibgp {
+        type uint8 {
+          range "1..255";
+        }
+      }
+      leaf local {
+        type uint8 {
+          range "1..255";
+        }
+      }
+      list prefix {
+        key "prefix";
+        description
+          "'distance (1-255) <prefix> [ACCESSLIST_NAME]': distance
+           override for routes matching a source prefix.";
+        leaf prefix {
+          type union {
+            type pt:ipv4-prefix;
+            type pt:ipv6-prefix;
+          }
+        }
+        leaf distance {
+          type uint8 {
+            range "1..255";
+          }
+          mandatory true;
+        }
+        leaf access-list {
+          // TODO(leafref): access-lists are not modeled yet.
+          type string;
+        }
+      }
+    }
+  }
+
+  grouping af-redistribute {
+    description
+      "'redistribute ...' -- unicast address families only
+       (bgp_config_write_redistribute in bgpd/bgp_vty.c returns early
+       for every other SAFI).";
+
+    list redistribute {
+      key "protocol instance";
+      description
+        "'redistribute <protocol> [instance] [metric (0-4294967295)]
+         [route-map NAME]'. The instance number is only valid for
+         ospf/ospf6, table and table-direct ('redistribute
+         <ospf|table|table-direct> (1-65535)'); use 0 -- part of the
+         key, so it must always be present -- for protocols without
+         one.";
+
+      leaf protocol {
+        type enumeration {
+          enum babel;
+          enum connected;
+          enum eigrp;
+          enum isis;
+          enum kernel;
+          enum nhrp;
+          enum openfabric;
+          enum ospf {
+            description
+              "IPv4 address families only.";
+          }
+          enum ospf6 {
+            description
+              "IPv6 address families only.";
+          }
+          enum rip {
+            description
+              "IPv4 address families only.";
+          }
+          enum ripng {
+            description
+              "IPv6 address families only.";
+          }
+          enum sharp;
+          enum static;
+          enum table;
+          enum table-direct;
+        }
+        description
+          "Source protocol (FRR's generated FRR_IP[6]_REDIST_STR_BGPD
+           token set, minus vnc).
+           // The v4/v6-only restrictions are not enforced (would
+           // need per-AF enum copies or 'must'); FRR rejects the
+           // wrong ones at load time.";
+      }
+      leaf instance {
+        type uint16 {
+          range "0..65535";
+        }
+        description
+          "Protocol instance / table number; 0 = none.";
+      }
+      leaf metric {
+        type uint32;
+        description
+          "'metric (0-4294967295)'.";
+      }
+      leaf route-map {
+        type leafref {
+          path "/rmap:route-maps/rmap:route-map/rmap:name";
+        }
+      }
+    }
+  }
+
+  grouping af-aggregate-ipv4 {
+    list aggregate-address {
+      key "prefix";
+      description
+        "'aggregate-address A.B.C.D/M [as-set] [summary-only]
+         [route-map NAME] [origin <egp|igp|incomplete>]
+         [matching-MED-only] [suppress-map NAME]'
+         (bgp_config_write_network in bgp_route.c).";
+      leaf prefix {
+        type pt:ipv4-prefix;
+      }
+      uses aggregate-address-options;
+    }
+  }
+
+  grouping af-aggregate-ipv6 {
+    list aggregate-address {
+      key "prefix";
+      description
+        "'aggregate-address X:X::X:X/M [...]' -- same options as the
+         IPv4 form.";
+      leaf prefix {
+        type pt:ipv6-prefix;
+      }
+      uses aggregate-address-options;
+    }
+  }
+
+  grouping aggregate-address-options {
+    leaf as-set {
+      type boolean;
+      default "false";
+      description
+        "Generate an AS_SET of the contributors' paths.";
+    }
+    leaf summary-only {
+      type boolean;
+      default "false";
+      description
+        "Suppress the more-specific contributors.";
+    }
+    leaf route-map {
+      type leafref {
+        path "/rmap:route-maps/rmap:route-map/rmap:name";
+      }
+      description
+        "Apply to the aggregate route's attributes.";
+    }
+    leaf origin {
+      type enumeration {
+        enum egp;
+        enum igp;
+        enum incomplete;
+      }
+    }
+    leaf matching-med-only {
+      type boolean;
+      default "false";
+      description
+        "'matching-MED-only': only aggregate contributors with equal
+         MED.";
+    }
+    leaf suppress-map {
+      type leafref {
+        path "/rmap:route-maps/rmap:route-map/rmap:name";
+      }
+      description
+        "Suppress only the contributors the route-map matches.";
+    }
+  }
+
+  grouping af-network-ipv4 {
+    list network {
+      key "prefix";
+      description
+        "'network A.B.C.D/M [route-map NAME]
+         [label-index (0-1048560)] [backdoor]'
+         (bgp_config_write_network in bgp_route.c;
+         bgp_network_cmd).";
+      leaf prefix {
+        type pt:ipv4-prefix;
+      }
+      uses network-options;
+      leaf backdoor {
+        type boolean;
+        default "false";
+        description
+          "IPv4 only: install as a backdoor route (worse admin
+           distance, not advertised).";
+      }
+    }
+  }
+
+  grouping af-network-ipv6 {
+    list network {
+      key "prefix";
+      description
+        "'network X:X::X:X/M [route-map NAME]
+         [label-index (0-1048560)]'.";
+      leaf prefix {
+        type pt:ipv6-prefix;
+      }
+      uses network-options;
+    }
+  }
+
+  grouping network-options {
+    leaf route-map {
+      type leafref {
+        path "/rmap:route-maps/rmap:route-map/rmap:name";
+      }
+    }
+    leaf label-index {
+      type uint32 {
+        range "0..1048560";
+      }
+      description
+        "SR label index (labeled-unicast).";
+    }
+  }
+
+  grouping af-vpn-leaking {
+    description
+      "Route leaking between this unicast AF and the VPN table /
+       other VRFs. Only the simple knobs are modeled.
+       // TODO(model): the detailed vpn_policy block written by
+       // bgp_vpn_policy_config_write_afi (rd vpn export, rt vpn
+       // import/export, label vpn export, nexthop vpn export,
+       // route-map vpn import/export) is not modeled yet.";
+
+    leaf export-vpn {
+      type boolean;
+      default "false";
+      description
+        "'export vpn'.";
+    }
+    leaf import-vpn {
+      type boolean;
+      default "false";
+      description
+        "'import vpn'.";
+    }
+    leaf-list import-vrf {
+      type string;
+      description
+        "'import vrf NAME' lines.
+         // Deliberately not a leafref to /bgp/instance/vrf: FRR
+         // auto-creates the target instance if it doesn't exist.";
+    }
+  }
+
+  container bgp {
+    description
+      "FRR bgpd configuration.";
+
+    container process {
+      description
+        "Process-wide settings written before any 'router bgp' block
+         ('bgp ...' lines at config top level; the bm-> globals at
+         the start of bgp_config_write in bgpd/bgp_vty.c).";
+
+      leaf route-map-delay-timer {
+        type uint16 {
+          range "0..600";
+        }
+        units "seconds";
+        description
+          "'bgp route-map delay-timer (0-600)'.";
+      }
+      container update-delay {
+        description
+          "'bgp update-delay (0-3600) [(1-3600)]' (process-wide;
+           mutually exclusive with the per-instance form).";
+        leaf delay {
+          type uint16 {
+            range "0..3600";
+          }
+          units "seconds";
+        }
+        leaf establish-wait {
+          type uint16 {
+            range "1..3600";
+          }
+          units "seconds";
+        }
+      }
+      leaf advertisement-delay {
+        type uint16 {
+          range "1..3600";
+        }
+        units "seconds";
+        description
+          "'bgp advertisement-delay (1-3600)'.";
+      }
+      container suppress-fib-pending {
+        description
+          "'bgp suppress-fib-pending [(0-10000)]': wait for FIB
+           install before advertising.";
+        leaf enabled {
+          type boolean;
+          default "false";
+        }
+        leaf advertisement-delay {
+          type uint16 {
+            range "0..10000";
+          }
+          units "milliseconds";
+        }
+      }
+      container graceful-restart {
+        description
+          "Process-wide graceful-restart settings; each is mutually
+           exclusive with its per-instance twin.";
+        leaf mode {
+          type enumeration {
+            enum restarter {
+              description
+                "'bgp graceful-restart'.";
+            }
+            enum disable {
+              description
+                "'bgp graceful-restart-disable'.";
+            }
+          }
+          description
+            "Unset means FRR's default (helper mode).";
+        }
+        leaf preserve-fw-state {
+          type boolean;
+          default "false";
+          description
+            "'bgp graceful-restart preserve-fw-state'.";
+        }
+        leaf restart-time {
+          type uint16 {
+            range "0..4095";
+          }
+          units "seconds";
+          description
+            "'bgp graceful-restart restart-time (0-4095)'.";
+        }
+        leaf stalepath-time {
+          type uint16 {
+            range "1..4095";
+          }
+          units "seconds";
+          description
+            "'bgp graceful-restart stalepath-time (1-4095)'.";
+        }
+        leaf select-defer-time {
+          type uint16 {
+            range "0..3600";
+          }
+          units "seconds";
+          description
+            "'bgp graceful-restart select-defer-time (0-3600)'.";
+        }
+        leaf rib-stale-time {
+          type uint16 {
+            range "1..3600";
+          }
+          units "seconds";
+          description
+            "'bgp graceful-restart rib-stale-time (1-3600)'.";
+        }
+      }
+      leaf graceful-shutdown {
+        type boolean;
+        default "false";
+        description
+          "'bgp graceful-shutdown' (process-wide; mutually exclusive
+           with the per-instance form).";
+      }
+      leaf no-rib {
+        type boolean;
+        default "false";
+        description
+          "'bgp no-rib': do not install routes into zebra.";
+      }
+      leaf send-extra-data-zebra {
+        type boolean;
+        default "false";
+        description
+          "'bgp send-extra-data zebra'.";
+      }
+      leaf ipv6-auto-ra {
+        type boolean;
+        description
+          "'no bgp ipv6-auto-ra' when false (default true; only the
+           negative form is written).";
+      }
+      leaf session-dscp {
+        type uint8 {
+          range "0..63";
+        }
+        description
+          "'bgp session-dscp (0-63)': DSCP for outgoing BGP TCP
+           packets.";
+      }
+      leaf input-queue-limit {
+        type uint32 {
+          range "1..4294967295";
+        }
+        description
+          "'bgp input-queue-limit (1-4294967295)'.";
+      }
+      leaf output-queue-limit {
+        type uint32 {
+          range "1..4294967295";
+        }
+        description
+          "'bgp output-queue-limit (1-4294967295)'.";
+      }
+    }
+
+    list instance {
+      key "vrf";
+      description
+        "One 'router bgp ASN [<view|vrf> NAME]' block. FRR allows
+         exactly one BGP instance per VRF, so the VRF name is the
+         key.";
+
+      leaf vrf {
+        type string {
+          length "1..36";
+        }
+        description
+          "VRF this instance runs in. 'default' means the default
+           VRF; it is rendered as plain 'router bgp ASN' with no
+           vrf clause.";
+      }
+
+      leaf instance-type {
+        type enumeration {
+          enum vrf {
+            description
+              "'router bgp ASN vrf NAME' (or the default instance).";
+          }
+          enum view {
+            description
+              "'router bgp ASN view NAME': a view shares the default
+               VRF's kernel table.";
+          }
+        }
+        default "vrf";
+        description
+          "Whether a named instance is a VRF or a view.";
+      }
+
+      leaf autonomous-system {
+        type pt:as-number;
+        mandatory true;
+        description
+          "Local autonomous system number: the ASN token of
+           'router bgp ASN' (router_bgp_cmd). Plain decimal only;
+           'as-notation dot' rendering is not modeled.";
+      }
+
+      leaf router-id {
+        type pt:ipv4-address;
+        description
+          "'bgp router-id A.B.C.D' (bgp_router_id_cmd).";
+      }
+
+      leaf cluster-id {
+        type union {
+          type pt:ipv4-address;
+          type uint32 {
+            range "1..4294967295";
+          }
+        }
+        description
+          "'bgp cluster-id <A.B.C.D|(1-4294967295)>'.";
+      }
+
+      leaf fast-external-failover {
+        type boolean;
+        description
+          "'no bgp fast-external-failover' when false (default true;
+           only the negative form is written).";
+      }
+
+      container suppress-fib-pending {
+        description
+          "'bgp suppress-fib-pending [(0-10000)]', per-instance
+           form.";
+        leaf enabled {
+          type boolean;
+          default "false";
+        }
+        leaf advertisement-delay {
+          type uint16 {
+            range "0..10000";
+          }
+          units "milliseconds";
+        }
+      }
+
+      leaf log-neighbor-changes {
+        type boolean;
+        description
+          "'[no] bgp log-neighbor-changes'. Three-valued: unset means
+           the compile-profile default (on for the datacenter
+           profile, off for traditional).";
+      }
+
+      leaf always-compare-med {
+        type boolean;
+        default "false";
+        description
+          "'bgp always-compare-med'.";
+      }
+
+      leaf ebgp-requires-policy {
+        type boolean;
+        description
+          "'[no] bgp ebgp-requires-policy' (RFC 8212). Three-valued:
+           unset means the compile-profile default (on for
+           traditional, off for datacenter). NOTE: when this is in
+           effect, eBGP sessions exchange no routes without an
+           explicit per-peer policy.";
+      }
+
+      leaf enforce-first-as {
+        type boolean;
+        description
+          "'[no] bgp enforce-first-as' (default on).";
+      }
+
+      leaf labeled-unicast-explicit-null {
+        type enumeration {
+          enum ipv4 {
+            description
+              "'bgp labeled-unicast ipv4-explicit-null'.";
+          }
+          enum ipv6 {
+            description
+              "'bgp labeled-unicast ipv6-explicit-null'.";
+          }
+          enum both {
+            description
+              "'bgp labeled-unicast explicit-null'.";
+          }
+        }
+        description
+          "Advertise explicit-null instead of implicit-null labels
+           for labeled-unicast.";
+      }
+
+      leaf reject-as-sets {
+        type boolean;
+        description
+          "'no bgp reject-as-sets' when false (RFC 9774; default on,
+           only the negative form is written).";
+      }
+
+      leaf suppress-duplicates {
+        type boolean;
+        description
+          "'[no] bgp suppress-duplicates' (default on).";
+      }
+
+      leaf hard-administrative-reset {
+        type boolean;
+        description
+          "'[no] bgp hard-administrative-reset' (RFC 8538 handling of
+           CEASE/Administrative Reset; default on).";
+      }
+
+      container default {
+        description
+          "The 'bgp default ...' family of per-instance defaults
+           (they seed new neighbors / address families).";
+
+        leaf ipv4-unicast {
+          type boolean;
+          description
+            "'[no] bgp default ipv4-unicast': implicitly activate new
+             neighbors for ipv4-unicast. FRR default true (only this
+             one is on by default; the negative form is written).";
+        }
+        leaf ipv4-multicast {
+          type boolean;
+          default "false";
+          description
+            "'bgp default ipv4-multicast'.";
+        }
+        leaf ipv4-labeled-unicast {
+          type boolean;
+          default "false";
+          description
+            "'bgp default ipv4-labeled-unicast'.";
+        }
+        leaf ipv4-vpn {
+          type boolean;
+          default "false";
+          description
+            "'bgp default ipv4-vpn'.";
+        }
+        leaf ipv6-unicast {
+          type boolean;
+          default "false";
+          description
+            "'bgp default ipv6-unicast'.";
+        }
+        leaf ipv6-multicast {
+          type boolean;
+          default "false";
+          description
+            "'bgp default ipv6-multicast'.";
+        }
+        leaf ipv6-labeled-unicast {
+          type boolean;
+          default "false";
+          description
+            "'bgp default ipv6-labeled-unicast'.";
+        }
+        leaf ipv6-vpn {
+          type boolean;
+          default "false";
+          description
+            "'bgp default ipv6-vpn'.";
+        }
+        leaf l2vpn-evpn {
+          type boolean;
+          default "false";
+          description
+            "'bgp default l2vpn-evpn'.";
+        }
+
+        leaf local-preference {
+          type uint32;
+          description
+            "'bgp default local-preference (0-4294967295)' (FRR
+             default 100).";
+        }
+        leaf show-hostname {
+          type boolean;
+          description
+            "'[no] bgp default show-hostname' (profile-dependent
+             default).";
+        }
+        leaf show-nexthop-hostname {
+          type boolean;
+          description
+            "'[no] bgp default show-nexthop-hostname'.";
+        }
+        leaf software-version-capability {
+          type boolean;
+          description
+            "'[no] bgp default software-version-capability'.";
+        }
+        leaf software-version-capability-latest-encoding {
+          type boolean;
+          description
+            "'[no] bgp default software-version-capability
+             latest-encoding'.";
+        }
+        leaf link-local-capability {
+          type boolean;
+          description
+            "'[no] bgp default link-local-capability'.";
+        }
+        leaf dynamic-capability {
+          type boolean;
+          description
+            "'[no] bgp default dynamic-capability'.";
+        }
+        leaf subgroup-pkt-queue-max {
+          type uint8 {
+            range "20..100";
+          }
+          description
+            "'bgp default subgroup-pkt-queue-max (20-100)'.";
+        }
+        leaf shutdown {
+          type boolean;
+          default "false";
+          description
+            "'bgp default shutdown': new neighbors start
+             administratively down.";
+        }
+      }
+
+      leaf client-to-client-reflection {
+        type boolean;
+        description
+          "'no bgp client-to-client reflection' when false (default
+           on; only the negative form is written).";
+      }
+
+      leaf disable-ebgp-connected-route-check {
+        type boolean;
+        default "false";
+        description
+          "'bgp disable-ebgp-connected-route-check'.";
+      }
+
+      container confederation {
+        description
+          "'bgp confederation identifier ASN' and
+           'bgp confederation peers ASN...'.";
+        leaf identifier {
+          type pt:as-number;
+        }
+        leaf-list peers {
+          type pt:as-number;
+        }
+      }
+
+      leaf deterministic-med {
+        type boolean;
+        description
+          "'[no] bgp deterministic-med' (profile-dependent
+           default).";
+      }
+
+      container update-delay {
+        description
+          "'update-delay (0-3600) [(1-3600)]', per-instance form
+           (mutually exclusive with the process-wide one).";
+        leaf delay {
+          type uint16 {
+            range "0..3600";
+          }
+          units "seconds";
+        }
+        leaf establish-wait {
+          type uint16 {
+            range "1..3600";
+          }
+          units "seconds";
+        }
+      }
+
+      leaf advertisement-delay {
+        type uint16 {
+          range "1..3600";
+        }
+        units "seconds";
+        description
+          "'advertisement-delay (1-3600)', per-instance form.";
+      }
+
+      container max-med {
+        description
+          "Advertise MAX_MED to steer traffic away.";
+        container on-startup {
+          description
+            "'bgp max-med on-startup (5-86400) [(0-4294967295)]'.";
+          leaf period {
+            type uint32 {
+              range "5..86400";
+            }
+            units "seconds";
+          }
+          leaf med {
+            type uint32;
+            description
+              "MED value; unset means FRR's default
+               (4294967294).";
+          }
+        }
+        container administrative {
+          description
+            "'bgp max-med administrative [(0-4294967295)]'.";
+          leaf enabled {
+            type boolean;
+            default "false";
+          }
+          leaf med {
+            type uint32;
+          }
+        }
+      }
+
+      leaf write-quanta {
+        type uint8 {
+          range "1..64";
+        }
+        description
+          "'write-quanta (1-64)': packets per write i/o cycle.";
+      }
+      leaf read-quanta {
+        type uint8 {
+          range "1..10";
+        }
+        description
+          "'read-quanta (1-10)'.";
+      }
+      leaf coalesce-time {
+        type uint32;
+        units "milliseconds";
+        description
+          "'coalesce-time (0-4294967295)': subgroup coalesce timer.";
+      }
+
+      leaf graceful-shutdown {
+        type boolean;
+        default "false";
+        description
+          "'bgp graceful-shutdown', per-instance form (mutually
+           exclusive with the process-wide one).";
+      }
+
+      leaf long-lived-graceful-restart-stale-time {
+        type uint32 {
+          range "1..16777215";
+        }
+        units "seconds";
+        description
+          "'bgp long-lived-graceful-restart stale-time
+           (1-16777215)'.";
+      }
+
+      container graceful-restart {
+        description
+          "Per-instance graceful-restart configuration; each timer is
+           mutually exclusive with its process-wide twin.";
+        leaf mode {
+          type enumeration {
+            enum restarter {
+              description
+                "'bgp graceful-restart'.";
+            }
+            enum disable {
+              description
+                "'bgp graceful-restart-disable'.";
+            }
+          }
+          description
+            "Unset means FRR's default (helper mode).";
+        }
+        leaf notification {
+          type boolean;
+          description
+            "'[no] bgp graceful-restart notification' (RFC 8538
+             N-bit; default on).";
+        }
+        leaf preserve-fw-state {
+          type boolean;
+          default "false";
+          description
+            "'bgp graceful-restart preserve-fw-state'.";
+        }
+        leaf restart-time {
+          type uint16 {
+            range "0..4095";
+          }
+          units "seconds";
+        }
+        leaf stalepath-time {
+          type uint16 {
+            range "1..4095";
+          }
+          units "seconds";
+        }
+        leaf select-defer-time {
+          type uint16 {
+            range "0..3600";
+          }
+          units "seconds";
+        }
+        leaf rib-stale-time {
+          type uint16 {
+            range "1..3600";
+          }
+          units "seconds";
+        }
+      }
+
+      container tcp-keepalive {
+        description
+          "'bgp tcp-keepalive (1-65535) (1-65535) (1-30)': TCP
+           keepalive idle time, interval and probe count for BGP
+           sessions. All three set together (one CLI line).
+           // Not expressible without 'must'.";
+        leaf idle {
+          type uint16 {
+            range "1..65535";
+          }
+          units "seconds";
+        }
+        leaf interval {
+          type uint16 {
+            range "1..65535";
+          }
+          units "seconds";
+        }
+        leaf probes {
+          type uint8 {
+            range "1..30";
+          }
+        }
+      }
+
+      container bestpath {
+        description
+          "'bgp bestpath ...' route selection tuning.";
+        leaf as-path-ignore {
+          type boolean;
+          default "false";
+          description
+            "'bgp bestpath as-path ignore'.";
+        }
+        leaf as-path-confed {
+          type boolean;
+          default "false";
+          description
+            "'bgp bestpath as-path confed'.";
+        }
+        container as-path-multipath-relax {
+          description
+            "'bgp bestpath as-path multipath-relax [as-set]'.";
+          leaf enabled {
+            type boolean;
+            default "false";
+          }
+          leaf as-set {
+            type boolean;
+            default "false";
+          }
+        }
+        leaf compare-routerid {
+          type boolean;
+          default "false";
+          description
+            "'bgp bestpath compare-routerid'.";
+        }
+        leaf use-imported-attributes {
+          type boolean;
+          default "false";
+          description
+            "'bgp bestpath use-imported-attributes': compare imported
+             routes on their own attributes, not the originals'.";
+        }
+        leaf aigp {
+          type boolean;
+          description
+            "'[no] bgp bestpath aigp' (default off; both forms may be
+             written depending on the compile profile).";
+        }
+        container med {
+          description
+            "'bgp bestpath med [confed] [missing-as-worst]'.";
+          leaf confed {
+            type boolean;
+            default "false";
+          }
+          leaf missing-as-worst {
+            type boolean;
+            default "false";
+          }
+        }
+        leaf peer-type-multipath-relax {
+          type boolean;
+          default "false";
+          description
+            "'bgp bestpath peer-type multipath-relax': allow eBGP and
+             iBGP paths in one multipath.";
+        }
+        leaf bandwidth {
+          type enumeration {
+            enum ignore {
+              description
+                "'bgp bestpath bandwidth ignore'.";
+            }
+            enum skip-missing {
+              description
+                "'bgp bestpath bandwidth skip-missing'.";
+            }
+            enum default-weight-for-missing {
+              description
+                "'bgp bestpath bandwidth
+                 default-weight-for-missing'.";
+            }
+          }
+          description
+            "Link-bandwidth handling for weighted ECMP; unset means
+             FRR's default (skip paths with missing bandwidth from
+             weighting).";
+        }
+      }
+
+      leaf route-reflector-allow-outbound-policy {
+        type boolean;
+        description
+          "'[no] bgp route-reflector allow-outbound-policy' (default
+           off).";
+      }
+
+      leaf network-import-check {
+        type boolean;
+        description
+          "'[no] bgp network import-check': require 'network'
+           prefixes to exist in the RIB (profile-dependent
+           default).";
+      }
+
+      container timers {
+        description
+          "Instance-wide default session timers.";
+        leaf keepalive {
+          type uint16;
+          units "seconds";
+          description
+            "'timers bgp (0-65535) (0-65535)', first argument (FRR
+             default 60). Set together with holdtime.";
+        }
+        leaf holdtime {
+          type uint16;
+          units "seconds";
+          description
+            "'timers bgp', second argument (FRR default 180).";
+        }
+        leaf minimum-holdtime {
+          type uint16 {
+            range "1..65535";
+          }
+          units "seconds";
+          description
+            "'bgp minimum-holdtime (1-65535)': reject peers offering
+             less.";
+        }
+        leaf conditional-advertisement {
+          type uint8 {
+            range "5..240";
+          }
+          units "seconds";
+          description
+            "'bgp conditional-advertisement timer (5-240)': scanner
+             period for advertise-map conditions.";
+        }
+        leaf default-originate {
+          type uint16;
+          units "seconds";
+          description
+            "'bgp default-originate timer (0-65535)': re-evaluation
+             period for default-originate route-maps.";
+        }
+      }
+
+      list peer-group {
+        key "name";
+        description
+          "'neighbor PGNAME peer-group' declaration plus everything
+           configured on the group. Members inherit any session or
+           per-AF setting they don't override themselves -- FRR
+           writes only the overrides back, but in this model each
+           node simply holds what the user set where they set it.";
+
+        leaf name {
+          type string {
+            length "1..max";
+          }
+        }
+
+        uses neighbor-session-parameters;
+
+        leaf-list listen-range {
+          type union {
+            type pt:ipv4-prefix;
+            type pt:ipv6-prefix;
+          }
+          description
+            "'bgp listen range <A.B.C.D/M|X:X::X:X/M> peer-group
+             PGNAME': accept dynamic neighbors from these prefixes
+             into this group (bgp_config_write_listen in
+             bgpd/bgp_vty.c; written at instance level but owned by
+             the group).";
+        }
+
+        container afi-safis {
+          description
+            "Per-address-family settings of the peer-group; same
+             shape as a neighbor's.";
+          container ipv4-unicast {
+            uses neighbor-af;
+          }
+          container ipv4-multicast {
+            uses neighbor-af;
+          }
+          container ipv4-labeled-unicast {
+            uses neighbor-af;
+          }
+          container ipv4-vpn {
+            uses neighbor-af;
+          }
+          container ipv6-unicast {
+            uses neighbor-af;
+          }
+          container ipv6-multicast {
+            uses neighbor-af;
+          }
+          container ipv6-labeled-unicast {
+            uses neighbor-af;
+          }
+          container ipv6-vpn {
+            uses neighbor-af;
+          }
+          container l2vpn-evpn {
+            uses neighbor-af;
+          }
+        }
+      }
+
+      list neighbor {
+        key "address";
+        description
+          "One BGP peer: its session-level 'neighbor X ...' lines
+           plus per-address-family blocks.";
+
+        leaf address {
+          type union {
+            type pt:ip-address;
+            type string;
+          }
+          description
+            "Peer IPv4/IPv6 address, or an interface name for
+             unnumbered interface peers (set interface-peer below).
+             // The interface-name branch stays a plain string: no
+             // interface model to leafref into yet.";
+        }
+
+        leaf interface-peer {
+          type boolean;
+          default "false";
+          description
+            "'neighbor IFNAME interface [v6only] ...': address is an
+             interface name; the session runs unnumbered over its
+             link-local (RFC 5549).";
+        }
+        leaf v6only {
+          type boolean;
+          default "false";
+          description
+            "The v6only token of the interface form: never use the
+             interface's IPv4 address.";
+        }
+
+        leaf peer-group {
+          type leafref {
+            path "../../peer-group/name";
+          }
+          description
+            "'neighbor X peer-group PGNAME': inherit the group's
+             configuration.";
+        }
+
+        uses neighbor-session-parameters;
+
+        container afi-safis {
+          description
+            "This neighbor's per-address-family settings; one
+             container per family, rendered inside the matching
+             'address-family ...' block.";
+
+          container ipv4-unicast {
+            uses neighbor-af;
+          }
+          container ipv4-multicast {
+            uses neighbor-af;
+          }
+          container ipv4-labeled-unicast {
+            uses neighbor-af;
+          }
+          container ipv4-vpn {
+            uses neighbor-af;
+          }
+          container ipv6-unicast {
+            uses neighbor-af;
+          }
+          container ipv6-multicast {
+            uses neighbor-af;
+          }
+          container ipv6-labeled-unicast {
+            uses neighbor-af;
+          }
+          container ipv6-vpn {
+            uses neighbor-af;
+          }
+          container l2vpn-evpn {
+            description
+              "Neighbor settings under 'address-family l2vpn evpn' --
+               the same per-AF knob set as every other family (FRR
+               simply doesn't emit the meaningless ones there).";
+            uses neighbor-af;
+          }
+        }
+      }
+
+      leaf listen-limit {
+        type uint16 {
+          range "1..65535";
+        }
+        description
+          "'bgp listen limit (1-65535)': cap on dynamic
+           (listen-range) neighbors.";
+      }
+
+      leaf shutdown {
+        type boolean;
+        default "false";
+        description
+          "'bgp shutdown': administratively shut the whole
+           instance.";
+      }
+
+      leaf allow-martian-nexthop {
+        type boolean;
+        default "false";
+        description
+          "'bgp allow-martian-nexthop'.";
+      }
+
+      leaf fast-convergence {
+        type boolean;
+        default "false";
+        description
+          "'bgp fast-convergence': drop sessions immediately on
+           link-down.";
+      }
+
+      container afi-safis {
+        description
+          "Instance-level per-address-family configuration
+           ('address-family ... / exit-address-family' blocks); one
+           container per family.
+           // Not modeled: ipv4/ipv6 encap, flowspec, unreachability
+           // and link-state families (see module description).";
+
+        container ipv4-unicast {
+          description
+            "'address-family ipv4 unicast'.";
+          uses af-network-ipv4;
+          uses af-aggregate-ipv4;
+          uses af-redistribute;
+          uses af-route-selection;
+          uses af-vpn-leaking;
+        }
+
+        container ipv4-multicast {
+          description
+            "'address-family ipv4 multicast'.";
+          uses af-network-ipv4;
+          uses af-aggregate-ipv4;
+          uses af-route-selection;
+        }
+
+        container ipv4-labeled-unicast {
+          description
+            "'address-family ipv4 labeled-unicast'.";
+          uses af-network-ipv4;
+          uses af-aggregate-ipv4;
+          uses af-route-selection;
+        }
+
+        container ipv4-vpn {
+          description
+            "'address-family ipv4 vpn'.
+             // Not modeled: the VPN static 'network ... rd ... label
+             // ...' form (bgp_config_write_network_vpn) and 'no bgp
+             // retain route-target all'.";
+          uses af-route-selection;
+        }
+
+        container ipv6-unicast {
+          description
+            "'address-family ipv6 unicast'.";
+          uses af-network-ipv6;
+          uses af-aggregate-ipv6;
+          uses af-redistribute;
+          uses af-route-selection;
+          uses af-vpn-leaking;
+          leaf nexthop-prefer-global {
+            type boolean;
+            description
+              "'[no] nexthop prefer-global': prefer the global IPv6
+               next hop over the link-local
+               (bgp_config_write_ipv6_nexthop_prefer_global).";
+          }
+        }
+
+        container ipv6-multicast {
+          description
+            "'address-family ipv6 multicast'.";
+          uses af-network-ipv6;
+          uses af-aggregate-ipv6;
+          uses af-route-selection;
+        }
+
+        container ipv6-labeled-unicast {
+          description
+            "'address-family ipv6 labeled-unicast'.";
+          uses af-network-ipv6;
+          uses af-aggregate-ipv6;
+          uses af-route-selection;
+        }
+
+        container ipv6-vpn {
+          description
+            "'address-family ipv6 vpn'. Same modeling gaps as
+             ipv4-vpn.";
+          uses af-route-selection;
+        }
+
+        container l2vpn-evpn {
+          description
+            "'address-family l2vpn evpn'. Field definitions live in
+             proteus-bgp-evpn.yang.";
+          uses evpn:instance-l2vpn-evpn;
+        }
+      }
+    }
+  }
+}

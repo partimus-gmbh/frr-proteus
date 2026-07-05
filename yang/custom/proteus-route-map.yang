@@ -1,0 +1,833 @@
+module proteus-route-map {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/route-map";
+  prefix proteus-route-map;
+
+  import proteus-types {
+    prefix pt;
+  }
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "FRR route-map configuration: the generic route-map machinery from
+     lib/routemap_cli.c ('route-map NAME <permit|deny> SEQ', description,
+     call, on-match, plus the daemon-independent match/set clauses) and
+     the full BGP match/set vocabulary registered by bgpd/bgp_routemap.c.
+     Match/set clauses from other daemons (ospfd, zebra 'set src', ...)
+     are NOT modeled -- frr-proteus is BGP-only.
+
+     Every leaf's description cites the CLI line it renders to; the
+     grammar was taken from the DEFPY/DEFUN command strings in the two
+     files above. FRR stores most match/set arguments as opaque strings
+     and re-emits them verbatim on config write, so leaves whose values
+     FRR never parses beyond tokenization (community strings, AS path
+     strings, ...) are plain strings here too.
+
+     Referential integrity: other modules point at route-maps via
+     leafref to /route-maps/route-map/name, and 'call' below does the
+     same. References *from* route-maps to filtering objects that are
+     not modeled yet (prefix-lists, access-lists, as-path access-lists,
+     community/extcommunity/large-community lists, MAC access-lists,
+     interfaces, VRFs) are plain strings, each marked with a
+     'TODO(leafref)' comment -- tighten them to leafrefs when those
+     objects get a proteus module.";
+
+  revision 2026-07-05 {
+    description
+      "Initial revision.";
+  }
+
+  container route-maps {
+    description
+      "All route-maps.";
+
+    list route-map {
+      key "name";
+      description
+        "One route-map: an ordered sequence of entries
+         (lib/routemap_cli.c route_map_instance_cmd:
+         'route-map RMAP_NAME <deny|permit> (1-65535)').";
+
+      leaf name {
+        type string {
+          length "1..max";
+        }
+        description
+          "Route-map name (RMAP_NAME).";
+      }
+
+      list entry {
+        key "sequence";
+        description
+          "One 'route-map NAME <permit|deny> SEQ' block. All match
+           clauses of an entry must match for the action to apply
+           (logical AND); an entry with no match clauses matches
+           everything.";
+
+        leaf sequence {
+          type uint16 {
+            range "1..65535";
+          }
+          description
+            "Entry ordering number.";
+        }
+
+        leaf action {
+          type enumeration {
+            enum permit {
+              description
+                "Matching routes are accepted and the set clauses
+                 applied.";
+            }
+            enum deny {
+              description
+                "Matching routes are rejected.";
+            }
+          }
+          mandatory true;
+          description
+            "The <deny|permit> token of the entry header.";
+        }
+
+        leaf description {
+          type string;
+          description
+            "'description LINE...' (route_map_description_cmd).";
+        }
+
+        leaf call {
+          type leafref {
+            path "/route-maps/route-map/name";
+          }
+          description
+            "'call WORD': jump to another route-map; if it denies the
+             route, processing stops (route_map_call_cmd).";
+        }
+
+        leaf on-match {
+          type union {
+            type enumeration {
+              enum next {
+                description
+                  "'on-match next': continue with the next entry after
+                   a match.";
+              }
+            }
+            type uint16 {
+              range "1..65535";
+            }
+          }
+          description
+            "Exit policy on match: 'on-match next' or
+             'on-match goto (1-65535)' (a sequence number; FRR's
+             'continue N' is an alias for the goto form)
+             (route_map_onmatch_next_cmd / route_map_onmatch_goto_cmd).";
+        }
+
+        container match {
+          description
+            "Match clauses. At most one clause of each type per entry
+             (configuring a second one of the same type replaces the
+             first -- FRR CLI semantics). NOTE: several clause pairs
+             are mutually exclusive in FRR (e.g. 'match ip address'
+             via access-list vs. prefix-list replace each other);
+             that exclusivity is not expressed here -- YANG 'choice'
+             would work but the CLI treats them as one slot, which a
+             renderer must respect anyway.";
+
+          leaf interface {
+            // TODO(leafref): no interface model yet (interfaces are
+            // zebra's surface); plain string until one exists.
+            type string;
+            description
+              "'match interface IFNAME' (lib/routemap_cli.c).";
+          }
+
+          leaf ip-address {
+            // TODO(leafref): access-lists are not modeled yet.
+            type string;
+            description
+              "'match ip address ACCESSLIST4_NAME'
+               (lib/routemap_cli.c).";
+          }
+          leaf ip-address-prefix-list {
+            // TODO(leafref): prefix-lists are not modeled yet.
+            type string;
+            description
+              "'match ip address prefix-list PREFIXLIST4_NAME'
+               (lib/routemap_cli.c).";
+          }
+          leaf ip-next-hop {
+            // TODO(leafref): access-lists are not modeled yet.
+            type string;
+            description
+              "'match ip next-hop ACCESSLIST4_NAME'
+               (lib/routemap_cli.c).";
+          }
+          leaf ip-next-hop-prefix-list {
+            // TODO(leafref): prefix-lists are not modeled yet.
+            type string;
+            description
+              "'match ip next-hop prefix-list PREFIXLIST4_NAME'
+               (lib/routemap_cli.c).";
+          }
+          leaf ip-next-hop-address {
+            type pt:ipv4-address;
+            description
+              "'match ip next-hop address A.B.C.D'
+               (bgp_routemap.c match_ip_next_hop_address_cmd).";
+          }
+          leaf ip-next-hop-type-blackhole {
+            type boolean;
+            description
+              "'match ip next-hop type blackhole'
+               (lib/routemap_cli.c).";
+          }
+          leaf ip-route-source {
+            // TODO(leafref): access-lists are not modeled yet.
+            type string;
+            description
+              "'match ip route-source ACCESSLIST4_NAME'
+               (bgp_routemap.c).";
+          }
+          leaf ip-route-source-prefix-list {
+            // TODO(leafref): prefix-lists are not modeled yet.
+            type string;
+            description
+              "'match ip route-source prefix-list PREFIXLIST_NAME'
+               (bgp_routemap.c).";
+          }
+
+          leaf ipv6-address {
+            // TODO(leafref): access-lists are not modeled yet.
+            type string;
+            description
+              "'match ipv6 address ACCESSLIST6_NAME'
+               (lib/routemap_cli.c).";
+          }
+          leaf ipv6-address-prefix-list {
+            // TODO(leafref): prefix-lists are not modeled yet.
+            type string;
+            description
+              "'match ipv6 address prefix-list PREFIXLIST6_NAME'
+               (lib/routemap_cli.c).";
+          }
+          leaf ipv6-next-hop {
+            // TODO(leafref): access-lists are not modeled yet.
+            type string;
+            description
+              "'match ipv6 next-hop ACCESSLIST6_NAME'
+               (lib/routemap_cli.c).";
+          }
+          leaf ipv6-next-hop-prefix-list {
+            // TODO(leafref): prefix-lists are not modeled yet.
+            type string;
+            description
+              "'match ipv6 next-hop prefix-list PREFIXLIST_NAME'
+               (lib/routemap_cli.c).";
+          }
+          leaf ipv6-next-hop-address {
+            type pt:ipv6-address;
+            description
+              "'match ipv6 next-hop address X:X::X:X'
+               (bgp_routemap.c).";
+          }
+          leaf ipv6-next-hop-type-blackhole {
+            type boolean;
+            description
+              "'match ipv6 next-hop type blackhole'
+               (lib/routemap_cli.c).";
+          }
+
+          leaf metric {
+            type uint32;
+            description
+              "'match metric (0-4294967295)' (lib/routemap_cli.c).";
+          }
+          leaf tag {
+            type union {
+              type enumeration {
+                enum untagged;
+              }
+              type uint32 {
+                range "1..4294967295";
+              }
+            }
+            description
+              "'match tag <untagged|(1-4294967295)>'
+               (lib/routemap_cli.c).";
+          }
+          leaf local-preference {
+            type uint32;
+            description
+              "'match local-preference (0-4294967295)'
+               (bgp_routemap.c).";
+          }
+          leaf origin {
+            type enumeration {
+              enum egp;
+              enum igp;
+              enum incomplete;
+            }
+            description
+              "'match origin <egp|igp|incomplete>' (bgp_routemap.c).";
+          }
+          leaf probability {
+            type uint8 {
+              range "0..100";
+            }
+            description
+              "'match probability (0-100)': match this percentage of
+               routes (bgp_routemap.c).";
+          }
+          leaf alias {
+            type string;
+            description
+              "'match alias ALIAS_NAME': community alias defined with
+               'bgp community alias' (bgp_routemap.c).
+               // Community aliases are not modeled yet, hence no
+               // leafref here.";
+          }
+
+          leaf as-path {
+            // TODO(leafref): as-path access-lists ('bgp as-path
+            // access-list') are not modeled yet.
+            type string;
+            description
+              "'match as-path AS_PATH_FILTER_NAME' (bgp_routemap.c).";
+          }
+
+          container community {
+            description
+              "'match community <(1-99)|(100-500)|COMMUNITY_LIST_NAME>
+               [<exact-match|any>]' (bgp_routemap.c).";
+            leaf list-name {
+              // TODO(leafref): community-lists ('bgp community-list')
+              // are not modeled yet.
+              type string;
+              description
+                "Community list name or legacy number.";
+            }
+            leaf match-style {
+              type enumeration {
+                enum exact-match {
+                  description
+                    "Communities must match the list exactly.";
+                }
+                enum any {
+                  description
+                    "Match if any list entry matches.";
+                }
+              }
+              description
+                "Optional matching mode; unset means FRR's default
+                 (any community in the list matches).";
+            }
+          }
+
+          container extcommunity {
+            description
+              "'match extcommunity <(1-99)|(100-500)|
+               EXTCOMMUNITY_LIST_NAME> [<exact-match|any>]'
+               (bgp_routemap.c).";
+            leaf list-name {
+              // TODO(leafref): extcommunity-lists are not modeled yet.
+              type string;
+            }
+            leaf match-style {
+              type enumeration {
+                enum exact-match;
+                enum any;
+              }
+            }
+          }
+
+          container large-community {
+            description
+              "'match large-community <(1-99)|(100-500)|
+               LCOMMUNITY_LIST_NAME> [<exact-match|any>]'
+               (bgp_routemap.c).";
+            leaf list-name {
+              // TODO(leafref): large-community-lists are not modeled
+              // yet.
+              type string;
+            }
+            leaf match-style {
+              type enumeration {
+                enum exact-match;
+                enum any;
+              }
+            }
+          }
+
+          leaf mac-address {
+            // TODO(leafref): MAC access-lists are not modeled yet.
+            type string;
+            description
+              "'match mac address ACCESSLIST_MAC_NAME'
+               (bgp_routemap.c).";
+          }
+
+          leaf peer {
+            type union {
+              type pt:ip-address;
+              type enumeration {
+                enum local {
+                  description
+                    "'match peer local': static or redistributed
+                     routes.";
+                }
+              }
+              type string;
+            }
+            description
+              "'match peer <A.B.C.D|X:X::X:X|WORD|local>': the peer
+               the route was learned from, by address or interface
+               name (bgp_routemap.c).";
+          }
+          leaf src-peer {
+            type union {
+              type pt:ip-address;
+              type string;
+            }
+            description
+              "'match src-peer <A.B.C.D|X:X::X:X|WORD>' (route-map for
+               outgoing direction matching the source peer)
+               (bgp_routemap.c).";
+          }
+
+          leaf source-protocol {
+            type enumeration {
+              enum babel;
+              enum bgp;
+              enum connected;
+              enum eigrp;
+              enum isis;
+              enum kernel;
+              enum ospf;
+              enum ospf6;
+              enum rip;
+              enum ripng;
+              enum sharp;
+              enum static;
+              enum table;
+              enum table-direct;
+            }
+            description
+              "'match source-protocol <protocol>': protocol the route
+               was learned via (bgp_routemap.c; the token set is FRR's
+               generated FRR_REDIST_STR_ZEBRA list).";
+          }
+          leaf source-vrf {
+            type string;
+            description
+              "'match source-vrf NAME' (bgp_routemap.c).
+               // No leafref: VRFs exist as instance keys in
+               // proteus-bgp but a route can be leaked from a VRF
+               // with no BGP instance, so a plain name is correct.";
+          }
+
+          container evpn {
+            description
+              "EVPN-specific match clauses (bgp_routemap.c).";
+            leaf default-route {
+              type boolean;
+              description
+                "'match evpn default-route': default EVPN type-5
+                 route.";
+            }
+            leaf rd {
+              type pt:route-distinguisher;
+              description
+                "'match evpn rd ASN:NN_OR_IP-ADDRESS:NN'.";
+            }
+            leaf route-type {
+              type enumeration {
+                enum ead {
+                  description
+                    "Type-1 Ethernet Auto-Discovery route.";
+                }
+                enum macip {
+                  description
+                    "Type-2 MAC/IP advertisement route.";
+                }
+                enum multicast {
+                  description
+                    "Type-3 inclusive multicast Ethernet tag route.";
+                }
+                enum es {
+                  description
+                    "Type-4 Ethernet Segment route.";
+                }
+                enum prefix {
+                  description
+                    "Type-5 IP prefix route.";
+                }
+              }
+              description
+                "'match evpn route-type
+                 <ead|1|macip|2|multicast|3|es|4|prefix|5>' -- FRR
+                 accepts the numeric aliases on input but always
+                 writes the keyword, so only keywords are modeled.";
+            }
+            leaf vni {
+              type pt:vni;
+              description
+                "'match evpn vni (1-16777215)'.";
+            }
+          }
+        }
+
+        container set {
+          description
+            "Set clauses, applied to routes matched by a permit
+             entry. At most one clause of each type per entry.";
+
+          leaf ip-next-hop {
+            type union {
+              type pt:ipv4-address;
+              type enumeration {
+                enum peer-address {
+                  description
+                    "'set ip next-hop peer-address'.";
+                }
+                enum unchanged {
+                  description
+                    "'set ip next-hop unchanged'.";
+                }
+              }
+            }
+            description
+              "'set ip next-hop <A.B.C.D|peer-address|unchanged>'
+               (lib/routemap_cli.c + bgp_routemap.c).";
+          }
+          leaf ipv6-next-hop-global {
+            type pt:ipv6-address;
+            description
+              "'set ipv6 next-hop global X:X::X:X' (bgp_routemap.c).";
+          }
+          leaf ipv6-next-hop-local {
+            type pt:ipv6-address;
+            description
+              "'set ipv6 next-hop local X:X::X:X'
+               (lib/routemap_cli.c).";
+          }
+          leaf ipv6-next-hop-peer-address {
+            type boolean;
+            description
+              "'set ipv6 next-hop peer-address' (bgp_routemap.c).";
+          }
+          leaf ipv6-next-hop-prefer-global {
+            type boolean;
+            description
+              "'set ipv6 next-hop prefer-global' (bgp_routemap.c).";
+          }
+          leaf ipv4-vpn-next-hop {
+            type pt:ipv4-address;
+            description
+              "'set ipv4 vpn next-hop A.B.C.D' (bgp_routemap.c).";
+          }
+          leaf ipv6-vpn-next-hop {
+            type pt:ipv6-address;
+            description
+              "'set ipv6 vpn next-hop X:X::X:X' (bgp_routemap.c).";
+          }
+          leaf l3vpn-next-hop-encapsulation {
+            type enumeration {
+              enum gre;
+              enum gretap;
+            }
+            description
+              "'set l3vpn next-hop encapsulation <gre|gretap>'
+               (bgp_routemap.c).";
+          }
+
+          leaf metric {
+            type union {
+              type int64 {
+                range "-4294967295..4294967295";
+              }
+              type enumeration {
+                enum rtt {
+                  description
+                    "Set metric to the round-trip time.";
+                }
+                enum "+rtt" {
+                  description
+                    "Add the round-trip time to the metric.";
+                }
+                enum "-rtt" {
+                  description
+                    "Subtract the round-trip time from the metric.";
+                }
+                enum igp {
+                  description
+                    "Set MED to the IGP metric of the next hop.";
+                }
+                enum aigp {
+                  description
+                    "Set MED to the AIGP metric.";
+                }
+              }
+            }
+            description
+              "'set metric <(-4294967295-4294967295)|rtt|+rtt|-rtt|
+               igp|aigp>'; a leading +/- adds/subtracts from the
+               existing metric (lib/routemap_cli.c).";
+          }
+          leaf min-metric {
+            type uint32;
+            description
+              "'set min-metric (0-4294967295)' (lib/routemap_cli.c).";
+          }
+          leaf max-metric {
+            type uint32;
+            description
+              "'set max-metric (0-4294967295)' (lib/routemap_cli.c).";
+          }
+          leaf tag {
+            type union {
+              type enumeration {
+                enum untagged;
+              }
+              type uint32 {
+                range "1..4294967295";
+              }
+            }
+            description
+              "'set tag <untagged|(1-4294967295)>'
+               (lib/routemap_cli.c).";
+          }
+          leaf sr-te-color {
+            type uint32 {
+              range "1..4294967295";
+            }
+            description
+              "'set sr-te color (1-4294967295)' (lib/routemap_cli.c).";
+          }
+          leaf table {
+            type uint32 {
+              range "1..4294967295";
+            }
+            description
+              "'set table (1-4294967295)': kernel routing table for
+               this route (bgp_routemap.c).";
+          }
+
+          leaf as-path-prepend {
+            type string;
+            description
+              "'set as-path prepend ASNUM...': space-separated AS
+               numbers, emitted verbatim (bgp_routemap.c).";
+          }
+          leaf as-path-prepend-last-as {
+            type uint8 {
+              range "1..10";
+            }
+            description
+              "'set as-path prepend last-as (1-10)' (bgp_routemap.c).";
+          }
+          leaf as-path-exclude {
+            type string;
+            description
+              "'set as-path exclude ASNUM...' (bgp_routemap.c).";
+          }
+          leaf as-path-exclude-access-list {
+            // TODO(leafref): as-path access-lists are not modeled yet.
+            type string;
+            description
+              "'set as-path exclude as-path-access-list
+               AS_PATH_FILTER_NAME' (bgp_routemap.c).";
+          }
+          leaf as-path-replace {
+            type string;
+            description
+              "'set as-path replace <any|ASNUM> [ASNUM]': the full
+               argument text, emitted verbatim (bgp_routemap.c).";
+          }
+          leaf as-path-replace-access-list {
+            // TODO(leafref): as-path access-lists are not modeled yet.
+            type string;
+            description
+              "'set as-path replace as-path-access-list
+               AS_PATH_FILTER_NAME [ASNUM]' (bgp_routemap.c).";
+          }
+
+          container aggregator {
+            description
+              "'set aggregator as ASNUM A.B.C.D' (bgp_routemap.c).
+               Both leaves must be set together (single CLI line);
+               // not expressible without 'must', which the generated
+               // validator never evaluates -- renderer should treat
+               // a half-set container as an error.";
+            leaf as {
+              type pt:as-number;
+            }
+            leaf address {
+              type pt:ipv4-address;
+            }
+          }
+
+          leaf aigp-metric {
+            type union {
+              type enumeration {
+                enum igp-metric;
+              }
+              type uint32;
+            }
+            description
+              "'set aigp-metric <igp-metric|(0-4294967295)>'
+               (bgp_routemap.c).";
+          }
+          leaf atomic-aggregate {
+            type boolean;
+            description
+              "'set atomic-aggregate' (bgp_routemap.c).";
+          }
+          leaf distance {
+            type uint8 {
+              range "1..255";
+            }
+            description
+              "'set distance (1-255)' (bgp_routemap.c).";
+          }
+          leaf label-index {
+            type uint32 {
+              range "0..1048560";
+            }
+            description
+              "'set label-index (0-1048560)' (bgp_routemap.c).";
+          }
+          leaf local-preference {
+            type uint32;
+            description
+              "'set local-preference (0-4294967295)'
+               (bgp_routemap.c).";
+          }
+          leaf origin {
+            type enumeration {
+              enum egp;
+              enum igp;
+              enum incomplete;
+            }
+            description
+              "'set origin <egp|igp|incomplete>' (bgp_routemap.c).";
+          }
+          leaf originator-id {
+            type pt:ipv4-address;
+            description
+              "'set originator-id A.B.C.D' (bgp_routemap.c).";
+          }
+          leaf weight {
+            type uint32;
+            description
+              "'set weight (0-4294967295)' (bgp_routemap.c).";
+          }
+
+          leaf community {
+            type string;
+            description
+              "'set community <AA:NN...|none>': the full value text
+               exactly as FRR stores and re-emits it -- one or more
+               communities (numeric AA:NN or well-known names like
+               no-export), optionally ending in 'additive', or the
+               single keyword 'none' to strip the attribute
+               (bgp_routemap.c).";
+          }
+          leaf comm-list-delete {
+            // TODO(leafref): community-lists are not modeled yet.
+            type string;
+            description
+              "'set comm-list <(1-99)|(100-500)|COMMUNITY_LIST_NAME>
+               delete' (bgp_routemap.c).";
+          }
+          leaf large-community {
+            type string;
+            description
+              "'set large-community <AA:BB:CC...|none>', same verbatim
+               semantics as 'set community' (bgp_routemap.c).";
+          }
+          leaf large-comm-list-delete {
+            // TODO(leafref): large-community-lists are not modeled
+            // yet.
+            type string;
+            description
+              "'set large-comm-list <(1-99)|(100-500)|
+               LCOMMUNITY_LIST_NAME> delete' (bgp_routemap.c).";
+          }
+
+          leaf extcommunity-rt {
+            type string;
+            description
+              "'set extcommunity rt ASN:NN_OR_IP-ADDRESS:NN...':
+               space-separated RT list, emitted verbatim
+               (bgp_routemap.c).";
+          }
+          leaf extcommunity-nt {
+            type string;
+            description
+              "'set extcommunity nt RTLIST...': node-target extended
+               communities (bgp_routemap.c).";
+          }
+          leaf extcommunity-soo {
+            type string;
+            description
+              "'set extcommunity soo ASN:NN_OR_IP-ADDRESS:NN...'
+               (bgp_routemap.c).";
+          }
+          leaf extcommunity-color {
+            type string;
+            description
+              "'set extcommunity color RTLIST...' (bgp_routemap.c).";
+          }
+          container extcommunity-bandwidth {
+            description
+              "'set extcommunity bandwidth <(0-4294967295)|cumulative|
+               num-multipaths> [non-transitive]' (bgp_routemap.c).";
+            leaf value {
+              type union {
+                type uint32;
+                type enumeration {
+                  enum cumulative;
+                  enum num-multipaths;
+                }
+              }
+            }
+            leaf non-transitive {
+              type boolean;
+              default "false";
+            }
+          }
+          leaf extcommunity-none {
+            type boolean;
+            description
+              "'set extcommunity none': strip all extended communities
+               (bgp_routemap.c).";
+          }
+
+          container evpn-gateway-ip {
+            description
+              "'set evpn gateway-ip <ipv4 A.B.C.D|ipv6 X:X::X:X>':
+               overlay index gateway IP for EVPN type-5 routes
+               (bgp_routemap.c).";
+            leaf ipv4 {
+              type pt:ipv4-address;
+            }
+            leaf ipv6 {
+              type pt:ipv6-address;
+            }
+          }
+          leaf evpn-rmac {
+            type pt:mac-address;
+            description
+              "'set extcommunity evpn rmac X:X:X:X:X:X': Router MAC
+               extended community (bgp_routemap.c).";
+          }
+        }
+      }
+    }
+  }
+}

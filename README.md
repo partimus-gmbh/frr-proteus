@@ -20,7 +20,7 @@ comments and are freely omitted.
 - **Step 2 (in progress):** EVPN config generation. FRR's own
   `frr-bgp.yang` ships an empty, contentless `l2vpn-evpn` placeholder
   container (every *other* AFI-SAFI gets real content augmented onto it;
-  this one never does), so `yang/frr-proteus-bgp-evpn.yang` is a
+  this one never does), so `yang/augments/frr-proteus-bgp-evpn.yang` is a
   project-authored augmentation filling that gap: `advertise-all-vni`,
   per-VNI `rd`/`route-target`/`flooding`, `advertise-svi-ip`,
   `advertise-default-gw`, `enable-resolve-overlay-index` for the default
@@ -31,6 +31,27 @@ comments and are freely omitted.
   `l2vpn-evpn`, just not the instance side. See `examples/evpn_bgp.py`.
   Verified against most of `frr/tests/topotests/bgp_evpn_*`,
   `evpn_pim_*`, and `bgp_evpn_mh`; known gaps below.
+- **Custom YANG models (in progress):** FRR's own YANG is nearly
+  unreadable -- the configuration tree is scattered across a dozen files
+  of `augment` statements onto a generic control-plane-protocol list.
+  `yang/custom/` is a self-contained rewrite (`proteus-bgp.yang`,
+  `proteus-bgp-evpn.yang`, `proteus-route-map.yang`,
+  `proteus-types.yang`) that states the whole tree top-down in one
+  place, imports nothing from `frr/yang/`, and models address families
+  as nested containers instead of an identityref-keyed `afi-safi` list.
+  It covers the full config surface bgpd's own `bgp_config_write()`
+  path can persist -- instance/process options, peer-groups, the whole
+  neighbor session + per-AF surface, per-AF
+  network/aggregate/redistribute/distance/dampening, the complete
+  route-map match/set vocabulary (generic + BGP), and all of
+  `address-family l2vpn evpn` -- with route-map references as real
+  `leafref`s (checked by `validate_tree`). Deliberate exclusions
+  (SRv6, the detailed L3VPN `vpn_policy` block, encap/flowspec/
+  link-state families, RPKI caches, BMP, VNC) are listed in
+  `proteus-bgp.yang`'s description. Codegen produces bindings for both
+  schemas (`_generated/frr_bgp/` and `_generated/proteus/`); the
+  renderers still consume the former, migration to the custom schema is
+  the next step.
 
 ## How it works
 
@@ -39,7 +60,7 @@ comments and are freely omitted.
    [pyangbind fork](https://github.com/robinchrist/pyangbind) (the
    `pyangbind/` git submodule) as plugin against
    `frr/yang/frr-bgp.yang` (a git submodule pinned to FRR master) plus
-   `yang/frr-proteus-bgp-evpn.yang` (this project's own EVPN
+   `yang/augments/frr-proteus-bgp-evpn.yang` (this project's own EVPN
    augmentation), producing plain, fully type-hinted dataclasses under
    `src/frr_proteus/_generated/` (the fork's `pybind-dataclass` output
    format: nested `@dataclass` classes mirroring the YANG tree,
@@ -118,7 +139,8 @@ doing before trusting this beyond evaluation:
   container with prefix-limit/add-paths groupings (unlike
   `as-path-options`/`route-reflector`/`filter-config`, which it does), so
   this needs a small additional augment in
-  `yang/frr-proteus-bgp-evpn.yang`, not yet done.
+  `yang/augments/frr-proteus-bgp-evpn.yang` (or a couple of leaves in
+  `yang/custom/proteus-bgp-evpn.yang`), not yet done.
 - EVPN: per-VNI `advertise-default-gw`/`advertise-svi-ip` overrides and
   `autort rfc8365-compatible` are not modeled (not exercised by the
   topotests read so far).
@@ -132,9 +154,14 @@ doing before trusting this beyond evaluation:
   YANG models (`frr/yang/`) and the CLI behavior the renderer replicates
   (`frr/bgpd/bgp_vty.c`, `frr/bgpd/bgp_evpn_vty.c`). We do not parse or
   generate FRR C code.
-- `yang/` -- project-authored YANG, for config surface FRR's own YANG
-  doesn't cover (EVPN so far). Augments FRR's modules from outside rather
-  than editing the vendored submodule.
+- `yang/augments/` -- project-authored YANG that extends FRR's own
+  modules from outside (via `augment`) rather than editing the vendored
+  submodule; EVPN so far.
+- `yang/custom/` -- the self-contained replacement models
+  (`proteus-*.yang`). No imports from `frr/yang/` at all, no `augment`
+  statements; one module per address family pulled together with plain
+  `import` + `uses` so the full tree reads top-down in
+  `proteus-bgp.yang`.
 - `pyangbind/` -- git submodule, our pyangbind fork; carries the
   `pybind-dataclass` codegen backend (and fixes). Codegen-time only.
 - `src/frr_proteus/_generated/` -- generated dataclass bindings

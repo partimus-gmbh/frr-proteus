@@ -55,21 +55,64 @@ same shape (one `.j2` template, thin Python glue module, thin
   (`frr/bgpd/bgp_vty.c`, `frr/bgpd/bgp_evpn_vty.c`, `frr/lib/vty.c`).
   Never parse or generate FRR C code -- only read it as a reference for
   what text to emit.
-- `yang/` -- project-authored YANG. Augments FRR's own modules *from
-  outside* (via `augment` statements targeting FRR's schema paths, with
-  explicit `frr-bgp:`-prefixed node names since the target nodes live in
-  another module) rather than editing the vendored `frr/` submodule.
-  `frr-proteus-bgp-evpn.yang` fills in FRR's `l2vpn-evpn` afi-safi
-  container, which upstream ships as a genuinely empty placeholder (every
-  *other* afi-safi -- ipv4-unicast, l3vpn-ipv4-unicast, ... -- gets real
+- `yang/custom/` -- **the schema new work targets**: a self-contained,
+  readable rewrite replacing FRR's YANG as frr-proteus's input model
+  (`proteus-bgp.yang`, `proteus-bgp-evpn.yang`, `proteus-route-map.yang`,
+  `proteus-types.yang`). Covers the full config surface bgpd's own
+  config-write path emits (bgp_config_write* in bgp_vty.c/bgp_route.c/
+  bgp_damp.c/bgp_bfd.c, bgp_config_write_evpn_info in bgp_evpn_vty.c,
+  route-map match/set vocabulary from lib/routemap_cli.c +
+  bgpd/bgp_routemap.c) -- exclusions (SRv6, vpn_policy leaking detail,
+  encap/flowspec/link-state AFs, RPKI/BMP/VNC) are listed in
+  proteus-bgp.yang's module description and marked with comments at
+  the spot where they'd go. Route-map references are YANG `leafref`s
+  into /route-maps (checked by validate_tree); references to objects
+  not modeled yet (prefix-lists, access-lists, as-path/community
+  lists, interfaces, BFD profiles) are plain strings each carrying a
+  `// TODO(leafref)` comment -- keep that convention: when leaving
+  out a constraint because the referenced object type isn't modeled
+  yet, say so in a comment right there.
+  Hard rules, per explicit user direction (gold standard:
+  `/home/robin/work/srlinux-yang-models/all/v26.3.1/srl_nokia/models/`):
+  (1) MUST NOT reference FRR's YANG at all -- not even ietf-inet-types
+  is imported; `proteus-types.yang` carries the RFC 6991 patterns
+  itself, so `yang/custom/` compiles with only itself on the pyang
+  search path. (2) No `augment` unless it REALLY earns its keep --
+  FRR's augment-everything style is what made their model unreadable;
+  sibling modules contribute content via plain `import` + `uses`
+  groupings (`proteus-bgp-evpn.yang` defines zero data nodes, only
+  groupings that `proteus-bgp.yang` uses), so the whole tree reads
+  top-down in `proteus-bgp.yang`. (3) Address families are nested
+  containers (`afi-safis/ipv4-unicast`, `afi-safis/l2vpn-evpn`, ...),
+  NOT the OpenConfig/Nokia identityref-keyed `afi-safi` list whose
+  entries all carry every family's container plus `must` guards --
+  the user explicitly prefers the nested shape. Structure departs
+  from FRR where FRR's is baroque (no control-plane-protocol wrapper:
+  root is `/bgp/instance`, keyed by `vrf` since FRR allows one BGP
+  instance per VRF; neighbor `remote-as` is one union leaf
+  `as-number | internal | external` mirroring the single CLI token,
+  not FRR's remote-as-type + remote-as pair). Descriptions cite the
+  bgp_vty.c/bgp_evpn_vty.c DEFUN/DEFPY behind every leaf -- keep
+  doing that; don't add leaves whose CLI text isn't verified there.
+  Codegen emits these as the `_generated/proteus/` package (root class
+  `ProteusBgp`); `_generated/frr_bgp/` (from the FRR schema) is still
+  what the renderers consume until they're migrated. Gotcha:
+  `validate_tree()` resolves leafrefs by absolute schema path, so it
+  must be passed the *module root* objects -- `validate_tree(
+  ProteusBgp_instance, ProteusRouteMap_instance)` -- not the `bgp` /
+  `route_maps` containers below them; with a container as root every
+  leafref "fails" because recorded value paths lose the top component.
+- `yang/augments/` -- the older approach, kept while renderers still
+  use the FRR-schema bindings: project-authored `augment`s of FRR's
+  own modules *from outside* (targeting FRR's schema paths with
+  explicit `frr-bgp:`-prefixed node names) rather than editing the
+  vendored `frr/` submodule. `frr-proteus-bgp-evpn.yang` fills in
+  FRR's `l2vpn-evpn` afi-safi container, which upstream ships as a
+  genuinely empty placeholder (every *other* afi-safi gets real
   content augmented onto it in `frr-bgp.yang`; l2vpn-evpn never does;
   the *neighbor*-side l2vpn-evpn container is augmented generically by
   FRR itself with `route-reflector-client`/`route-map`/`allowas-in`/etc,
-  so only the instance side needed filling in). The augment is what puts
-  actual fields (advertise-all-vni, vni list, ...) on the instance-side
-  `l2vpn_evpn` dataclass; without it the class would be empty (the old
-  pyangbind backend omitted zero-field containers entirely; the
-  pybind-dataclass backend emits them as empty dataclasses).
+  so only the instance side needed filling in).
 - `pyangbind/` -- git submodule pinned to our pyangbind fork
   (github.com/robinchrist/pyangbind). Fixes go into the fork directly
   now (e.g. the bits-position TypeError that generate_bindings.py used

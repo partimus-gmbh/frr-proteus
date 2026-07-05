@@ -1,0 +1,133 @@
+module proteus-types {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/types";
+  prefix proteus-types;
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "Common typedefs shared by the frr-proteus custom YANG models
+     (yang/custom/*). These models are deliberately self-contained:
+     they import nothing from FRR's own YANG tree (frr/yang/) and not
+     even ietf-inet-types, so the whole custom model set compiles with
+     just this directory on the search path. The address/prefix
+     patterns below are the standard RFC 6991 ietf-inet-types patterns
+     (minus the %zone-id part, which FRR CLI config text never
+     carries).";
+
+  revision 2026-07-05 {
+    description
+      "Initial revision.";
+  }
+
+  typedef as-number {
+    type uint32 {
+      range "1..4294967295";
+    }
+    description
+      "BGP autonomous system number. FRR rejects ASN 0 (reserved,
+       RFC 7607), hence the range starting at 1. Only plain decimal
+       notation is modeled; FRR's asdot notation is out of scope.";
+  }
+
+  typedef ipv4-address {
+    type string {
+      pattern '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+            + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])';
+    }
+    description
+      "An IPv4 address in dotted-quad notation.";
+  }
+
+  typedef ipv6-address {
+    type string {
+      pattern '((:|[0-9a-fA-F]{0,4}):)([0-9a-fA-F]{0,4}:){0,5}'
+            + '((([0-9a-fA-F]{0,4}:)?(:|[0-9a-fA-F]{0,4}))|'
+            + '(((25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.){3}'
+            + '(25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])))';
+      pattern '(([^:]+:){6}(([^:]+:[^:]+)|(.*\..*)))|'
+            + '((([^:]+:)*[^:]+)?::(([^:]+:)*[^:]+)?)';
+    }
+    description
+      "An IPv6 address in RFC 4291 text notation.";
+  }
+
+  typedef ip-address {
+    type union {
+      type ipv4-address;
+      type ipv6-address;
+    }
+    description
+      "An IPv4 or IPv6 address.";
+  }
+
+  typedef ipv4-prefix {
+    type string {
+      pattern '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+            + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])'
+            + '/(([0-9])|([1-2][0-9])|(3[0-2]))';
+    }
+    description
+      "An IPv4 prefix in A.B.C.D/M notation.";
+  }
+
+  typedef ipv6-prefix {
+    type string {
+      pattern '((:|[0-9a-fA-F]{0,4}):)([0-9a-fA-F]{0,4}:){0,5}'
+            + '((([0-9a-fA-F]{0,4}:)?(:|[0-9a-fA-F]{0,4}))|'
+            + '(((25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.){3}'
+            + '(25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])))'
+            + '(/(([0-9])|([0-9]{2})|(1[0-1][0-9])|(12[0-8])))';
+      pattern '(([^:]+:){6}(([^:]+:[^:]+)|(.*\..*)))|'
+            + '((([^:]+:)*[^:]+)?::(([^:]+:)*[^:]+)?)'
+            + '(/.+)';
+    }
+    description
+      "An IPv6 prefix in X:X::X:X/M notation.";
+  }
+
+  typedef route-distinguisher {
+    type string;
+    description
+      "A route distinguisher as FRR's CLI accepts it:
+       'ASN:NN' or 'A.B.C.D:NN'. Kept as a plain string because FRR
+       itself parses it as one token (str2prefix_rd) and a renderer
+       only ever emits it verbatim.";
+  }
+
+  typedef vni {
+    type uint32 {
+      range "1..16777215";
+    }
+    description
+      "VXLAN Network Identifier (24-bit, 0 reserved).";
+  }
+
+  typedef mac-address {
+    type string {
+      pattern '[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}';
+    }
+    description
+      "An Ethernet MAC address in XX:XX:XX:XX:XX:XX notation.";
+  }
+
+  typedef route-target {
+    type string;
+    description
+      "A route target extended community as FRR's CLI accepts it:
+       'ASN:NN' or 'A.B.C.D:NN'. Plain string for the same reason as
+       route-distinguisher: FRR parses it as one token and renderers
+       emit it verbatim.";
+  }
+
+  typedef evpn-esi {
+    type string {
+      pattern '[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){9}';
+    }
+    description
+      "A 10-byte EVPN Ethernet Segment Identifier in colon-separated
+       hex notation (type 0 ESI as FRR's str_to_esi() parses it).";
+  }
+}
