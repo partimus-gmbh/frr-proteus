@@ -236,15 +236,17 @@ route-map {{ rm.name }} {{ e.action }} {{ e.sequence }}
 {% if rt_texts %}
  set extcommunity rt {{ rt_texts | join(' ') }}
 {% endif %}
-{% if s.extcommunity_nt %}
- set extcommunity nt {{ s.extcommunity_nt }}
+{% set nt_texts = extcommunity_nt_texts(s.extcommunity_nt) %}
+{% if nt_texts %}
+ set extcommunity nt {{ nt_texts | join(' ') }}
 {% endif %}
 {% set soo_texts = route_target_texts(s.extcommunity_soo) + s.extcommunity_soo.raw %}
 {% if soo_texts %}
  set extcommunity soo {{ soo_texts | join(' ') }}
 {% endif %}
-{% if s.extcommunity_color %}
- set extcommunity color {{ s.extcommunity_color }}
+{% set color_texts = extcommunity_color_texts(s.extcommunity_color) %}
+{% if color_texts %}
+ set extcommunity color {{ color_texts | join(' ') }}
 {% endif %}
 {% if s.extcommunity_bandwidth.value is not none %}
 {% set nt = ' non-transitive' if s.extcommunity_bandwidth.non_transitive else '' %}

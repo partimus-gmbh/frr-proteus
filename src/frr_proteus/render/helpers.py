@@ -132,6 +132,26 @@ def extcommunity_texts(ec) -> list[str]:
     ]
 
 
+def extcommunity_nt_texts(nt) -> list[str]:
+    """Render a set-extcommunity-nt container into FRR's tokens:
+    '<node-id>:0' per Node Target (the :0 is the reserved field FRR's
+    tokenizer requires) plus raw fallbacks."""
+    return [*(f"{node_id}:0" for node_id in nt.node_id), *nt.raw]
+
+
+def extcommunity_color_texts(colors) -> list[str]:
+    """Render a set-extcommunity-color container into FRR's tokens:
+    '[CO:]COLOR' per color (CO bits in binary, RFC 9256) plus raw
+    fallbacks."""
+    return [
+        *(
+            f"{c.co_flags}:{c.value}" if c.co_flags else str(c.value)
+            for c in colors.color
+        ),
+        *colors.raw,
+    ]
+
+
 # Experimental-scheme fields on the instance-level l2vpn-evpn container
 # (proteus-bgp-evpn-experimental.yang's augment) that produce NO output
 # in the frr format. vxlan_underlay is absent on purpose: it translates

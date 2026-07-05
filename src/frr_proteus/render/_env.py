@@ -30,6 +30,8 @@ env.globals.update(
     large_community_texts=helpers.large_community_texts,
     community_value_text=helpers.community_value_text,
     extcommunity_texts=helpers.extcommunity_texts,
+    extcommunity_nt_texts=helpers.extcommunity_nt_texts,
+    extcommunity_color_texts=helpers.extcommunity_color_texts,
     route_target_texts=helpers.route_target_texts,
     has_config=helpers.has_config,
 )

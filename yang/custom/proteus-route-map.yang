@@ -871,11 +871,27 @@ module proteus-route-map {
                  outside the structured encodings.";
             }
           }
-          leaf extcommunity-nt {
-            type string;
+          container extcommunity-nt {
             description
-              "'set extcommunity nt RTLIST...': node-target extended
-               communities (bgp_routemap.c).";
+              "'set extcommunity nt NODE-ID:0...': Node Target
+               extended communities
+               (draft-ietf-idr-node-target-ext-comm, type 0x01
+               subtype 0x09; bgp_routemap.c set_ecommunity_nt_cmd,
+               parsed by ecommunity_str2com). Each value renders as
+               '<node-id>:0' -- the trailing :0 is the reserved
+               field, required by FRR's tokenizer. Unconfigured when
+               empty.";
+            leaf-list node-id {
+              type yang:dotted-quad;
+              description
+                "Target BGP Identifier: a router ID (32-bit
+                 identifier in dotted notation), not an address.";
+            }
+            leaf-list raw {
+              type string;
+              description
+                "Fallback: tokens emitted verbatim.";
+            }
           }
           container extcommunity-soo {
             description
@@ -890,10 +906,57 @@ module proteus-route-map {
                 "Fallback: SoO tokens emitted verbatim.";
             }
           }
-          leaf extcommunity-color {
-            type string;
+          container extcommunity-color {
             description
-              "'set extcommunity color RTLIST...' (bgp_routemap.c).";
+              "'set extcommunity color [CO:]COLOR...': Color extended
+               communities (RFC 9012 section 4.3; CO bits per RFC
+               9256 section 8.8.1; bgp_routemap.c
+               set_ecommunity_color_cmd, parsed by
+               ecommunity_gettoken's color branch). Unconfigured when
+               empty.";
+            list color {
+              key "value";
+              description
+                "One color, rendered '<co-flags>:<value>' when the
+                 CO bits are set and bare '<value>' otherwise.";
+              leaf value {
+                type uint32 {
+                  range "1..4294967295";
+                }
+                description
+                  "4-byte Color Value.";
+              }
+              leaf co-flags {
+                type enumeration {
+                  enum "00" {
+                    description
+                      "Specified color only.";
+                  }
+                  enum "01" {
+                    description
+                      "Color, or null endpoint.";
+                  }
+                  enum "10" {
+                    description
+                      "Color, null endpoint, or any endpoint.";
+                  }
+                  enum "11" {
+                    description
+                      "Reserved combination (FRR accepts it; RFC
+                       9256 leaves it undefined).";
+                  }
+                }
+                description
+                  "The two CO bits, spelled in binary exactly as
+                   FRR's CLI takes them ('CO:COLOR', CO one of
+                   00/01/10/11).";
+              }
+            }
+            leaf-list raw {
+              type string;
+              description
+                "Fallback: tokens emitted verbatim.";
+            }
           }
           container extcommunity-bandwidth {
             description

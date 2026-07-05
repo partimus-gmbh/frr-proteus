@@ -151,6 +151,21 @@ def test_set_community_none_and_raw_fallback():
     assert " set community 4294967296:1\n" in render_route_maps(root2)
 
 
+def test_set_extcommunity_nt_and_color():
+    root, entry = _root_with_entry()
+    s = entry.set
+    # Node Target IDs are BGP Identifiers (router IDs), rendered with
+    # the reserved ':0' FRR's tokenizer requires.
+    s.extcommunity_nt.node_id.append("10.0.0.1")
+    assert " set extcommunity nt 10.0.0.1:0\n" in render_route_maps(root)
+
+    root2, entry2 = _root_with_entry()
+    Color = type(entry2.set.extcommunity_color).Color
+    entry2.set.extcommunity_color.color.append(Color(value=100))
+    entry2.set.extcommunity_color.color.append(Color(value=200, co_flags="01"))
+    assert " set extcommunity color 100 01:200\n" in render_route_maps(root2)
+
+
 def test_match_evpn_rd_structured():
     root, entry = _root_with_entry()
     entry.match.evpn.rd.as2.administrator = 65001
