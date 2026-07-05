@@ -74,6 +74,10 @@ CUSTOM_MODULES = [
     CUSTOM_YANG_DIR / "proteus-bgp.yang",
     CUSTOM_YANG_DIR / "proteus-bgp-evpn.yang",
     CUSTOM_YANG_DIR / "proteus-route-map.yang",
+    CUSTOM_YANG_DIR / "proteus-filter.yang",
+    CUSTOM_YANG_DIR / "proteus-bgp-filter.yang",
+    CUSTOM_YANG_DIR / "proteus-bfd.yang",
+    CUSTOM_YANG_DIR / "proteus-interface.yang",
     # The experimental EVPN scheme's ADDITIONAL nodes -- always
     # compiled in; opting in/out of the scheme happens at the
     # renderer (output format), not the schema.

@@ -1,0 +1,63 @@
+module proteus-interface {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/interface";
+  prefix proteus-interface;
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "Minimal interface objects. Interfaces are zebra's surface, not
+     bgpd's, and frr-proteus is BGP-only -- full interface modeling
+     (addresses, link parameters, EVPN MH ethernet-segments, ...) is
+     deliberately out of scope. This module exists primarily as a
+     leafref target so that interface references elsewhere (route-map
+     'match interface', neighbor 'update-source'/'interface') are
+     checked against a declared set of interface names instead of
+     being free-form strings.
+
+     CLI text (lib/if.c cli_show_interface/cli_show_interface_desc):
+
+       interface NAME
+        description LINE
+       exit
+
+     The optional 'interface NAME vrf VRF' form is only emitted with
+     the netns VRF backend and is not modeled.";
+
+  revision 2026-07-05 {
+    description
+      "Initial revision.";
+  }
+
+  container interfaces {
+    description
+      "All declared interfaces.";
+
+    list interface {
+      key "name";
+      description
+        "One 'interface NAME' block (lib/if.c interface_cmd:
+         'interface IFNAME [vrf NAME]').";
+
+      leaf name {
+        type string {
+          length "1..16";
+        }
+        description
+          "Interface name (IFNAME). Linux limits interface names to
+           15 characters plus NUL (IFNAMSIZ = 16); FRR's own
+           frr-interface.yang leaves the name unconstrained, but the
+           kernel bound is the real-world limit.";
+      }
+
+      leaf description {
+        type string;
+        description
+          "'description LINE' inside the interface block
+           (lib/if.c interface_desc_cmd / cli_show_interface_desc).";
+      }
+    }
+  }
+}

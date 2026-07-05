@@ -1,0 +1,259 @@
+{# Route-map blocks. Route-maps ARE northbound-converted in FRR: all
+   config-write text comes from lib/routemap_cli.c's dispatchers
+   (route_map_instance_show, route_map_condition_show,
+   route_map_action_show, route_map_instance_show_end) -- every line
+   below replicates the corresponding vty_out there. Clause lines get
+   one leading space; the block closes with 'exit' (the '!' FRR also
+   writes is just a comment and skipped per the project's fidelity
+   rules). Values FRR stores verbatim render verbatim. #}
+{% for rm in route_maps.route_map %}
+{% for e in rm.entry %}
+route-map {{ rm.name }} {{ e.action }} {{ e.sequence }}
+{% if e.description %}
+ description {{ e.description }}
+{% endif %}
+{% for m in [e.match] %}
+{% if m.interface %}
+ match interface {{ m.interface }}
+{% endif %}
+{% if m.ip_address %}
+ match ip address {{ m.ip_address }}
+{% endif %}
+{% if m.ip_address_prefix_list %}
+ match ip address prefix-list {{ m.ip_address_prefix_list }}
+{% endif %}
+{% if m.ip_next_hop %}
+ match ip next-hop {{ m.ip_next_hop }}
+{% endif %}
+{% if m.ip_next_hop_prefix_list %}
+ match ip next-hop prefix-list {{ m.ip_next_hop_prefix_list }}
+{% endif %}
+{% if m.ip_next_hop_address %}
+ match ip next-hop address {{ m.ip_next_hop_address }}
+{% endif %}
+{% if m.ip_next_hop_type_blackhole %}
+ match ip next-hop type blackhole
+{% endif %}
+{% if m.ip_route_source %}
+ match ip route-source {{ m.ip_route_source }}
+{% endif %}
+{% if m.ip_route_source_prefix_list %}
+ match ip route-source prefix-list {{ m.ip_route_source_prefix_list }}
+{% endif %}
+{% if m.ipv6_address %}
+ match ipv6 address {{ m.ipv6_address }}
+{% endif %}
+{% if m.ipv6_address_prefix_list %}
+ match ipv6 address prefix-list {{ m.ipv6_address_prefix_list }}
+{% endif %}
+{% if m.ipv6_next_hop %}
+ match ipv6 next-hop {{ m.ipv6_next_hop }}
+{% endif %}
+{% if m.ipv6_next_hop_prefix_list %}
+ match ipv6 next-hop prefix-list {{ m.ipv6_next_hop_prefix_list }}
+{% endif %}
+{% if m.ipv6_next_hop_address %}
+ match ipv6 next-hop address {{ m.ipv6_next_hop_address }}
+{% endif %}
+{% if m.ipv6_next_hop_type_blackhole %}
+ match ipv6 next-hop type blackhole
+{% endif %}
+{% if m.metric is not none %}
+ match metric {{ m.metric }}
+{% endif %}
+{% if m.tag is not none %}
+ match tag {{ m.tag }}
+{% endif %}
+{% if m.local_preference is not none %}
+ match local-preference {{ m.local_preference }}
+{% endif %}
+{% if m.origin %}
+ match origin {{ m.origin }}
+{% endif %}
+{% if m.probability is not none %}
+ match probability {{ m.probability }}
+{% endif %}
+{% if m.alias %}
+ match alias {{ m.alias }}
+{% endif %}
+{% if m.as_path %}
+ match as-path {{ m.as_path }}
+{% endif %}
+{% if m.community.list_name %}
+{% set style = ' ' ~ m.community.match_style if m.community.match_style else '' %}
+ match community {{ m.community.list_name }}{{ style }}
+{% endif %}
+{% if m.extcommunity.list_name %}
+{% set style = ' ' ~ m.extcommunity.match_style if m.extcommunity.match_style else '' %}
+ match extcommunity {{ m.extcommunity.list_name }}{{ style }}
+{% endif %}
+{% if m.large_community.list_name %}
+{% set style = ' ' ~ m.large_community.match_style if m.large_community.match_style else '' %}
+ match large-community {{ m.large_community.list_name }}{{ style }}
+{% endif %}
+{% if m.mac_address %}
+ match mac address {{ m.mac_address }}
+{% endif %}
+{% if m.peer %}
+ match peer {{ m.peer }}
+{% endif %}
+{% if m.src_peer %}
+ match src-peer {{ m.src_peer }}
+{% endif %}
+{% if m.source_protocol %}
+ match source-protocol {{ m.source_protocol }}
+{% endif %}
+{% if m.source_vrf %}
+ match source-vrf {{ m.source_vrf }}
+{% endif %}
+{% if m.evpn.default_route %}
+ match evpn default-route
+{% endif %}
+{% if m.evpn.rd %}
+ match evpn rd {{ m.evpn.rd }}
+{% endif %}
+{% if m.evpn.route_type %}
+ match evpn route-type {{ m.evpn.route_type }}
+{% endif %}
+{% if m.evpn.vni %}
+ match evpn vni {{ m.evpn.vni }}
+{% endif %}
+{% endfor %}
+{% for s in [e.set] %}
+{% if s.ip_next_hop %}
+ set ip next-hop {{ s.ip_next_hop }}
+{% endif %}
+{% if s.ipv6_next_hop_global %}
+ set ipv6 next-hop global {{ s.ipv6_next_hop_global }}
+{% endif %}
+{% if s.ipv6_next_hop_local %}
+ set ipv6 next-hop local {{ s.ipv6_next_hop_local }}
+{% endif %}
+{% if s.ipv6_next_hop_peer_address %}
+ set ipv6 next-hop peer-address
+{% endif %}
+{% if s.ipv6_next_hop_prefer_global %}
+ set ipv6 next-hop prefer-global
+{% endif %}
+{% if s.ipv4_vpn_next_hop %}
+ set ipv4 vpn next-hop {{ s.ipv4_vpn_next_hop }}
+{% endif %}
+{% if s.ipv6_vpn_next_hop %}
+ set ipv6 vpn next-hop {{ s.ipv6_vpn_next_hop }}
+{% endif %}
+{% if s.l3vpn_next_hop_encapsulation %}
+ set l3vpn next-hop encapsulation {{ s.l3vpn_next_hop_encapsulation }}
+{% endif %}
+{% if s.metric is not none %}
+ set metric {{ s.metric }}
+{% endif %}
+{% if s.min_metric is not none %}
+ set min-metric {{ s.min_metric }}
+{% endif %}
+{% if s.max_metric is not none %}
+ set max-metric {{ s.max_metric }}
+{% endif %}
+{% if s.tag is not none %}
+ set tag {{ s.tag }}
+{% endif %}
+{% if s.sr_te_color %}
+ set sr-te color {{ s.sr_te_color }}
+{% endif %}
+{% if s.table %}
+ set table {{ s.table }}
+{% endif %}
+{% if s.as_path_prepend %}
+ set as-path prepend {{ s.as_path_prepend }}
+{% endif %}
+{% if s.as_path_prepend_last_as %}
+ set as-path prepend last-as {{ s.as_path_prepend_last_as }}
+{% endif %}
+{% if s.as_path_exclude %}
+ set as-path exclude {{ s.as_path_exclude }}
+{% endif %}
+{% if s.as_path_exclude_access_list %}
+ set as-path exclude as-path-access-list {{ s.as_path_exclude_access_list }}
+{% endif %}
+{% if s.as_path_replace %}
+ set as-path replace {{ s.as_path_replace }}
+{% endif %}
+{% if s.as_path_replace_access_list %}
+ set as-path replace as-path-access-list {{ s.as_path_replace_access_list }}
+{% endif %}
+{% if s.aggregator.as_ %}
+ set aggregator as {{ s.aggregator.as_ }} {{ s.aggregator.address }}
+{% endif %}
+{% if s.aigp_metric %}
+ set aigp-metric {{ s.aigp_metric }}
+{% endif %}
+{% if s.atomic_aggregate %}
+ set atomic-aggregate
+{% endif %}
+{% if s.distance %}
+ set distance {{ s.distance }}
+{% endif %}
+{% if s.label_index is not none %}
+ set label-index {{ s.label_index }}
+{% endif %}
+{% if s.local_preference is not none %}
+ set local-preference {{ s.local_preference }}
+{% endif %}
+{% if s.origin %}
+ set origin {{ s.origin }}
+{% endif %}
+{% if s.originator_id %}
+ set originator-id {{ s.originator_id }}
+{% endif %}
+{% if s.weight is not none %}
+ set weight {{ s.weight }}
+{% endif %}
+{% if s.community %}
+ set community {{ s.community }}
+{% endif %}
+{% if s.comm_list_delete %}
+ set comm-list {{ s.comm_list_delete }} delete
+{% endif %}
+{% if s.large_community %}
+ set large-community {{ s.large_community }}
+{% endif %}
+{% if s.large_comm_list_delete %}
+ set large-comm-list {{ s.large_comm_list_delete }} delete
+{% endif %}
+{% if s.extcommunity_rt %}
+ set extcommunity rt {{ s.extcommunity_rt }}
+{% endif %}
+{% if s.extcommunity_nt %}
+ set extcommunity nt {{ s.extcommunity_nt }}
+{% endif %}
+{% if s.extcommunity_soo %}
+ set extcommunity soo {{ s.extcommunity_soo }}
+{% endif %}
+{% if s.extcommunity_color %}
+ set extcommunity color {{ s.extcommunity_color }}
+{% endif %}
+{% if s.extcommunity_bandwidth.value is not none %}
+{% set nt = ' non-transitive' if s.extcommunity_bandwidth.non_transitive else '' %}
+ set extcommunity bandwidth {{ s.extcommunity_bandwidth.value }}{{ nt }}
+{% endif %}
+{% if s.extcommunity_none %}
+ set extcommunity none
+{% endif %}
+{% if s.evpn_gateway_ip.ipv4 %}
+ set evpn gateway-ip ipv4 {{ s.evpn_gateway_ip.ipv4 }}
+{% endif %}
+{% if s.evpn_gateway_ip.ipv6 %}
+ set evpn gateway-ip ipv6 {{ s.evpn_gateway_ip.ipv6 }}
+{% endif %}
+{% if s.evpn_rmac %}
+ set extcommunity evpn rmac {{ s.evpn_rmac }}
+{% endif %}
+{% endfor %}
+{% if e.call %}
+ call {{ e.call }}
+{% endif %}
+{% if e.on_match is not none %}
+ on-match {{ 'next' if e.on_match == 'next' else 'goto ' ~ e.on_match }}
+{% endif %}
+exit
+{% endfor %}
+{% endfor %}

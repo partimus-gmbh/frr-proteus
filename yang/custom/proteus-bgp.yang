@@ -6,6 +6,18 @@ module proteus-bgp {
   import proteus-types {
     prefix pt;
   }
+  import proteus-filter {
+    prefix filter;
+  }
+  import proteus-bgp-filter {
+    prefix bgpfilter;
+  }
+  import proteus-bfd {
+    prefix bfd;
+  }
+  import proteus-interface {
+    prefix intf;
+  }
   import proteus-route-map {
     prefix rmap;
   }
@@ -219,9 +231,9 @@ module proteus-bgp {
            the session.";
       }
       leaf profile {
-        // TODO(leafref): BFD profiles (bfdd's 'bfd'/'profile' config)
-        // are not modeled; plain name until they are.
-        type string;
+        type leafref {
+          path "/bfd:bfd/bfd:profile/bfd:name";
+        }
         description
           "'neighbor X bfd profile BFDPROF'.";
       }
@@ -248,8 +260,9 @@ module proteus-bgp {
     }
 
     leaf source-interface {
-      // TODO(leafref): no interface model (zebra's surface).
-      type string;
+      type leafref {
+        path "/intf:interfaces/intf:interface/intf:name";
+      }
       description
         "'neighbor X interface IFNAME' (peer->ifname, the 'Local
          interface name' line in bgp_config_write_peer_global). Note
@@ -367,8 +380,13 @@ module proteus-bgp {
       }
       description
         "'neighbor X update-source <A.B.C.D|X:X::X:X|IFNAME>'.
-         // The interface-name branch stays a plain string: no
-         // interface model to leafref into yet.";
+         // The interface-name branch stays a plain string even
+         // though interfaces are modeled now (proteus-interface):
+         // the pybind-dataclass backend only records leafref
+         // metadata for direct leafref-typed leaves (pyang sets
+         // i_leafref only when the resolved type is a PathTypeSpec),
+         // so a leafref union member would compile but validate
+         // nothing -- worse than an honest string.";
     }
 
     leaf ip-transparent {
@@ -894,109 +912,15 @@ module proteus-bgp {
         "'neighbor X weight (0-65535)'.";
     }
 
-    container filters {
-      must "not(distribute-list-in and prefix-list-in)" {
-        error-message
-          "distribute-list and prefix-list are mutually exclusive
-           per direction (in)";
-      }
-      must "not(distribute-list-out and prefix-list-out)" {
-        error-message
-          "distribute-list and prefix-list are mutually exclusive
-           per direction (out)";
-      }
-      description
-        "Per-direction filtering (bgp_config_write_filter in
-         bgpd/bgp_vty.c). Note FRR's 'one slot' rule: distribute-list
-         and prefix-list are mutually exclusive per direction (the
-         'must' pair).";
-      leaf distribute-list-in {
-        // TODO(leafref): access-lists are not modeled yet.
-        type string;
-        description
-          "'neighbor X distribute-list NAME in'.";
-      }
-      leaf distribute-list-out {
-        // TODO(leafref): access-lists are not modeled yet.
-        type string;
-        description
-          "'neighbor X distribute-list NAME out'.";
-      }
-      leaf prefix-list-in {
-        // TODO(leafref): prefix-lists are not modeled yet.
-        type string;
-        description
-          "'neighbor X prefix-list NAME in'.";
-      }
-      leaf prefix-list-out {
-        // TODO(leafref): prefix-lists are not modeled yet.
-        type string;
-        description
-          "'neighbor X prefix-list NAME out'.";
-      }
-      leaf filter-list-in {
-        // TODO(leafref): as-path access-lists are not modeled yet.
-        type string;
-        description
-          "'neighbor X filter-list NAME in' (AS-path filter).";
-      }
-      leaf filter-list-out {
-        // TODO(leafref): as-path access-lists are not modeled yet.
-        type string;
-        description
-          "'neighbor X filter-list NAME out'.";
-      }
-      leaf route-map-in {
-        type leafref {
-          path "/rmap:route-maps/rmap:route-map/rmap:name";
-        }
-        description
-          "'neighbor X route-map NAME in'.";
-      }
-      leaf route-map-out {
-        type leafref {
-          path "/rmap:route-maps/rmap:route-map/rmap:name";
-        }
-        description
-          "'neighbor X route-map NAME out'.";
-      }
-      leaf unsuppress-map {
-        type leafref {
-          path "/rmap:route-maps/rmap:route-map/rmap:name";
-        }
-        description
-          "'neighbor X unsuppress-map NAME': advertise
-           aggregate-suppressed routes the map permits.";
-      }
-      container conditional-advertisement {
-        description
-          "'neighbor X advertise-map NAME <exist-map|non-exist-map>
-           NAME' (conditional advertisement, always outbound).";
-        leaf advertise-map {
-          type leafref {
-            path "/rmap:route-maps/rmap:route-map/rmap:name";
-          }
-        }
-        leaf condition {
-          type enumeration {
-            enum exist {
-              description
-                "Advertise while the condition-map matches something
-                 in the BGP table.";
-            }
-            enum non-exist {
-              description
-                "Advertise while it does not.";
-            }
-          }
-        }
-        leaf condition-map {
-          type leafref {
-            path "/rmap:route-maps/rmap:route-map/rmap:name";
-          }
-        }
-      }
-    }
+    /*
+     * The 'filters' container is deliberately NOT part of this
+     * grouping: its distribute-list/prefix-list leaves are leafrefs
+     * whose target family (IPv4 vs. IPv6 access-/prefix-lists)
+     * depends on the address family the grouping lands in. Every AF
+     * container pairs 'uses neighbor-af' with the matching
+     * 'uses neighbor-af-filters-<family>' grouping (defined right
+     * after this one).
+     */
 
     container attribute-unchanged {
       description
@@ -1055,6 +979,251 @@ module proteus-bgp {
         }
         units "minutes";
       }
+    }
+  }
+
+  /*
+   * The per-AF 'filters' container, one grouping per address family
+   * so the distribute-list/prefix-list leafrefs can point at the
+   * right family's access-/prefix-lists. The family-independent tail
+   * (AS-path filter-lists, route-maps, conditional advertisement)
+   * lives in neighbor-af-filters-common; l2vpn-evpn gets a variant
+   * whose distribute/prefix leaves stay plain strings -- neither
+   * family's list is the right leafref target for EVPN routes.
+   */
+
+  grouping neighbor-af-filters-common {
+    description
+      "Family-independent part of the per-AF 'filters' container
+       (bgp_config_write_filter in bgpd/bgp_vty.c).";
+
+    leaf filter-list-in {
+      type leafref {
+        path "/bgpfilter:bgp-filters/bgpfilter:as-path-access-list/"
+           + "bgpfilter:name";
+      }
+      description
+        "'neighbor X filter-list NAME in' (AS-path filter).";
+    }
+    leaf filter-list-out {
+      type leafref {
+        path "/bgpfilter:bgp-filters/bgpfilter:as-path-access-list/"
+           + "bgpfilter:name";
+      }
+      description
+        "'neighbor X filter-list NAME out'.";
+    }
+    leaf route-map-in {
+      type leafref {
+        path "/rmap:route-maps/rmap:route-map/rmap:name";
+      }
+      description
+        "'neighbor X route-map NAME in'.";
+    }
+    leaf route-map-out {
+      type leafref {
+        path "/rmap:route-maps/rmap:route-map/rmap:name";
+      }
+      description
+        "'neighbor X route-map NAME out'.";
+    }
+    leaf unsuppress-map {
+      type leafref {
+        path "/rmap:route-maps/rmap:route-map/rmap:name";
+      }
+      description
+        "'neighbor X unsuppress-map NAME': advertise
+         aggregate-suppressed routes the map permits.";
+    }
+    container conditional-advertisement {
+      description
+        "'neighbor X advertise-map NAME <exist-map|non-exist-map>
+         NAME' (conditional advertisement, always outbound).";
+      leaf advertise-map {
+        type leafref {
+          path "/rmap:route-maps/rmap:route-map/rmap:name";
+        }
+      }
+      leaf condition {
+        type enumeration {
+          enum exist {
+            description
+              "Advertise while the condition-map matches something
+               in the BGP table.";
+          }
+          enum non-exist {
+            description
+              "Advertise while it does not.";
+          }
+        }
+      }
+      leaf condition-map {
+        type leafref {
+          path "/rmap:route-maps/rmap:route-map/rmap:name";
+        }
+      }
+    }
+  }
+
+  grouping neighbor-af-filters-ipv4 {
+    description
+      "Per-AF 'filters' container for IPv4 address families.";
+
+    container filters {
+      must "not(distribute-list-in and prefix-list-in)" {
+        error-message
+          "distribute-list and prefix-list are mutually exclusive
+           per direction (in)";
+      }
+      must "not(distribute-list-out and prefix-list-out)" {
+        error-message
+          "distribute-list and prefix-list are mutually exclusive
+           per direction (out)";
+      }
+      description
+        "Per-direction filtering (bgp_config_write_filter in
+         bgpd/bgp_vty.c). Note FRR's 'one slot' rule: distribute-list
+         and prefix-list are mutually exclusive per direction (the
+         'must' pair).";
+      leaf distribute-list-in {
+        type leafref {
+          path "/filter:access-lists/filter:ipv4/"
+             + "filter:access-list/filter:name";
+        }
+        description
+          "'neighbor X distribute-list NAME in'.";
+      }
+      leaf distribute-list-out {
+        type leafref {
+          path "/filter:access-lists/filter:ipv4/"
+             + "filter:access-list/filter:name";
+        }
+        description
+          "'neighbor X distribute-list NAME out'.";
+      }
+      leaf prefix-list-in {
+        type leafref {
+          path "/filter:prefix-lists/filter:ipv4/"
+             + "filter:prefix-list/filter:name";
+        }
+        description
+          "'neighbor X prefix-list NAME in'.";
+      }
+      leaf prefix-list-out {
+        type leafref {
+          path "/filter:prefix-lists/filter:ipv4/"
+             + "filter:prefix-list/filter:name";
+        }
+        description
+          "'neighbor X prefix-list NAME out'.";
+      }
+      uses neighbor-af-filters-common;
+    }
+  }
+
+  grouping neighbor-af-filters-ipv6 {
+    description
+      "Per-AF 'filters' container for IPv6 address families.";
+
+    container filters {
+      must "not(distribute-list-in and prefix-list-in)" {
+        error-message
+          "distribute-list and prefix-list are mutually exclusive
+           per direction (in)";
+      }
+      must "not(distribute-list-out and prefix-list-out)" {
+        error-message
+          "distribute-list and prefix-list are mutually exclusive
+           per direction (out)";
+      }
+      description
+        "Per-direction filtering (bgp_config_write_filter in
+         bgpd/bgp_vty.c). Note FRR's 'one slot' rule: distribute-list
+         and prefix-list are mutually exclusive per direction (the
+         'must' pair).";
+      leaf distribute-list-in {
+        type leafref {
+          path "/filter:access-lists/filter:ipv6/"
+             + "filter:access-list/filter:name";
+        }
+        description
+          "'neighbor X distribute-list NAME in'.";
+      }
+      leaf distribute-list-out {
+        type leafref {
+          path "/filter:access-lists/filter:ipv6/"
+             + "filter:access-list/filter:name";
+        }
+        description
+          "'neighbor X distribute-list NAME out'.";
+      }
+      leaf prefix-list-in {
+        type leafref {
+          path "/filter:prefix-lists/filter:ipv6/"
+             + "filter:prefix-list/filter:name";
+        }
+        description
+          "'neighbor X prefix-list NAME in'.";
+      }
+      leaf prefix-list-out {
+        type leafref {
+          path "/filter:prefix-lists/filter:ipv6/"
+             + "filter:prefix-list/filter:name";
+        }
+        description
+          "'neighbor X prefix-list NAME out'.";
+      }
+      uses neighbor-af-filters-common;
+    }
+  }
+
+  grouping neighbor-af-filters-evpn {
+    description
+      "Per-AF 'filters' container for l2vpn-evpn.";
+
+    container filters {
+      must "not(distribute-list-in and prefix-list-in)" {
+        error-message
+          "distribute-list and prefix-list are mutually exclusive
+           per direction (in)";
+      }
+      must "not(distribute-list-out and prefix-list-out)" {
+        error-message
+          "distribute-list and prefix-list are mutually exclusive
+           per direction (out)";
+      }
+      description
+        "Per-direction filtering (bgp_config_write_filter in
+         bgpd/bgp_vty.c). Note FRR's 'one slot' rule: distribute-list
+         and prefix-list are mutually exclusive per direction (the
+         'must' pair).";
+      leaf distribute-list-in {
+        // No leafref: under l2vpn evpn FRR accepts any list name and
+        // neither the IPv4 nor the IPv6 access-list tree is the
+        // right target, so the reference stays unchecked.
+        type string;
+        description
+          "'neighbor X distribute-list NAME in'.";
+      }
+      leaf distribute-list-out {
+        // No leafref: see distribute-list-in.
+        type string;
+        description
+          "'neighbor X distribute-list NAME out'.";
+      }
+      leaf prefix-list-in {
+        // No leafref: see distribute-list-in.
+        type string;
+        description
+          "'neighbor X prefix-list NAME in'.";
+      }
+      leaf prefix-list-out {
+        // No leafref: see distribute-list-in.
+        type string;
+        description
+          "'neighbor X prefix-list NAME out'.";
+      }
+      uses neighbor-af-filters-common;
     }
   }
 
@@ -1146,6 +1315,45 @@ module proteus-bgp {
       }
     }
 
+    /*
+     * The 'distance' container is NOT part of this grouping: its
+     * per-prefix override list carries a family-typed prefix and an
+     * access-list leafref, so every AF container pairs
+     * 'uses af-route-selection' with the matching
+     * 'uses af-distance-<family>' below.
+     */
+  }
+
+  grouping distance-admin {
+    description
+      "The 'distance bgp (1-255) (1-255) (1-255)' triple, shared by
+       both family variants of the distance container.";
+
+    leaf ebgp {
+      type uint8 {
+        range "1..255";
+      }
+      description
+        "'distance bgp (1-255) (1-255) (1-255)', first argument.
+         All three must be set together -- one CLI line (the
+         'must' on the container).";
+    }
+    leaf ibgp {
+      type uint8 {
+        range "1..255";
+      }
+    }
+    leaf local {
+      type uint8 {
+        range "1..255";
+      }
+    }
+  }
+
+  grouping af-distance-ipv4 {
+    description
+      "Administrative distance for IPv4 address families.";
+
     container distance {
       must "(ebgp and ibgp and local) or not(ebgp or ibgp or local)" {
         error-message
@@ -1154,35 +1362,14 @@ module proteus-bgp {
       description
         "Administrative distance (bgp_config_write_distance in
          bgp_route.c).";
-      leaf ebgp {
-        type uint8 {
-          range "1..255";
-        }
-        description
-          "'distance bgp (1-255) (1-255) (1-255)', first argument.
-           All three must be set together -- one CLI line (the
-           'must' on the container).";
-      }
-      leaf ibgp {
-        type uint8 {
-          range "1..255";
-        }
-      }
-      leaf local {
-        type uint8 {
-          range "1..255";
-        }
-      }
+      uses distance-admin;
       list prefix {
         key "prefix";
         description
-          "'distance (1-255) <prefix> [ACCESSLIST_NAME]': distance
+          "'distance (1-255) A.B.C.D/M [ACCESSLIST_NAME]': distance
            override for routes matching a source prefix.";
         leaf prefix {
-          type union {
-            type pt:ipv4-prefix;
-            type pt:ipv6-prefix;
-          }
+          type pt:ipv4-prefix;
         }
         leaf distance {
           type uint8 {
@@ -1191,8 +1378,47 @@ module proteus-bgp {
           mandatory true;
         }
         leaf access-list {
-          // TODO(leafref): access-lists are not modeled yet.
-          type string;
+          type leafref {
+            path "/filter:access-lists/filter:ipv4/"
+               + "filter:access-list/filter:name";
+          }
+        }
+      }
+    }
+  }
+
+  grouping af-distance-ipv6 {
+    description
+      "Administrative distance for IPv6 address families.";
+
+    container distance {
+      must "(ebgp and ibgp and local) or not(ebgp or ibgp or local)" {
+        error-message
+          "'distance bgp' takes all three distances together";
+      }
+      description
+        "Administrative distance (bgp_config_write_distance in
+         bgp_route.c).";
+      uses distance-admin;
+      list prefix {
+        key "prefix";
+        description
+          "'distance (1-255) X:X::X:X/M [ACCESSLIST_NAME]': distance
+           override for routes matching a source prefix.";
+        leaf prefix {
+          type pt:ipv6-prefix;
+        }
+        leaf distance {
+          type uint8 {
+            range "1..255";
+          }
+          mandatory true;
+        }
+        leaf access-list {
+          type leafref {
+            path "/filter:access-lists/filter:ipv6/"
+               + "filter:access-list/filter:name";
+          }
         }
       }
     }
@@ -2255,30 +2481,39 @@ module proteus-bgp {
              shape as a neighbor's.";
           container ipv4-unicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv4;
           }
           container ipv4-multicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv4;
           }
           container ipv4-labeled-unicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv4;
           }
           container ipv4-vpn {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv4;
           }
           container ipv6-unicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv6;
           }
           container ipv6-multicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv6;
           }
           container ipv6-labeled-unicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv6;
           }
           container ipv6-vpn {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv6;
           }
           container l2vpn-evpn {
             uses neighbor-af;
+            uses neighbor-af-filters-evpn;
           }
         }
       }
@@ -2306,8 +2541,12 @@ module proteus-bgp {
           description
             "Peer IPv4/IPv6 address, or an interface name for
              unnumbered interface peers (set interface-peer below).
-             // The interface-name branch stays a plain string: no
-             // interface model to leafref into yet.";
+             // The interface-name branch stays a plain string even
+             // though interfaces are modeled now (proteus-interface):
+             // the pybind-dataclass backend does not support leafref
+             // as a union member (no i_leafref/i_leafref_ptr on the
+             // leaf, so no referential check would run) -- see the
+             // update-source comment.";
         }
 
         leaf interface-peer {
@@ -2345,27 +2584,35 @@ module proteus-bgp {
 
           container ipv4-unicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv4;
           }
           container ipv4-multicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv4;
           }
           container ipv4-labeled-unicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv4;
           }
           container ipv4-vpn {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv4;
           }
           container ipv6-unicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv6;
           }
           container ipv6-multicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv6;
           }
           container ipv6-labeled-unicast {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv6;
           }
           container ipv6-vpn {
             uses neighbor-af;
+            uses neighbor-af-filters-ipv6;
           }
           container l2vpn-evpn {
             description
@@ -2373,6 +2620,7 @@ module proteus-bgp {
                the same per-AF knob set as every other family (FRR
                simply doesn't emit the meaningless ones there).";
             uses neighbor-af;
+            uses neighbor-af-filters-evpn;
           }
         }
       }
@@ -2424,6 +2672,7 @@ module proteus-bgp {
           uses af-aggregate-ipv4;
           uses af-redistribute;
           uses af-route-selection;
+          uses af-distance-ipv4;
           uses af-vpn-leaking;
         }
 
@@ -2433,6 +2682,7 @@ module proteus-bgp {
           uses af-network-ipv4;
           uses af-aggregate-ipv4;
           uses af-route-selection;
+          uses af-distance-ipv4;
         }
 
         container ipv4-labeled-unicast {
@@ -2441,6 +2691,7 @@ module proteus-bgp {
           uses af-network-ipv4;
           uses af-aggregate-ipv4;
           uses af-route-selection;
+          uses af-distance-ipv4;
         }
 
         container ipv4-vpn {
@@ -2450,6 +2701,7 @@ module proteus-bgp {
              // ...' form (bgp_config_write_network_vpn) and 'no bgp
              // retain route-target all'.";
           uses af-route-selection;
+          uses af-distance-ipv4;
         }
 
         container ipv6-unicast {
@@ -2459,6 +2711,7 @@ module proteus-bgp {
           uses af-aggregate-ipv6;
           uses af-redistribute;
           uses af-route-selection;
+          uses af-distance-ipv6;
           uses af-vpn-leaking;
           leaf nexthop-prefer-global {
             type boolean;
@@ -2475,6 +2728,7 @@ module proteus-bgp {
           uses af-network-ipv6;
           uses af-aggregate-ipv6;
           uses af-route-selection;
+          uses af-distance-ipv6;
         }
 
         container ipv6-labeled-unicast {
@@ -2483,6 +2737,7 @@ module proteus-bgp {
           uses af-network-ipv6;
           uses af-aggregate-ipv6;
           uses af-route-selection;
+          uses af-distance-ipv6;
         }
 
         container ipv6-vpn {
@@ -2490,6 +2745,7 @@ module proteus-bgp {
             "'address-family ipv6 vpn'. Same modeling gaps as
              ipv4-vpn.";
           uses af-route-selection;
+          uses af-distance-ipv6;
         }
 
         container l2vpn-evpn {

@@ -1,0 +1,40 @@
+{# The 'bfd' block with its profiles.
+   Text: bfdd/bfdd_cli.c bfd_cli_show_header (block open/close) and the
+   per-leaf bfd_cli_show_* callbacks (two-space indent inside a
+   profile); ' exit' closes the profile, 'exit' the bfd block. #}
+bfd
+{% for profile in bfd.profile %}
+ profile {{ profile.name }}
+{% if profile.detect_multiplier %}
+  detect-multiplier {{ profile.detect_multiplier }}
+{% endif %}
+{% if profile.receive_interval %}
+  receive-interval {{ profile.receive_interval }}
+{% endif %}
+{% if profile.transmit_interval %}
+  transmit-interval {{ profile.transmit_interval }}
+{% endif %}
+{% if profile.echo_mode %}
+  echo-mode
+{% endif %}
+{% if profile.echo_transmit_interval %}
+  echo transmit-interval {{ profile.echo_transmit_interval }}
+{% endif %}
+{% if profile.echo_receive_interval is not none %}
+  echo receive-interval {{ profile.echo_receive_interval if profile.echo_receive_interval else 'disabled' }}
+{% endif %}
+{% if profile.minimum_ttl %}
+  minimum-ttl {{ profile.minimum_ttl }}
+{% endif %}
+{% if profile.shutdown %}
+  shutdown
+{% endif %}
+{% if profile.passive_mode %}
+  passive-mode
+{% endif %}
+{% if profile.log_session_changes %}
+  log-session-changes
+{% endif %}
+ exit
+{% endfor %}
+exit

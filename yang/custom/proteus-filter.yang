@@ -1,0 +1,418 @@
+module proteus-filter {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/filter";
+  prefix proteus-filter;
+
+  import proteus-types {
+    prefix pt;
+  }
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "Prefix lists and access lists -- the daemon-independent filter
+     objects from FRR's lib/filter_cli.c (northbound-converted; the
+     cli_show callbacks cited per leaf are what produces the running
+     config text).
+
+     Families are separate nested containers (ipv4/ipv6[/mac]), not
+     FRR's type-keyed 'list prefix-list { key \"type name\"; }': the
+     nested shape reads top-down and lets references be
+     family-precise ('match ip address prefix-list' can only point at
+     an IPv4 prefix-list).
+
+     CLI text (lib/filter_cli.c prefix_list_show /
+     prefix_list_remark_show / access_list_show /
+     access_list_remark_show):
+
+       ip prefix-list NAME seq SEQ <permit|deny> <any|A.B.C.D/M [ge N] [le N]>
+       ip prefix-list NAME description LINE
+       ipv6 prefix-list NAME seq SEQ <permit|deny> <any|X:X::X:X/M [ge N] [le N]>
+       access-list NAME seq SEQ <permit|deny> <any|A.B.C.D/M [exact-match]>
+       access-list NAME remark LINE
+       ipv6 access-list NAME seq SEQ <permit|deny> <any|X:X::X:X/M [exact-match]>
+       mac access-list NAME seq SEQ <permit|deny> <any|XX:XX:XX:XX:XX:XX>
+
+     Note the asymmetry, straight from access_list_show(): IPv4
+     access-lists are written WITHOUT a leading 'ip' keyword, while
+     IPv6/MAC ones carry 'ipv6'/'mac', and prefix-lists always carry
+     'ip'/'ipv6'.
+
+     Exclusions: Cisco-style access-list entries (host / network+
+     wildcard-mask / extended source+destination forms, the
+     cisco_style branch of access_list_show) are not modeled -- BGP
+     configs use the zebra style (prefix + optional exact-match), and
+     the topotests read so far never use the Cisco forms.";
+
+  revision 2026-07-05 {
+    description
+      "Initial revision.";
+  }
+
+  /*
+   * Shared entry building blocks. The value is a mandatory choice:
+   * 'any' or a prefix (with the per-family extras riding along the
+   * prefix case).
+   */
+
+  grouping filter-entry-header {
+    description
+      "Sequence number and action, common to every prefix-list and
+       access-list entry.";
+
+    leaf sequence {
+      type uint32 {
+        range "1..4294967295";
+      }
+      description
+        "'seq (1-4294967295)'. Always emitted on config write
+         (lib/filter_cli.c prints the sequence leaf verbatim).";
+    }
+
+    leaf action {
+      type enumeration {
+        enum permit {
+          description
+            "Matching prefixes are accepted.";
+        }
+        enum deny {
+          description
+            "Matching prefixes are rejected.";
+        }
+      }
+      mandatory true;
+      description
+        "The <deny|permit> token.";
+    }
+  }
+
+  container prefix-lists {
+    description
+      "All prefix lists ('ip prefix-list' / 'ipv6 prefix-list',
+       lib/filter_cli.c ip_prefix_list_cmd / ipv6_prefix_list_cmd).";
+
+    container ipv4 {
+      description
+        "IPv4 prefix lists ('ip prefix-list ...').";
+
+      list prefix-list {
+        key "name";
+        description
+          "One named IPv4 prefix list.";
+
+        leaf name {
+          type pt:object-name;
+          description
+            "Prefix-list name (PREFIXLIST4_NAME).";
+        }
+
+        leaf description {
+          type string;
+          description
+            "'ip prefix-list NAME description LINE'
+             (lib/filter_cli.c ip_prefix_list_remark_cmd /
+             prefix_list_remark_show; the YANG-internal leaf is
+             called 'remark' in FRR but the CLI keyword for
+             prefix-lists is 'description').";
+        }
+
+        list entry {
+          key "sequence";
+          description
+            "One 'ip prefix-list NAME seq SEQ <permit|deny> ...'
+             line (lib/filter_cli.c prefix_list_show).";
+
+          uses filter-entry-header;
+
+          choice value {
+            mandatory true;
+            description
+              "What the entry matches: everything ('any') or a
+               prefix with optional length bounds.";
+
+            leaf any {
+              type empty;
+              description
+                "'... <permit|deny> any'.";
+            }
+            case prefix {
+              leaf prefix {
+                type pt:ipv4-prefix;
+                mandatory true;
+                description
+                  "'... <permit|deny> A.B.C.D/M'.";
+              }
+              leaf ge {
+                type uint8 {
+                  range "0..32";
+                }
+                description
+                  "'ge (0-32)': minimum matched prefix length.
+                   Emitted before 'le' when both are set.";
+              }
+              leaf le {
+                type uint8 {
+                  range "0..32";
+                }
+                description
+                  "'le (0-32)': maximum matched prefix length.";
+              }
+            }
+          }
+        }
+      }
+    }
+
+    container ipv6 {
+      description
+        "IPv6 prefix lists ('ipv6 prefix-list ...').";
+
+      list prefix-list {
+        key "name";
+        description
+          "One named IPv6 prefix list.";
+
+        leaf name {
+          type pt:object-name;
+          description
+            "Prefix-list name (PREFIXLIST6_NAME).";
+        }
+
+        leaf description {
+          type string;
+          description
+            "'ipv6 prefix-list NAME description LINE'.";
+        }
+
+        list entry {
+          key "sequence";
+          description
+            "One 'ipv6 prefix-list NAME seq SEQ <permit|deny> ...'
+             line (lib/filter_cli.c prefix_list_show).";
+
+          uses filter-entry-header;
+
+          choice value {
+            mandatory true;
+            description
+              "What the entry matches: everything ('any') or a
+               prefix with optional length bounds.";
+
+            leaf any {
+              type empty;
+              description
+                "'... <permit|deny> any'.";
+            }
+            case prefix {
+              leaf prefix {
+                type pt:ipv6-prefix;
+                mandatory true;
+                description
+                  "'... <permit|deny> X:X::X:X/M'.";
+              }
+              leaf ge {
+                type uint8 {
+                  range "0..128";
+                }
+                description
+                  "'ge (0-128)': minimum matched prefix length.
+                   Emitted before 'le' when both are set.";
+              }
+              leaf le {
+                type uint8 {
+                  range "0..128";
+                }
+                description
+                  "'le (0-128)': maximum matched prefix length.";
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  container access-lists {
+    description
+      "All access lists, zebra style (lib/filter_cli.c
+       access_list_cmd / ipv6_access_list_cmd / mac_access_list_cmd).";
+
+    container ipv4 {
+      description
+        "IPv4 access lists. Written WITHOUT a leading 'ip' keyword:
+         'access-list NAME ...' (access_list_show only prefixes the
+         ipv6/mac variants).";
+
+      list access-list {
+        key "name";
+        description
+          "One named IPv4 access list.";
+
+        leaf name {
+          type pt:object-name;
+          description
+            "Access-list name (ACCESSLIST4_NAME).";
+        }
+
+        leaf remark {
+          type string;
+          description
+            "'access-list NAME remark LINE'
+             (lib/filter_cli.c access_list_remark_cmd /
+             access_list_remark_show).";
+        }
+
+        list entry {
+          key "sequence";
+          description
+            "One 'access-list NAME seq SEQ <permit|deny> ...' line
+             (lib/filter_cli.c access_list_show, zebra-style
+             branch).";
+
+          uses filter-entry-header;
+
+          choice value {
+            mandatory true;
+            description
+              "What the entry matches: everything ('any') or a
+               prefix.";
+
+            leaf any {
+              type empty;
+              description
+                "'... <permit|deny> any'.";
+            }
+            case prefix {
+              leaf prefix {
+                type pt:ipv4-prefix;
+                mandatory true;
+                description
+                  "'... <permit|deny> A.B.C.D/M'.";
+              }
+              leaf exact-match {
+                type boolean;
+                description
+                  "'... A.B.C.D/M exact-match': match the prefix
+                   length exactly instead of it-or-longer. Only
+                   render when true.";
+              }
+            }
+          }
+        }
+      }
+    }
+
+    container ipv6 {
+      description
+        "IPv6 access lists ('ipv6 access-list ...').";
+
+      list access-list {
+        key "name";
+        description
+          "One named IPv6 access list.";
+
+        leaf name {
+          type pt:object-name;
+          description
+            "Access-list name (ACCESSLIST6_NAME).";
+        }
+
+        leaf remark {
+          type string;
+          description
+            "'ipv6 access-list NAME remark LINE'.";
+        }
+
+        list entry {
+          key "sequence";
+          description
+            "One 'ipv6 access-list NAME seq SEQ <permit|deny> ...'
+             line (lib/filter_cli.c access_list_show).";
+
+          uses filter-entry-header;
+
+          choice value {
+            mandatory true;
+            description
+              "What the entry matches: everything ('any') or a
+               prefix.";
+
+            leaf any {
+              type empty;
+              description
+                "'... <permit|deny> any'.";
+            }
+            case prefix {
+              leaf prefix {
+                type pt:ipv6-prefix;
+                mandatory true;
+                description
+                  "'... <permit|deny> X:X::X:X/M'.";
+              }
+              leaf exact-match {
+                type boolean;
+                description
+                  "'... X:X::X:X/M exact-match'. Only render when
+                   true.";
+              }
+            }
+          }
+        }
+      }
+    }
+
+    container mac {
+      description
+        "MAC access lists ('mac access-list ...'), matched by
+         route-map 'match mac address' (EVPN).";
+
+      list access-list {
+        key "name";
+        description
+          "One named MAC access list.";
+
+        leaf name {
+          type pt:object-name;
+          description
+            "Access-list name (ACCESSLIST_MAC_NAME).";
+        }
+
+        leaf remark {
+          type string;
+          description
+            "'mac access-list NAME remark LINE'.";
+        }
+
+        list entry {
+          key "sequence";
+          description
+            "One 'mac access-list NAME seq SEQ <permit|deny> ...'
+             line (lib/filter_cli.c access_list_show; MAC entries
+             have no mask/exact-match).";
+
+          uses filter-entry-header;
+
+          choice value {
+            mandatory true;
+            description
+              "What the entry matches: everything ('any') or one MAC
+               address.";
+
+            leaf any {
+              type empty;
+              description
+                "'... <permit|deny> any'.";
+            }
+            leaf mac {
+              type pt:mac-address;
+              description
+                "'... <permit|deny> XX:XX:XX:XX:XX:XX'.";
+            }
+          }
+        }
+      }
+    }
+  }
+}

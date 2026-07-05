@@ -89,6 +89,18 @@ module proteus-types {
       "An IPv6 prefix in X:X::X:X/M notation.";
   }
 
+  typedef object-name {
+    type string {
+      length "1..128";
+    }
+    description
+      "Name of a named config object (prefix-list, access-list, BGP
+       filter list, ...). The 1..128 length bound is FRR's own
+       filter-object name constraint (typedef access-list-name in
+       frr/yang/frr-filter.yang); we apply it uniformly to all named
+       objects for consistency.";
+  }
+
   typedef route-distinguisher {
     type string;
     description

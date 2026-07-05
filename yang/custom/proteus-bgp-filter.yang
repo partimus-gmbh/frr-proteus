@@ -1,0 +1,447 @@
+module proteus-bgp-filter {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/bgp-filter";
+  prefix proteus-bgp-filter;
+
+  import proteus-types {
+    prefix pt;
+  }
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "bgpd's global filter objects: AS-path access lists, community /
+     large-community / extended-community lists, and community
+     aliases. These are bgpd-global (not per-instance) commands; the
+     running config text comes from legacy config_write functions,
+     cited per node (config_write_as_list in bgpd/bgp_filter.c,
+     community_list_config_write in bgpd/bgp_vty.c,
+     bgp_community_alias_write in bgpd/bgp_community_alias.c).
+
+     CLI text:
+
+       bgp as-path access-list NAME seq SEQ <permit|deny> REGEX
+       bgp community-list <standard|expanded> NAME seq SEQ <permit|deny> VALUE
+       bgp large-community-list <standard|expanded> NAME seq SEQ <permit|deny> VALUE
+       bgp extcommunity-list <standard|expanded> NAME seq SEQ <permit|deny> VALUE
+       bgp community alias COMMUNITY ALIAS
+
+     Exclusions: legacy NUMBERED community/large-community/
+     extcommunity lists ('bgp community-list 42 ...', numbers 1-99 =
+     standard, 100-500 = expanded, written without the style keyword)
+     are not modeled -- named lists only. The numbered form is just an
+     anonymous-name spelling of the same objects and carries no extra
+     expressiveness.
+
+     Community aliases live in this module (not proteus-bgp) so that
+     proteus-route-map can leafref 'match alias' without importing
+     proteus-bgp, which already imports proteus-route-map (cycle).";
+
+  revision 2026-07-05 {
+    description
+      "Initial revision.";
+  }
+
+  /*
+   * Value typedefs. Patterns follow FRR's own frr-bgp-filter.yang
+   * (community-string / large-community-string), rewritten here so
+   * this module stays self-contained (yang/custom imports nothing
+   * from frr/yang/ -- see proteus-types).
+   */
+
+  typedef community-string {
+    type string {
+      pattern '(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}'
+            + '|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0)'
+            + '(:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}'
+            + '|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0))?'
+            + '|local-AS|no-advertise|no-export|internet';
+    }
+    description
+      "One standard BGP community: 'AA:NN' (each 0-65535), a bare
+       16-bit number, or a well-known name
+       (local-AS|no-advertise|no-export|internet). Pattern from FRR's
+       frr-bgp-filter.yang typedef community-string.";
+  }
+
+  typedef large-community-string {
+    type string {
+      pattern '(429496729[0-5]|42949672[0-8][0-9]|4294967[01][0-9]{2}'
+            + '|429496[0-6][0-9]{3}|42949[0-5][0-9]{4}|4294[0-8][0-9]{5}'
+            + '|429[0-3][0-9]{6}|42[0-8][0-9]{7}|4[01][0-9]{8}'
+            + '|[1-3][0-9]{9}|[1-9][0-9]{0,8}|0)'
+            + '(:(429496729[0-5]|42949672[0-8][0-9]|4294967[01][0-9]{2}'
+            + '|429496[0-6][0-9]{3}|42949[0-5][0-9]{4}|4294[0-8][0-9]{5}'
+            + '|429[0-3][0-9]{6}|42[0-8][0-9]{7}|4[01][0-9]{8}'
+            + '|[1-3][0-9]{9}|[1-9][0-9]{0,8}|0)){2}';
+    }
+    description
+      "One large community 'A:B:C' (each 0-4294967295). Pattern from
+       FRR's frr-bgp-filter.yang typedef large-community-string
+       (restricted to exactly three components, the form
+       'bgp large-community-list standard' accepts).";
+  }
+
+  typedef extcommunity-standard {
+    type string {
+      pattern '(rt|soo) ('
+            + '(429496729[0-5]|42949672[0-8][0-9]|4294967[01][0-9]{2}'
+            + '|429496[0-6][0-9]{3}|42949[0-5][0-9]{4}|4294[0-8][0-9]{5}'
+            + '|429[0-3][0-9]{6}|42[0-8][0-9]{7}|4[01][0-9]{8}'
+            + '|[1-3][0-9]{9}|[1-9][0-9]{0,8}|0)'
+            + '|(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+            + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]))'
+            + ':(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}'
+            + '|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0)';
+    }
+    description
+      "One standard extended community:
+       'rt aa:nn_or_IPaddr:nn' or 'soo aa:nn_or_IPaddr:nn'
+       (EXTCOMMUNITY_VAL_STR, DEFUN extcommunity_list_standard in
+       bgpd/bgp_vty.c).";
+  }
+
+  grouping bgp-filter-entry-header {
+    description
+      "Sequence number and action, common to every filter-list
+       entry.";
+
+    leaf sequence {
+      type uint32 {
+        range "1..4294967295";
+      }
+      description
+        "'seq (0-4294967295)'. Always emitted on config write. The
+         CLI input range nominally allows 0, but FRR's own
+         frr-bgp-filter.yang typedef list-sequence is 1-based and
+         auto-assigned sequences start at 5 -- modeled 1-based.";
+    }
+
+    leaf action {
+      type enumeration {
+        enum permit {
+          description
+            "Matching values are accepted.";
+        }
+        enum deny {
+          description
+            "Matching values are rejected.";
+        }
+      }
+      mandatory true;
+      description
+        "The <deny|permit> token.";
+    }
+  }
+
+  container bgp-filters {
+    description
+      "bgpd's global filter lists.";
+
+    list as-path-access-list {
+      key "name";
+      description
+        "One 'bgp as-path access-list NAME' (bgpd/bgp_filter.c
+         bgp_as_path_cmd; written by config_write_as_list:
+         'bgp as-path access-list NAME seq SEQ <permit|deny>
+         REGEX').";
+
+      leaf name {
+        type pt:object-name;
+        description
+          "AS-path access-list name (AS_PATH_FILTER_NAME).";
+      }
+
+      list entry {
+        key "sequence";
+        description
+          "One 'bgp as-path access-list NAME seq SEQ <permit|deny>
+           REGEX' line.";
+
+        uses bgp-filter-entry-header;
+
+        leaf regex {
+          type string {
+            length "1..max";
+          }
+          mandatory true;
+          description
+            "AS-path regular expression (the LINE... argument),
+             emitted verbatim (bgp_filter.c stores reg_str and
+             re-emits it).";
+        }
+      }
+    }
+
+    list community-list {
+      key "name";
+      description
+        "One named 'bgp community-list <standard|expanded> NAME'
+         (DEFUNs community_list_standard / community_list_expanded in
+         bgpd/bgp_vty.c; written by community_list_config_write:
+         'bgp community-list <standard|expanded> NAME seq SEQ
+         <permit|deny> VALUE'). FRR rejects mixing styles under one
+         name, hence the list-level type leaf.";
+
+      leaf name {
+        type pt:object-name;
+        description
+          "Community-list name (COMMUNITY_LIST_NAME).";
+      }
+
+      leaf type {
+        type enumeration {
+          enum standard {
+            description
+              "Entries match literal community values.";
+          }
+          enum expanded {
+            description
+              "Entries match a regular expression against the
+               community attribute string.";
+          }
+        }
+        mandatory true;
+        description
+          "The <standard|expanded> keyword.";
+      }
+
+      list entry {
+        key "sequence";
+        description
+          "One 'bgp community-list ... seq SEQ <permit|deny> VALUE'
+           line.";
+
+        uses bgp-filter-entry-header;
+
+        choice value {
+          mandatory true;
+          description
+            "Entry value; which case is allowed follows the list's
+             type leaf (the 'must' pair).";
+
+          case standard {
+            leaf-list community {
+              type community-string;
+              min-elements 1;
+              must "../../type = 'standard'" {
+                error-message
+                  "literal community values require a standard-type
+                   list";
+              }
+              description
+                "Literal communities (AA:NN... -- one config line
+                 carries the whole space-separated set; FRR stores
+                 them as one entry).";
+            }
+          }
+          case expanded {
+            leaf regex {
+              type string {
+                length "1..max";
+              }
+              must "../../type = 'expanded'" {
+                error-message
+                  "a community regex requires an expanded-type list";
+              }
+              description
+                "Regular expression (LINE...) matched against the
+                 community attribute string, emitted verbatim.";
+            }
+          }
+        }
+      }
+    }
+
+    list large-community-list {
+      key "name";
+      description
+        "One named 'bgp large-community-list <standard|expanded>
+         NAME' (DEFPYs lcommunity_list_standard/_expanded in
+         bgpd/bgp_vty.c; written by community_list_config_write).";
+
+      leaf name {
+        type pt:object-name;
+        description
+          "Large-community-list name (LCOMMUNITY_LIST_NAME).";
+      }
+
+      leaf type {
+        type enumeration {
+          enum standard {
+            description
+              "Entries match literal large-community values.";
+          }
+          enum expanded {
+            description
+              "Entries match a regular expression.";
+          }
+        }
+        mandatory true;
+        description
+          "The <standard|expanded> keyword.";
+      }
+
+      list entry {
+        key "sequence";
+        description
+          "One 'bgp large-community-list ... seq SEQ <permit|deny>
+           VALUE' line.";
+
+        uses bgp-filter-entry-header;
+
+        choice value {
+          mandatory true;
+          description
+            "Entry value; which case is allowed follows the list's
+             type leaf.";
+
+          case standard {
+            leaf-list large-community {
+              type large-community-string;
+              min-elements 1;
+              must "../../type = 'standard'" {
+                error-message
+                  "literal large-community values require a
+                   standard-type list";
+              }
+              description
+                "Literal large communities (AA:BB:CC... -- one config
+                 line carries the whole space-separated set).";
+            }
+          }
+          case expanded {
+            leaf regex {
+              type string {
+                length "1..max";
+              }
+              must "../../type = 'expanded'" {
+                error-message
+                  "a large-community regex requires an expanded-type
+                   list";
+              }
+              description
+                "Regular expression (LINE...), emitted verbatim.";
+            }
+          }
+        }
+      }
+    }
+
+    list extcommunity-list {
+      key "name";
+      description
+        "One named 'bgp extcommunity-list <standard|expanded> NAME'
+         (DEFUNs extcommunity_list_standard/_expanded in
+         bgpd/bgp_vty.c; written by community_list_config_write).";
+
+      leaf name {
+        type pt:object-name;
+        description
+          "Extended-community-list name (EXTCOMMUNITY_LIST_NAME).";
+      }
+
+      leaf type {
+        type enumeration {
+          enum standard {
+            description
+              "Entries match literal rt/soo extended-community
+               values.";
+          }
+          enum expanded {
+            description
+              "Entries match a regular expression.";
+          }
+        }
+        mandatory true;
+        description
+          "The <standard|expanded> keyword.";
+      }
+
+      list entry {
+        key "sequence";
+        description
+          "One 'bgp extcommunity-list ... seq SEQ <permit|deny>
+           VALUE' line.";
+
+        uses bgp-filter-entry-header;
+
+        choice value {
+          mandatory true;
+          description
+            "Entry value; which case is allowed follows the list's
+             type leaf.";
+
+          case standard {
+            leaf-list extcommunity {
+              type extcommunity-standard;
+              min-elements 1;
+              must "../../type = 'standard'" {
+                error-message
+                  "literal extended-community values require a
+                   standard-type list";
+              }
+              description
+                "Literal extended communities ('rt AA:NN' /
+                 'soo A.B.C.D:NN' ... -- one config line carries the
+                 whole space-separated set).";
+            }
+          }
+          case expanded {
+            leaf regex {
+              type string {
+                length "1..max";
+              }
+              must "../../type = 'expanded'" {
+                error-message
+                  "an extcommunity regex requires an expanded-type
+                   list";
+              }
+              description
+                "Regular expression (LINE...), emitted verbatim.";
+            }
+          }
+        }
+      }
+    }
+  }
+
+  container community-aliases {
+    description
+      "Community aliases: symbolic names for community values, usable
+       in route-map 'match alias' and shown in place of the numeric
+       value in 'show bgp' output.";
+
+    list alias {
+      key "name";
+      unique "community";
+      description
+        "One 'bgp community alias COMMUNITY ALIAS' line (DEFPY
+         bgp_community_alias_cmd in bgpd/bgp_vty.c; written by
+         bgp_community_alias_write in bgpd/bgp_community_alias.c).
+         Both directions are unique: a community has one alias and an
+         alias names one community (enforced by the DEFPY; here via
+         the list key + 'unique').";
+
+      leaf name {
+        type pt:object-name;
+        description
+          "The alias name (ALIAS_NAME) -- what 'match alias'
+           references.";
+      }
+
+      leaf community {
+        type union {
+          type community-string;
+          type large-community-string;
+        }
+        mandatory true;
+        description
+          "The community or large-community value being aliased
+           (the WORD argument; FRR accepts both kinds).";
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{# bgpd's global filter lists and community aliases.
+   Text: bgpd/bgp_filter.c config_write_as_list ('bgp as-path
+   access-list NAME seq SEQ <permit|deny> REGEX'), bgpd/bgp_vty.c
+   community_list_config_write ('bgp community-list
+   <standard|expanded> NAME seq SEQ <permit|deny> VALUE', likewise
+   large-community-list / extcommunity-list; named lists only -- the
+   numbered form is not modeled), bgpd/bgp_community_alias.c
+   bgp_community_alias_write ('bgp community alias COMMUNITY ALIAS'). #}
+{% macro community_list_lines(kw, lists, values_attr) %}
+{% for cl in lists %}
+{% for e in cl.entry %}
+{% set value = e.regex if cl.type == 'expanded' else e[values_attr] | join(' ') %}
+bgp {{ kw }} {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
+{% endfor %}
+{% endfor %}
+{% endmacro %}
+{% for asp in bgp_filters.as_path_access_list %}
+{% for e in asp.entry %}
+bgp as-path access-list {{ asp.name }} seq {{ e.sequence }} {{ e.action }} {{ e.regex }}
+{% endfor %}
+{% endfor %}
+{{ community_list_lines('community-list', bgp_filters.community_list, 'community') -}}
+{{ community_list_lines('large-community-list', bgp_filters.large_community_list, 'large_community') -}}
+{{ community_list_lines('extcommunity-list', bgp_filters.extcommunity_list, 'extcommunity') -}}
+{% for alias in community_aliases.alias %}
+bgp community alias {{ alias.community }} {{ alias.name }}
+{% endfor %}

@@ -1,0 +1,48 @@
+{# Prefix lists and access lists.
+   Text: lib/filter_cli.c prefix_list_show / prefix_list_remark_show /
+   access_list_show / access_list_remark_show. IPv4 access-lists are
+   written WITHOUT a leading 'ip' keyword; prefix-lists always carry
+   'ip'/'ipv6'. 'seq' is always emitted. #}
+{% macro prefix_list_lines(kw, lists) %}
+{% for pl in lists %}
+{% if pl.description %}
+{{ kw }}prefix-list {{ pl.name }} description {{ pl.description }}
+{% endif %}
+{% for e in pl.entry %}
+{% if e.any %}
+{{ kw }}prefix-list {{ pl.name }} seq {{ e.sequence }} {{ e.action }} any
+{% else %}
+{% set ge = ' ge ' ~ e.ge if e.ge is not none else '' %}
+{% set le = ' le ' ~ e.le if e.le is not none else '' %}
+{{ kw }}prefix-list {{ pl.name }} seq {{ e.sequence }} {{ e.action }} {{ e.prefix }}{{ ge }}{{ le }}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endmacro %}
+{% macro access_list_lines(kw, lists) %}
+{% for acl in lists %}
+{% if acl.remark %}
+{{ kw }}access-list {{ acl.name }} remark {{ acl.remark }}
+{% endif %}
+{% for e in acl.entry %}
+{% if e.any %}
+{{ kw }}access-list {{ acl.name }} seq {{ e.sequence }} {{ e.action }} any
+{% else %}
+{% set exact = ' exact-match' if e.exact_match else '' %}
+{{ kw }}access-list {{ acl.name }} seq {{ e.sequence }} {{ e.action }} {{ e.prefix }}{{ exact }}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endmacro %}
+{{ prefix_list_lines('ip ', filters.prefix_lists.ipv4.prefix_list) -}}
+{{ prefix_list_lines('ipv6 ', filters.prefix_lists.ipv6.prefix_list) -}}
+{{ access_list_lines('', filters.access_lists.ipv4.access_list) -}}
+{{ access_list_lines('ipv6 ', filters.access_lists.ipv6.access_list) -}}
+{% for acl in filters.access_lists.mac.access_list %}
+{% if acl.remark %}
+mac access-list {{ acl.name }} remark {{ acl.remark }}
+{% endif %}
+{% for e in acl.entry %}
+mac access-list {{ acl.name }} seq {{ e.sequence }} {{ e.action }} {{ 'any' if e.any else e.mac }}
+{% endfor %}
+{% endfor %}

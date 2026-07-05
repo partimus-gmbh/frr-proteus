@@ -40,6 +40,9 @@ _env.globals.update(
     evpn_af_needed=helpers.evpn_af_needed,
     route_target_texts=helpers.route_target_texts,
 )
+# As a Jinja *test* so templates can write
+# `selectattr('afi_safis.ipv4_unicast.filters', 'has_config')`.
+_env.tests["has_config"] = helpers.has_config
 
 _bgp_template = _env.get_template("bgp.conf.j2")
 _evpn_global_template = _env.get_template("evpn_global.conf.j2")

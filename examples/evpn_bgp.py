@@ -21,13 +21,18 @@ from typing import TypeAlias
 
 sys.path.insert(0, "src")
 
-from frr_proteus._generated.proteus import ProteusBgp, validate_tree
-from frr_proteus.render import render_bgp_instance
+from frr_proteus._generated.proteus import (
+    ProteusBgp,
+    ProteusRouteMap,
+    validate_tree,
+)
+from frr_proteus.render import render_bgp_instance, render_route_maps
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
 Instance: TypeAlias = ProteusBgp.Bgp.Instance
 EvpnAf: TypeAlias = Instance.AfiSafis.L2vpnEvpn
+RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
 
 
 def build_default_instance(*, local_as: int, router_id: str) -> Instance:
@@ -37,6 +42,9 @@ def build_default_instance(*, local_as: int, router_id: str) -> Instance:
 
     neighbor = Instance.Neighbor(address="10.30.30.30", remote_as="internal")
     neighbor.afi_safis.l2vpn_evpn.activate = True
+    # Inbound policy on the EVPN session -- a leafref into
+    # /route-maps, so validate_tree checks the map exists.
+    neighbor.afi_safis.l2vpn_evpn.filters.route_map_in = "EVPN-IN"
     instance.neighbor.append(neighbor)
 
     evpn = instance.afi_safis.l2vpn_evpn
@@ -83,6 +91,16 @@ def build_vrf_instance_type5(*, local_as: int, vrf: str) -> Instance:
     return instance
 
 
+def build_route_maps() -> ProteusRouteMap:
+    root = ProteusRouteMap()
+    rmap = RouteMap(name="EVPN-IN")
+    entry = RouteMap.Entry(sequence=10, action="permit")
+    entry.match.evpn.route_type = "macip"
+    rmap.entry.append(entry)
+    root.route_maps.route_map.append(rmap)
+    return root
+
+
 def main() -> None:
     root = ProteusBgp()
     root.bgp.instance.append(
@@ -94,12 +112,17 @@ def main() -> None:
     root.bgp.instance.append(
         build_vrf_instance_type5(local_as=65000, vrf="vrf-purple")
     )
+    route_maps = build_route_maps()
 
-    # Whole-tree pass: leafref integrity, mandatory leaves, list keys,
-    # choice rules -- everything on-assignment validation cannot judge.
-    validate_tree(root)
+    # Whole-tree pass across both module roots: leafref integrity
+    # (incl. the neighbor's route-map reference), mandatory leaves,
+    # list keys, choice rules -- everything on-assignment validation
+    # cannot judge.
+    validate_tree(root, route_maps)
 
-    text = "".join(
+    # One combined frr.conf-shaped file: route-maps first, then the
+    # router bgp blocks.
+    text = render_route_maps(route_maps) + "".join(
         render_bgp_instance(instance) for instance in root.bgp.instance
     )
 

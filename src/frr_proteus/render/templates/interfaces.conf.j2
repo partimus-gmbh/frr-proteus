@@ -1,0 +1,10 @@
+{# One 'interface NAME' block per declared interface.
+   Text: lib/if.c cli_show_interface / cli_show_interface_desc /
+   cli_show_interface_end. #}
+{% for interface in interfaces.interface %}
+interface {{ interface.name }}
+{% if interface.description %}
+ description {{ interface.description }}
+{% endif %}
+exit
+{% endfor %}

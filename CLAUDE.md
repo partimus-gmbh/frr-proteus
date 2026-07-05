@@ -58,20 +58,42 @@ same shape (one `.j2` template, thin Python glue module, thin
 - `yang/custom/` -- **the schema new work targets**: a self-contained,
   readable rewrite replacing FRR's YANG as frr-proteus's input model
   (`proteus-bgp.yang`, `proteus-bgp-evpn.yang`, `proteus-route-map.yang`,
-  `proteus-types.yang`). Covers the full config surface bgpd's own
+  `proteus-types.yang`, plus the referenced-object modules
+  `proteus-filter.yang` (prefix-lists + zebra-style access-lists,
+  nested per-family ipv4/ipv6/mac containers; cisco-style ACLs
+  excluded), `proteus-bgp-filter.yang` (as-path access-lists,
+  community/large-community/extcommunity lists -- NAMED lists only,
+  the legacy numbered 1-99/100-500 form is excluded -- and
+  `bgp community alias` aliases; lives outside proteus-bgp so
+  proteus-route-map can leafref it without an import cycle),
+  `proteus-bfd.yang` (BFD profiles, intervals in MILLISECONDS
+  matching the CLI where FRR's own YANG stores µs; authentication
+  excluded pending a key-chain model), `proteus-interface.yang`
+  (minimal name+description, mainly a leafref target)). Covers the
+  full config surface bgpd's own
   config-write path emits (bgp_config_write* in bgp_vty.c/bgp_route.c/
   bgp_damp.c/bgp_bfd.c, bgp_config_write_evpn_info in bgp_evpn_vty.c,
   route-map match/set vocabulary from lib/routemap_cli.c +
   bgpd/bgp_routemap.c) -- exclusions (SRv6, vpn_policy leaking detail,
   encap/flowspec/link-state AFs, RPKI/BMP/VNC) are listed in
   proteus-bgp.yang's module description and marked with comments at
-  the spot where they'd go. Route-map references are YANG `leafref`s
-  into /route-maps (checked by validate_tree); references to objects
-  not modeled yet (prefix-lists, access-lists, as-path/community
-  lists, interfaces, BFD profiles) are plain strings each carrying a
+  the spot where they'd go. Object references (route-maps,
+  prefix-lists, access-lists, as-path/community lists, community
+  aliases, interfaces, BFD profiles) are YANG `leafref`s checked by
+  validate_tree; family-dependent references live in per-family
+  groupings (`neighbor-af-filters-ipv4/-ipv6/-evpn`,
+  `af-distance-ipv4/-ipv6`) so e.g. an ipv4-unicast prefix-list-in
+  can only name an IPv4 prefix-list (the EVPN variant keeps plain
+  strings -- no family-correct target). References to objects still
+  not modeled (VRFs, key-chains) stay plain strings with a
   `// TODO(leafref)` comment -- keep that convention: when leaving
   out a constraint because the referenced object type isn't modeled
-  yet, say so in a comment right there.
+  yet, say so in a comment right there. Gotcha: leafref as a UNION
+  member is NOT supported by the codegen backend (pyang only sets
+  i_leafref for direct leafref types; a union member would be typed
+  as plain str and validate nothing) -- that's why the neighbor
+  `address` key, `update-source`, and similar ip-or-ifname unions
+  stay strings; never put a leafref inside a union.
   Hard rules, per explicit user direction (gold standard:
   `/home/robin/work/srlinux-yang-models/all/v26.3.1/srl_nokia/models/`):
   (1) MUST NOT reference FRR's YANG at all -- not even ietf-inet-types
@@ -236,7 +258,22 @@ same shape (one `.j2` template, thin Python glue module, thin
   `render_bgp_instance(instance, format=...)` (takes one instance list
   entry; the vrf clause comes from its `vrf` key) plus
   `render_evpn_global(evpn, format=...)` for the experimental global
-  `evpn` block. Two output formats: `"frr"` (default) renders legacy
+  `evpn` block. The referenced-object renderers follow the same shape,
+  sharing one Jinja `Environment` from `_env.py`: `filters.py` /
+  `filters.conf.j2` (`render_filters`, prefix- and access-lists; IPv4
+  access-lists are UNPREFIXED `access-list ...` per lib/filter_cli.c),
+  `bgp_filters.py` (`render_bgp_filters`, as-path/community lists +
+  aliases, with a type-vs-value backstop check), `bfd.py`
+  (`render_bfd`), `interfaces.py` (`render_interfaces`), and
+  `route_map.py` / `route_map.conf.j2` (`render_route_maps` -- every
+  line replicates a vty_out in lib/routemap_cli.c's dispatchers;
+  bgp_routemap.c only holds the DEFPY parsers, route-maps ARE
+  northbound-converted). All are re-exported from `render/__init__`.
+  `bgp.conf.j2` also renders the neighbor reference lines (per-AF
+  distribute-list/prefix-list/route-map/unsuppress-map/advertise-map/
+  filter-list from bgp_config_write_filter, session-level bfd [profile]
+  and `neighbor X interface`); `has_config` is registered as a Jinja
+  *test* there for `selectattr(..., 'has_config')`. Two output formats: `"frr"` (default) renders legacy
   syntax and *translates* the experimental typing where stock FRR has
   an equivalent (vxlan-underlay -> `advertise-all-vni` (direct
   equivalent per the user), vlan-based-evi with origination-l2vni ->
@@ -255,14 +292,23 @@ same shape (one `.j2` template, thin Python glue module, thin
   [route-map ...]` line). Fix is the same both times: hoist the optional
   suffix into a `{% set %}` above the line so the content line ends in
   `{{ var }}` instead of `{% endif %}`.
-- `examples/basic_bgp.py` -- two-router eBGP config (step 1 smoke test).
+- `examples/basic_bgp.py` -- two-router eBGP config (step 1 smoke test);
+  r1 additionally exercises the object modules (prefix-list feeding a
+  route-map via route-map-in, BFD profile on the neighbor), composing
+  one frr.conf-shaped file per router (`out/r1_frr.conf`,
+  `out/r2_frr.conf`): objects first, then the router bgp block.
 - `examples/evpn_bgp.py` -- one EVPN VTEP: default instance
   (advertise-all-vni + per-VNI RD/RT) plus two VRF instances (auto RT,
-  type-5 advertisement). Writes one combined `out/evpn_frr.conf`, not
-  per-instance files -- see the frr.conf note above.
-- `tests/test_render_bgp.py`, `tests/test_render_bgp_evpn.py` -- renderer
-  unit tests. Use `pytest.importorskip` on the generated bindings module
-  so tests skip cleanly (not fail) if bindings haven't been generated.
+  type-5 advertisement) and a route-map on the EVPN neighbor. Writes one
+  combined `out/evpn_frr.conf`, not per-instance files -- see the
+  frr.conf note above.
+- `tests/test_render_*.py` -- renderer unit tests (bgp, bgp_evpn,
+  evpn_experimental, filters, bgp_filters, bfd, interfaces, route_map);
+  `tests/test_validate_object_refs.py` pins the cross-module leafref
+  checks (incl. family precision of the split filters/distance
+  groupings). All use `pytest.importorskip` on the generated bindings
+  module so tests skip cleanly (not fail) if bindings haven't been
+  generated.
 
 ## Current scope
 

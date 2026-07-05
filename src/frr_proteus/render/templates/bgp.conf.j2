@@ -21,13 +21,65 @@ router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
 {% if neighbor.remote_as is not none %}
  neighbor {{ neighbor.address }} remote-as {{ neighbor.remote_as }}
 {% endif %}
+{% if neighbor.source_interface %}
+ neighbor {{ neighbor.address }} interface {{ neighbor.source_interface }}
+{% endif %}
+{% if neighbor.bfd.enabled %}
+ neighbor {{ neighbor.address }} bfd
+{% endif %}
+{% if neighbor.bfd.check_control_plane_failure %}
+ neighbor {{ neighbor.address }} bfd check-control-plane-failure
+{% endif %}
+{% if neighbor.bfd.profile %}
+ neighbor {{ neighbor.address }} bfd profile {{ neighbor.bfd.profile }}
+{% endif %}
 {% endfor %}
-{% for af_cli, af in [("ipv4 unicast", instance.afi_safis.ipv4_unicast), ("ipv6 unicast", instance.afi_safis.ipv6_unicast)] %}
-{% if af.network %}
+{% for af_cli, af_field in [("ipv4 unicast", "ipv4_unicast"), ("ipv6 unicast", "ipv6_unicast")] %}
+{% set af = instance.afi_safis[af_field] %}
+{% set filter_neighbors = instance.neighbor
+     | selectattr('afi_safis.' ~ af_field ~ '.filters', 'has_config')
+     | list %}
+{% if af.network or filter_neighbors %}
  !
  address-family {{ af_cli }}
 {% for net in af.network %}
   network {{ net.prefix }}
+{% endfor %}
+{# Per-neighbor filter lines, in bgp_config_write_filter()'s order:
+   distribute-list, prefix-list, route-map, unsuppress-map,
+   advertise-map, filter-list (bgpd/bgp_vty.c). #}
+{% for neighbor in filter_neighbors %}
+{% set f = neighbor.afi_safis[af_field].filters %}
+{% if f.distribute_list_in %}
+  neighbor {{ neighbor.address }} distribute-list {{ f.distribute_list_in }} in
+{% endif %}
+{% if f.distribute_list_out %}
+  neighbor {{ neighbor.address }} distribute-list {{ f.distribute_list_out }} out
+{% endif %}
+{% if f.prefix_list_in %}
+  neighbor {{ neighbor.address }} prefix-list {{ f.prefix_list_in }} in
+{% endif %}
+{% if f.prefix_list_out %}
+  neighbor {{ neighbor.address }} prefix-list {{ f.prefix_list_out }} out
+{% endif %}
+{% if f.route_map_in %}
+  neighbor {{ neighbor.address }} route-map {{ f.route_map_in }} in
+{% endif %}
+{% if f.route_map_out %}
+  neighbor {{ neighbor.address }} route-map {{ f.route_map_out }} out
+{% endif %}
+{% if f.unsuppress_map %}
+  neighbor {{ neighbor.address }} unsuppress-map {{ f.unsuppress_map }}
+{% endif %}
+{% if f.conditional_advertisement.advertise_map %}
+  neighbor {{ neighbor.address }} advertise-map {{ f.conditional_advertisement.advertise_map }} {{ f.conditional_advertisement.condition }}-map {{ f.conditional_advertisement.condition_map }}
+{% endif %}
+{% if f.filter_list_in %}
+  neighbor {{ neighbor.address }} filter-list {{ f.filter_list_in }} in
+{% endif %}
+{% if f.filter_list_out %}
+  neighbor {{ neighbor.address }} filter-list {{ f.filter_list_out }} out
+{% endif %}
 {% endfor %}
  exit-address-family
 {% endif %}

@@ -6,6 +6,15 @@ module proteus-route-map {
   import proteus-types {
     prefix pt;
   }
+  import proteus-filter {
+    prefix filter;
+  }
+  import proteus-bgp-filter {
+    prefix bgpfilter;
+  }
+  import proteus-interface {
+    prefix intf;
+  }
 
   organization
     "frr-proteus";
@@ -28,12 +37,16 @@ module proteus-route-map {
 
      Referential integrity: other modules point at route-maps via
      leafref to /route-maps/route-map/name, and 'call' below does the
-     same. References *from* route-maps to filtering objects that are
-     not modeled yet (prefix-lists, access-lists, as-path access-lists,
-     community/extcommunity/large-community lists, MAC access-lists,
-     interfaces, VRFs) are plain strings, each marked with a
-     'TODO(leafref)' comment -- tighten them to leafrefs when those
-     objects get a proteus module.";
+     same. References *from* route-maps to filtering objects are
+     leafrefs into the proteus modules that model them:
+     prefix-lists/access-lists (proteus-filter), as-path access-lists
+     and community/extcommunity/large-community lists plus community
+     aliases (proteus-bgp-filter), interfaces (proteus-interface).
+     Legacy numbered community-list references ((1-99)/(100-500)) are
+     not expressible -- numbered lists are excluded from
+     proteus-bgp-filter (named lists only). References to objects
+     still not modeled (VRFs) stay plain strings with a
+     'TODO(leafref)' comment.";
 
   revision 2026-07-05 {
     description
@@ -139,37 +152,45 @@ module proteus-route-map {
              renderer must respect anyway.";
 
           leaf interface {
-            // TODO(leafref): no interface model yet (interfaces are
-            // zebra's surface); plain string until one exists.
-            type string;
+            type leafref {
+              path "/intf:interfaces/intf:interface/intf:name";
+            }
             description
               "'match interface IFNAME' (lib/routemap_cli.c).";
           }
 
           leaf ip-address {
-            // TODO(leafref): access-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:access-lists/filter:ipv4/"
+                 + "filter:access-list/filter:name";
+            }
             description
               "'match ip address ACCESSLIST4_NAME'
                (lib/routemap_cli.c).";
           }
           leaf ip-address-prefix-list {
-            // TODO(leafref): prefix-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:prefix-lists/filter:ipv4/"
+                 + "filter:prefix-list/filter:name";
+            }
             description
               "'match ip address prefix-list PREFIXLIST4_NAME'
                (lib/routemap_cli.c).";
           }
           leaf ip-next-hop {
-            // TODO(leafref): access-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:access-lists/filter:ipv4/"
+                 + "filter:access-list/filter:name";
+            }
             description
               "'match ip next-hop ACCESSLIST4_NAME'
                (lib/routemap_cli.c).";
           }
           leaf ip-next-hop-prefix-list {
-            // TODO(leafref): prefix-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:prefix-lists/filter:ipv4/"
+                 + "filter:prefix-list/filter:name";
+            }
             description
               "'match ip next-hop prefix-list PREFIXLIST4_NAME'
                (lib/routemap_cli.c).";
@@ -187,44 +208,56 @@ module proteus-route-map {
                (lib/routemap_cli.c).";
           }
           leaf ip-route-source {
-            // TODO(leafref): access-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:access-lists/filter:ipv4/"
+                 + "filter:access-list/filter:name";
+            }
             description
               "'match ip route-source ACCESSLIST4_NAME'
                (bgp_routemap.c).";
           }
           leaf ip-route-source-prefix-list {
-            // TODO(leafref): prefix-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:prefix-lists/filter:ipv4/"
+                 + "filter:prefix-list/filter:name";
+            }
             description
               "'match ip route-source prefix-list PREFIXLIST_NAME'
                (bgp_routemap.c).";
           }
 
           leaf ipv6-address {
-            // TODO(leafref): access-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:access-lists/filter:ipv6/"
+                 + "filter:access-list/filter:name";
+            }
             description
               "'match ipv6 address ACCESSLIST6_NAME'
                (lib/routemap_cli.c).";
           }
           leaf ipv6-address-prefix-list {
-            // TODO(leafref): prefix-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:prefix-lists/filter:ipv6/"
+                 + "filter:prefix-list/filter:name";
+            }
             description
               "'match ipv6 address prefix-list PREFIXLIST6_NAME'
                (lib/routemap_cli.c).";
           }
           leaf ipv6-next-hop {
-            // TODO(leafref): access-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:access-lists/filter:ipv6/"
+                 + "filter:access-list/filter:name";
+            }
             description
               "'match ipv6 next-hop ACCESSLIST6_NAME'
                (lib/routemap_cli.c).";
           }
           leaf ipv6-next-hop-prefix-list {
-            // TODO(leafref): prefix-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:prefix-lists/filter:ipv6/"
+                 + "filter:prefix-list/filter:name";
+            }
             description
               "'match ipv6 next-hop prefix-list PREFIXLIST_NAME'
                (lib/routemap_cli.c).";
@@ -284,32 +317,37 @@ module proteus-route-map {
                routes (bgp_routemap.c).";
           }
           leaf alias {
-            type string;
+            type leafref {
+              path "/bgpfilter:community-aliases/bgpfilter:alias/"
+                 + "bgpfilter:name";
+            }
             description
               "'match alias ALIAS_NAME': community alias defined with
-               'bgp community alias' (bgp_routemap.c).
-               // Community aliases are not modeled yet, hence no
-               // leafref here.";
+               'bgp community alias' (bgp_routemap.c).";
           }
 
           leaf as-path {
-            // TODO(leafref): as-path access-lists ('bgp as-path
-            // access-list') are not modeled yet.
-            type string;
+            type leafref {
+              path "/bgpfilter:bgp-filters/"
+                 + "bgpfilter:as-path-access-list/bgpfilter:name";
+            }
             description
               "'match as-path AS_PATH_FILTER_NAME' (bgp_routemap.c).";
           }
 
           container community {
             description
-              "'match community <(1-99)|(100-500)|COMMUNITY_LIST_NAME>
-               [<exact-match|any>]' (bgp_routemap.c).";
+              "'match community COMMUNITY_LIST_NAME
+               [<exact-match|any>]' (bgp_routemap.c). The legacy
+               numbered form ((1-99)/(100-500)) is not expressible:
+               numbered lists are excluded from proteus-bgp-filter.";
             leaf list-name {
-              // TODO(leafref): community-lists ('bgp community-list')
-              // are not modeled yet.
-              type string;
+              type leafref {
+                path "/bgpfilter:bgp-filters/"
+                   + "bgpfilter:community-list/bgpfilter:name";
+              }
               description
-                "Community list name or legacy number.";
+                "Community list name.";
             }
             leaf match-style {
               type enumeration {
@@ -330,12 +368,14 @@ module proteus-route-map {
 
           container extcommunity {
             description
-              "'match extcommunity <(1-99)|(100-500)|
-               EXTCOMMUNITY_LIST_NAME> [<exact-match|any>]'
-               (bgp_routemap.c).";
+              "'match extcommunity EXTCOMMUNITY_LIST_NAME
+               [<exact-match|any>]' (bgp_routemap.c). Numbered lists
+               are not expressible (see 'match community').";
             leaf list-name {
-              // TODO(leafref): extcommunity-lists are not modeled yet.
-              type string;
+              type leafref {
+                path "/bgpfilter:bgp-filters/"
+                   + "bgpfilter:extcommunity-list/bgpfilter:name";
+              }
             }
             leaf match-style {
               type enumeration {
@@ -347,13 +387,14 @@ module proteus-route-map {
 
           container large-community {
             description
-              "'match large-community <(1-99)|(100-500)|
-               LCOMMUNITY_LIST_NAME> [<exact-match|any>]'
-               (bgp_routemap.c).";
+              "'match large-community LCOMMUNITY_LIST_NAME
+               [<exact-match|any>]' (bgp_routemap.c). Numbered lists
+               are not expressible (see 'match community').";
             leaf list-name {
-              // TODO(leafref): large-community-lists are not modeled
-              // yet.
-              type string;
+              type leafref {
+                path "/bgpfilter:bgp-filters/"
+                   + "bgpfilter:large-community-list/bgpfilter:name";
+              }
             }
             leaf match-style {
               type enumeration {
@@ -364,8 +405,10 @@ module proteus-route-map {
           }
 
           leaf mac-address {
-            // TODO(leafref): MAC access-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/filter:access-lists/filter:mac/"
+                 + "filter:access-list/filter:name";
+            }
             description
               "'match mac address ACCESSLIST_MAC_NAME'
                (bgp_routemap.c).";
@@ -636,8 +679,10 @@ module proteus-route-map {
               "'set as-path exclude ASNUM...' (bgp_routemap.c).";
           }
           leaf as-path-exclude-access-list {
-            // TODO(leafref): as-path access-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/bgpfilter:bgp-filters/"
+                 + "bgpfilter:as-path-access-list/bgpfilter:name";
+            }
             description
               "'set as-path exclude as-path-access-list
                AS_PATH_FILTER_NAME' (bgp_routemap.c).";
@@ -649,8 +694,10 @@ module proteus-route-map {
                argument text, emitted verbatim (bgp_routemap.c).";
           }
           leaf as-path-replace-access-list {
-            // TODO(leafref): as-path access-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/bgpfilter:bgp-filters/"
+                 + "bgpfilter:as-path-access-list/bgpfilter:name";
+            }
             description
               "'set as-path replace as-path-access-list
                AS_PATH_FILTER_NAME [ASNUM]' (bgp_routemap.c).";
@@ -741,11 +788,14 @@ module proteus-route-map {
                (bgp_routemap.c).";
           }
           leaf comm-list-delete {
-            // TODO(leafref): community-lists are not modeled yet.
-            type string;
+            type leafref {
+              path "/bgpfilter:bgp-filters/"
+                 + "bgpfilter:community-list/bgpfilter:name";
+            }
             description
-              "'set comm-list <(1-99)|(100-500)|COMMUNITY_LIST_NAME>
-               delete' (bgp_routemap.c).";
+              "'set comm-list COMMUNITY_LIST_NAME delete'
+               (bgp_routemap.c). Numbered lists are not expressible
+               (excluded from proteus-bgp-filter).";
           }
           leaf large-community {
             type string;
@@ -754,12 +804,14 @@ module proteus-route-map {
                semantics as 'set community' (bgp_routemap.c).";
           }
           leaf large-comm-list-delete {
-            // TODO(leafref): large-community-lists are not modeled
-            // yet.
-            type string;
+            type leafref {
+              path "/bgpfilter:bgp-filters/"
+                 + "bgpfilter:large-community-list/bgpfilter:name";
+            }
             description
-              "'set large-comm-list <(1-99)|(100-500)|
-               LCOMMUNITY_LIST_NAME> delete' (bgp_routemap.c).";
+              "'set large-comm-list LCOMMUNITY_LIST_NAME delete'
+               (bgp_routemap.c). Numbered lists are not expressible
+               (excluded from proteus-bgp-filter).";
           }
 
           leaf extcommunity-rt {
