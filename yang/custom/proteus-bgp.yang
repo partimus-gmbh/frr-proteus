@@ -907,9 +907,12 @@ module proteus-bgp {
     container soo {
       description
         "'neighbor X soo ASN:NN_OR_IP-ADDRESS:NN': site-of-origin
-         extended community stamped on routes from this peer.
-         Unconfigured when no encoding is set.";
-      uses pt:route-target;
+         extended community stamped on routes from this peer. A Route
+         Origin (RFC 4360 subtype 0x03) -- deliberately NOT the
+         route-target grouping, which is a different extended
+         community (subtype 0x02). Unconfigured when no encoding is
+         set.";
+      uses pt:route-origin;
     }
 
     leaf weight {

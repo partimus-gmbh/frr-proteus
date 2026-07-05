@@ -69,7 +69,9 @@ def test_flooding(value):
 
 def test_vni_block():
     instance = _new_instance()
-    vni = EvpnAf.Vni(vni_id=101, rd="10.10.10.10:101", flooding="disable")
+    vni = EvpnAf.Vni(vni_id=101, flooding="disable")
+    vni.rd.ipv4.administrator = "10.10.10.10"
+    vni.rd.ipv4.assigned_number = 101
     vni.route_target_import.as2.append(
         EvpnAf.Vni.RouteTargetImport.As2(global_admin=65000, local_admin=101)
     )
@@ -94,7 +96,8 @@ def test_vni_block():
 def test_vrf_rd_and_route_target():
     instance = _new_instance(vrf="vrf-red")
     evpn = instance.afi_safis.l2vpn_evpn
-    evpn.rd = "10.10.10.10:101"
+    evpn.rd.ipv4.administrator = "10.10.10.10"
+    evpn.rd.ipv4.assigned_number = 101
     evpn.route_target_import.as2.append(
         EvpnAf.RouteTargetImport.As2(global_admin=65000, local_admin=300)
     )

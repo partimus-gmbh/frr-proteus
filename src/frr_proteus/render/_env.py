@@ -12,6 +12,8 @@ import pathlib
 
 import jinja2
 
+from frr_proteus.render import helpers
+
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
 
 env = jinja2.Environment(
@@ -20,4 +22,14 @@ env = jinja2.Environment(
     lstrip_blocks=True,
     keep_trailing_newline=True,
     undefined=jinja2.StrictUndefined,
+)
+
+env.globals.update(
+    rd_text=helpers.rd_text,
+    community_texts=helpers.community_texts,
+    large_community_texts=helpers.large_community_texts,
+    community_value_text=helpers.community_value_text,
+    extcommunity_texts=helpers.extcommunity_texts,
+    route_target_texts=helpers.route_target_texts,
+    has_config=helpers.has_config,
 )

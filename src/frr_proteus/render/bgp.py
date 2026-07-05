@@ -39,6 +39,7 @@ _env = jinja2.Environment(
 _env.globals.update(
     evpn_af_needed=helpers.evpn_af_needed,
     route_target_texts=helpers.route_target_texts,
+    rd_text=helpers.rd_text,
 )
 # As a Jinja *test* so templates can write
 # `selectattr('afi_safis.ipv4_unicast.filters', 'has_config')`.

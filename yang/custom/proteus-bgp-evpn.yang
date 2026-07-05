@@ -220,9 +220,11 @@ module proteus-bgp-evpn {
       description
         "'mac-vrf soo ASN:NN_OR_IP-ADDRESS:NN': site-of-origin for
          all MAC-VRFs, loop protection for anycast VTEPs
-         (macvrf_soo_global_cmd). Unconfigured when no encoding is
-         set.";
-      uses pt:route-target;
+         (macvrf_soo_global_cmd). A Route Origin (RFC 4360 subtype
+         0x03) -- deliberately NOT the route-target grouping, which
+         is a different extended community (subtype 0x02).
+         Unconfigured when no encoding is set.";
+      uses pt:route-origin;
     }
 
     leaf enable-resolve-overlay-index {
@@ -340,10 +342,11 @@ module proteus-bgp-evpn {
           "VXLAN Network Identifier.";
       }
 
-      leaf rd {
-        type pt:route-distinguisher;
+      container rd {
         description
-          "'rd <ASN:NN|A.B.C.D:NN>' (bgp_evpn_vni_rd_cmd).";
+          "'rd <ASN:NN|A.B.C.D:NN>' (bgp_evpn_vni_rd_cmd).
+           Unconfigured when no encoding is set.";
+        uses pt:route-distinguisher;
       }
 
       leaf flooding {
@@ -378,11 +381,11 @@ module proteus-bgp-evpn {
       }
     }
 
-    leaf rd {
-      type pt:route-distinguisher;
+    container rd {
       description
         "'rd <ASN:NN|A.B.C.D:NN>'. Per-VRF instance only.
-         (bgp_evpn_vrf_rd_cmd)";
+         Unconfigured when no encoding is set. (bgp_evpn_vrf_rd_cmd)";
+      uses pt:route-distinguisher;
     }
 
     uses vrf-route-targets;
@@ -440,6 +443,12 @@ module proteus-bgp-evpn {
 
     list network {
       key "prefix";
+      must "rd/as2/administrator or rd/ipv4/administrator "
+         + "or rd/as4/administrator or rd/mac or rd/raw" {
+        error-message
+          "an EVPN type-5 'network' statement requires an rd
+           (mandatory token of evpnrt5_network_cmd)";
+      }
       description
         "EVPN type-5 static 'network' statement
          ('network <A.B.C.D/M|X:X::X:X/M> rd RD ethtag WORD label
@@ -458,11 +467,12 @@ module proteus-bgp-evpn {
         description
           "IP prefix carried in the type-5 route.";
       }
-      leaf rd {
-        type pt:route-distinguisher;
-        mandatory true;
+      container rd {
         description
-          "'rd ASN:NN_OR_IP-ADDRESS:NN'.";
+          "'rd ASN:NN_OR_IP-ADDRESS:NN'. Required (the 'must' on the
+           network entry -- 'mandatory' can't express it because an
+           all-empty container counts as unconfigured).";
+        uses pt:route-distinguisher;
       }
       leaf ethtag {
         type uint32;

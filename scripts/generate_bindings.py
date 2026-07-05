@@ -33,6 +33,10 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 FRR_YANG_DIR = REPO_ROOT / "frr" / "yang"
 AUGMENTS_YANG_DIR = REPO_ROOT / "yang" / "augments"
 CUSTOM_YANG_DIR = REPO_ROOT / "yang" / "custom"
+# Vendored external modules (pristine RFC 6991 ietf-inet-types /
+# ietf-yang-types today; any future vendored third-party YANG goes
+# here too, one subdirectory per origin).
+VENDOR_IETF_YANG_DIR = REPO_ROOT / "yang" / "vendor" / "ietf"
 OUTPUT_DIR = REPO_ROOT / "src" / "frr_proteus" / "_generated"
 
 # Options shared by both runs. The backend generates validation and YANG
@@ -116,7 +120,7 @@ MODEL_SETS = {
         OUTPUT_DIR / "frr_bgp",
     ),
     "custom": lambda: (
-        [CUSTOM_YANG_DIR],
+        [CUSTOM_YANG_DIR, VENDOR_IETF_YANG_DIR],
         CUSTOM_MODULES,
         OUTPUT_DIR / "proteus",
     ),

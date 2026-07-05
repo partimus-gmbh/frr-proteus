@@ -488,10 +488,12 @@ module proteus-route-map {
                 "'match evpn default-route': default EVPN type-5
                  route.";
             }
-            leaf rd {
-              type pt:route-distinguisher;
+            container rd {
               description
-                "'match evpn rd ASN:NN_OR_IP-ADDRESS:NN'.";
+                "'match evpn rd ASN:NN_OR_IP-ADDRESS:NN'.
+                 Unconfigured when no encoding is set; the raw case
+                 exists precisely for matching malformed RDs.";
+              uses pt:route-distinguisher;
             }
             leaf route-type {
               type enumeration {
@@ -786,15 +788,32 @@ module proteus-route-map {
               "'set weight (0-4294967295)' (bgp_routemap.c).";
           }
 
-          leaf community {
-            type string;
+          container community {
+            must "not(none) or not(member or well-known or raw "
+               + "or additive)" {
+              error-message
+                "'set community none' takes no community values";
+            }
             description
-              "'set community <AA:NN...|none>': the full value text
-               exactly as FRR stores and re-emits it -- one or more
-               communities (numeric AA:NN or well-known names like
-               no-export), optionally ending in 'additive', or the
-               single keyword 'none' to strip the attribute
-               (bgp_routemap.c).";
+              "'set community <AA:NN... [additive]|none>'
+               (bgp_routemap.c). Structured values plus a raw
+               fallback (for deliberately setting values outside the
+               standard forms); 'none' strips the attribute and is
+               exclusive with everything else (the 'must').
+               Unconfigured when empty.";
+            uses pt:community-set;
+            leaf additive {
+              type boolean;
+              description
+                "Trailing 'additive': add to the existing communities
+                 instead of replacing them. Only set true.";
+            }
+            leaf none {
+              type boolean;
+              description
+                "'set community none': strip the attribute. Only set
+                 true.";
+            }
           }
           leaf comm-list-delete {
             type leafref {
@@ -806,11 +825,27 @@ module proteus-route-map {
                (bgp_routemap.c). Numbered lists are not expressible
                (excluded from proteus-bgp-filter).";
           }
-          leaf large-community {
-            type string;
+          container large-community {
+            must "not(none) or not(member or raw or additive)" {
+              error-message
+                "'set large-community none' takes no values";
+            }
             description
-              "'set large-community <AA:BB:CC...|none>', same verbatim
-               semantics as 'set community' (bgp_routemap.c).";
+              "'set large-community <GA:LD1:LD2... [additive]|none>'
+               (bgp_routemap.c), same shape as 'set community'.
+               Unconfigured when empty.";
+            uses pt:large-community-set;
+            leaf additive {
+              type boolean;
+              description
+                "Trailing 'additive'. Only set true.";
+            }
+            leaf none {
+              type boolean;
+              description
+                "'set large-community none': strip the attribute.
+                 Only set true.";
+            }
           }
           leaf large-comm-list-delete {
             type leafref {
@@ -823,12 +858,18 @@ module proteus-route-map {
                (excluded from proteus-bgp-filter).";
           }
 
-          leaf extcommunity-rt {
-            type string;
+          container extcommunity-rt {
             description
               "'set extcommunity rt ASN:NN_OR_IP-ADDRESS:NN...':
-               space-separated RT list, emitted verbatim
-               (bgp_routemap.c).";
+               space-separated route-target list (bgp_routemap.c).
+               Unconfigured when empty.";
+            uses pt:route-target-set;
+            leaf-list raw {
+              type string;
+              description
+                "Fallback: RT tokens emitted verbatim, for values
+                 outside the structured encodings.";
+            }
           }
           leaf extcommunity-nt {
             type string;
@@ -836,11 +877,18 @@ module proteus-route-map {
               "'set extcommunity nt RTLIST...': node-target extended
                communities (bgp_routemap.c).";
           }
-          leaf extcommunity-soo {
-            type string;
+          container extcommunity-soo {
             description
-              "'set extcommunity soo ASN:NN_OR_IP-ADDRESS:NN...'
-               (bgp_routemap.c).";
+              "'set extcommunity soo ASN:NN_OR_IP-ADDRESS:NN...':
+               space-separated site-of-origin list (bgp_routemap.c).
+               Route Origins (RFC 4360 subtype 0x03), NOT route
+               targets. Unconfigured when empty.";
+            uses pt:route-origin-set;
+            leaf-list raw {
+              type string;
+              description
+                "Fallback: SoO tokens emitted verbatim.";
+            }
           }
           leaf extcommunity-color {
             type string;

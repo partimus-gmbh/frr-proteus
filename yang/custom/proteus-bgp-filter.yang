@@ -39,69 +39,30 @@ module proteus-bgp-filter {
      proteus-route-map can leafref 'match alias' without importing
      proteus-bgp, which already imports proteus-route-map (cycle).";
 
+  revision 2026-07-06 {
+    description
+      "Structured values: standard community-list entries carry
+       proteus-types community/large-community sets (typed
+       components + well-known enum + raw fallback) instead of
+       pattern-checked strings; extcommunity-list entries split into
+       route-target and route-origin sets (distinct RFC 4360
+       subtypes); aliases carry a structured community-value.";
+  }
   revision 2026-07-05 {
     description
       "Initial revision.";
   }
 
   /*
-   * Value typedefs. Patterns follow FRR's own frr-bgp-filter.yang
-   * (community-string / large-community-string), rewritten here so
-   * this module stays self-contained (yang/custom imports nothing
-   * from frr/yang/ -- see proteus-types).
+   * Community/RD/RT/SoO values are STRUCTURED (proteus-types
+   * groupings), not pattern-checked strings: standard communities
+   * split into global-admin/local-admin, large communities into RFC
+   * 8092's three fields, extended communities into route-target vs
+   * route-origin sets (different RFC 4360 subtypes). Every set
+   * carries a raw fallback rendered verbatim -- matching or
+   * scrubbing deliberately malformed values is a legitimate
+   * filtering use case.
    */
-
-  typedef community-string {
-    type string {
-      pattern '(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}'
-            + '|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0)'
-            + '(:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}'
-            + '|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0))?'
-            + '|local-AS|no-advertise|no-export|internet';
-    }
-    description
-      "One standard BGP community: 'AA:NN' (each 0-65535), a bare
-       16-bit number, or a well-known name
-       (local-AS|no-advertise|no-export|internet). Pattern from FRR's
-       frr-bgp-filter.yang typedef community-string.";
-  }
-
-  typedef large-community-string {
-    type string {
-      pattern '(429496729[0-5]|42949672[0-8][0-9]|4294967[01][0-9]{2}'
-            + '|429496[0-6][0-9]{3}|42949[0-5][0-9]{4}|4294[0-8][0-9]{5}'
-            + '|429[0-3][0-9]{6}|42[0-8][0-9]{7}|4[01][0-9]{8}'
-            + '|[1-3][0-9]{9}|[1-9][0-9]{0,8}|0)'
-            + '(:(429496729[0-5]|42949672[0-8][0-9]|4294967[01][0-9]{2}'
-            + '|429496[0-6][0-9]{3}|42949[0-5][0-9]{4}|4294[0-8][0-9]{5}'
-            + '|429[0-3][0-9]{6}|42[0-8][0-9]{7}|4[01][0-9]{8}'
-            + '|[1-3][0-9]{9}|[1-9][0-9]{0,8}|0)){2}';
-    }
-    description
-      "One large community 'A:B:C' (each 0-4294967295). Pattern from
-       FRR's frr-bgp-filter.yang typedef large-community-string
-       (restricted to exactly three components, the form
-       'bgp large-community-list standard' accepts).";
-  }
-
-  typedef extcommunity-standard {
-    type string {
-      pattern '(rt|soo) ('
-            + '(429496729[0-5]|42949672[0-8][0-9]|4294967[01][0-9]{2}'
-            + '|429496[0-6][0-9]{3}|42949[0-5][0-9]{4}|4294[0-8][0-9]{5}'
-            + '|429[0-3][0-9]{6}|42[0-8][0-9]{7}|4[01][0-9]{8}'
-            + '|[1-3][0-9]{9}|[1-9][0-9]{0,8}|0)'
-            + '|(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
-            + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]))'
-            + ':(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}'
-            + '|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0)';
-    }
-    description
-      "One standard extended community:
-       'rt aa:nn_or_IPaddr:nn' or 'soo aa:nn_or_IPaddr:nn'
-       (EXTCOMMUNITY_VAL_STR, DEFUN extcommunity_list_standard in
-       bgpd/bgp_vty.c).";
-  }
 
   grouping bgp-filter-entry-header {
     description
@@ -223,18 +184,22 @@ module proteus-bgp-filter {
              type leaf (the 'must' pair).";
 
           case standard {
-            leaf-list community {
-              type community-string;
-              min-elements 1;
+            container communities {
               must "../../type = 'standard'" {
                 error-message
                   "literal community values require a standard-type
                    list";
               }
+              must "member or well-known or raw" {
+                error-message
+                  "a standard community-list entry needs at least one
+                   community value";
+              }
               description
-                "Literal communities (AA:NN... -- one config line
-                 carries the whole space-separated set; FRR stores
-                 them as one entry).";
+                "Literal communities -- one config line carries the
+                 whole space-separated set; FRR stores them as one
+                 entry.";
+              uses pt:community-set;
             }
           }
           case expanded {
@@ -299,17 +264,21 @@ module proteus-bgp-filter {
              type leaf.";
 
           case standard {
-            leaf-list large-community {
-              type large-community-string;
-              min-elements 1;
+            container large-communities {
               must "../../type = 'standard'" {
                 error-message
                   "literal large-community values require a
                    standard-type list";
               }
+              must "member or raw" {
+                error-message
+                  "a standard large-community-list entry needs at
+                   least one value";
+              }
               description
-                "Literal large communities (AA:BB:CC... -- one config
-                 line carries the whole space-separated set).";
+                "Literal large communities -- one config line carries
+                 the whole space-separated set.";
+              uses pt:large-community-set;
             }
           }
           case expanded {
@@ -375,18 +344,44 @@ module proteus-bgp-filter {
              type leaf.";
 
           case standard {
-            leaf-list extcommunity {
-              type extcommunity-standard;
-              min-elements 1;
+            container extcommunities {
               must "../../type = 'standard'" {
                 error-message
                   "literal extended-community values require a
                    standard-type list";
               }
+              must "route-target/as2 or route-target/as4 "
+                 + "or route-target/ipv4 or route-origin/as2 "
+                 + "or route-origin/as4 or route-origin/ipv4 or raw" {
+                error-message
+                  "a standard extcommunity-list entry needs at least
+                   one value";
+              }
               description
-                "Literal extended communities ('rt AA:NN' /
-                 'soo A.B.C.D:NN' ... -- one config line carries the
-                 whole space-separated set).";
+                "Literal extended communities -- one config line
+                 carries the whole set, each value rendered as
+                 'rt <RT>' or 'soo <SoO>'. Route targets (RFC 4360
+                 subtype 0x02) and route origins (subtype 0x03) are
+                 distinct sets; the raw fallback tokens are emitted
+                 verbatim (including the rt/soo keyword).";
+              container route-target {
+                description
+                  "'rt AA:NN' / 'rt A.B.C.D:NN' values.";
+                uses pt:route-target-set;
+              }
+              container route-origin {
+                description
+                  "'soo AA:NN' / 'soo A.B.C.D:NN' values
+                   (site-of-origin).";
+                uses pt:route-origin-set;
+              }
+              leaf-list raw {
+                type string;
+                description
+                  "Fallback: whole tokens ('rt ...' / 'soo ...')
+                   emitted verbatim, for values outside the
+                   structured encodings.";
+              }
             }
           }
           case expanded {
@@ -416,14 +411,22 @@ module proteus-bgp-filter {
 
     list alias {
       key "name";
-      unique "community";
+      must "community/community/global-admin "
+         + "or community/well-known "
+         + "or community/large-community/global-admin "
+         + "or community/raw" {
+        error-message
+          "an alias needs the community value it names";
+      }
       description
         "One 'bgp community alias COMMUNITY ALIAS' line (DEFPY
          bgp_community_alias_cmd in bgpd/bgp_vty.c; written by
          bgp_community_alias_write in bgpd/bgp_community_alias.c).
-         Both directions are unique: a community has one alias and an
-         alias names one community (enforced by the DEFPY; here via
-         the list key + 'unique').";
+         Both directions are unique in FRR: a community has one alias
+         and an alias names one community -- the alias direction is
+         the list key; the community direction is enforced by the
+         DEFPY only (a 'unique' statement can't span the value
+         choice's branches).";
 
       leaf name {
         type pt:object-name;
@@ -432,15 +435,12 @@ module proteus-bgp-filter {
            references.";
       }
 
-      leaf community {
-        type union {
-          type community-string;
-          type large-community-string;
-        }
-        mandatory true;
+      container community {
         description
-          "The community or large-community value being aliased
-           (the WORD argument; FRR accepts both kinds).";
+          "The community or large-community value being aliased (the
+           WORD argument; FRR accepts both kinds). Required -- the
+           'must' on the alias entry.";
+        uses pt:community-value;
       }
     }
   }

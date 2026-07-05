@@ -5,23 +5,34 @@
    <standard|expanded> NAME seq SEQ <permit|deny> VALUE', likewise
    large-community-list / extcommunity-list; named lists only -- the
    numbered form is not modeled), bgpd/bgp_community_alias.c
-   bgp_community_alias_write ('bgp community alias COMMUNITY ALIAS'). #}
-{% macro community_list_lines(kw, lists, values_attr) %}
-{% for cl in lists %}
-{% for e in cl.entry %}
-{% set value = e.regex if cl.type == 'expanded' else e[values_attr] | join(' ') %}
-bgp {{ kw }} {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
-{% endfor %}
-{% endfor %}
-{% endmacro %}
+   bgp_community_alias_write ('bgp community alias COMMUNITY ALIAS').
+   Standard-list values are structured (proteus-types sets) and
+   rendered by the community_texts / large_community_texts /
+   extcommunity_texts helpers; raw fallback entries pass through
+   verbatim. #}
 {% for asp in bgp_filters.as_path_access_list %}
 {% for e in asp.entry %}
 bgp as-path access-list {{ asp.name }} seq {{ e.sequence }} {{ e.action }} {{ e.regex }}
 {% endfor %}
 {% endfor %}
-{{ community_list_lines('community-list', bgp_filters.community_list, 'community') -}}
-{{ community_list_lines('large-community-list', bgp_filters.large_community_list, 'large_community') -}}
-{{ community_list_lines('extcommunity-list', bgp_filters.extcommunity_list, 'extcommunity') -}}
+{% for cl in bgp_filters.community_list %}
+{% for e in cl.entry %}
+{% set value = e.regex if cl.type == 'expanded' else community_texts(e.communities) | join(' ') %}
+bgp community-list {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
+{% endfor %}
+{% endfor %}
+{% for cl in bgp_filters.large_community_list %}
+{% for e in cl.entry %}
+{% set value = e.regex if cl.type == 'expanded' else large_community_texts(e.large_communities) | join(' ') %}
+bgp large-community-list {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
+{% endfor %}
+{% endfor %}
+{% for cl in bgp_filters.extcommunity_list %}
+{% for e in cl.entry %}
+{% set value = e.regex if cl.type == 'expanded' else extcommunity_texts(e.extcommunities) | join(' ') %}
+bgp extcommunity-list {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
+{% endfor %}
+{% endfor %}
 {% for alias in community_aliases.alias %}
-bgp community alias {{ alias.community }} {{ alias.name }}
+bgp community alias {{ community_value_text(alias.community) }} {{ alias.name }}
 {% endfor %}

@@ -36,8 +36,9 @@ new scheme emitted, legacy syntax removed. #}
 {% endif %}
 {% for vni in evpn.vni %}
   vni {{ vni.vni_id }}
-{% if vni.rd %}
-   rd {{ vni.rd }}
+{% set vni_rd = rd_text(vni.rd) %}
+{% if vni_rd %}
+   rd {{ vni_rd }}
 {% endif %}
 {% for rt in route_target_texts(vni.route_target_import) %}
    route-target import {{ rt }}
@@ -68,8 +69,9 @@ new scheme emitted, legacy syntax removed. #}
   exit-vni
 {% endif %}
 {% endfor %}
-{% if evpn.rd %}
-  rd {{ evpn.rd }}
+{% set vrf_rd = rd_text(evpn.rd) %}
+{% if vrf_rd %}
+  rd {{ vrf_rd }}
 {% endif %}
 {{ evpn_macros.vrf_route_targets(evpn, "  ") -}}
 {% if evpn.advertise_ipv4_unicast.enabled %}

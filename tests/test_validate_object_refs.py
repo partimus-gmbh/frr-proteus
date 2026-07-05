@@ -93,11 +93,18 @@ def test_route_map_bgp_filter_refs():
     asp.entry.append(Filters.AsPathAccessList.Entry(sequence=5, action="permit", regex=".*"))
     bgpfilter_root.bgp_filters.as_path_access_list.append(asp)
     cl = Filters.CommunityList(name="CL", type="standard")
-    cl.entry.append(Filters.CommunityList.Entry(sequence=5, action="permit", community=["65001:1"]))
-    bgpfilter_root.bgp_filters.community_list.append(cl)
-    bgpfilter_root.community_aliases.alias.append(
-        bindings.ProteusBgpFilter.CommunityAliases.Alias(name="gold", community="65001:1")
+    cl_entry = Filters.CommunityList.Entry(sequence=5, action="permit")
+    cl_entry.communities.member.append(
+        Filters.CommunityList.Entry.Communities.Member(
+            global_admin=65001, local_admin=1
+        )
     )
+    cl.entry.append(cl_entry)
+    bgpfilter_root.bgp_filters.community_list.append(cl)
+    alias = bindings.ProteusBgpFilter.CommunityAliases.Alias(name="gold")
+    alias.community.community.global_admin = 65001
+    alias.community.community.local_admin = 1
+    bgpfilter_root.community_aliases.alias.append(alias)
     bindings.validate_tree(*roots)
 
 
@@ -151,9 +158,25 @@ def test_community_list_type_value_must():
     bgpfilter_root = roots[3]
     Filters = bindings.ProteusBgpFilter.BgpFilters
     cl = Filters.CommunityList(name="BROKEN", type="expanded")
-    cl.entry.append(
-        Filters.CommunityList.Entry(sequence=5, action="permit", community=["65001:1"])
+    entry = Filters.CommunityList.Entry(sequence=5, action="permit")
+    entry.communities.member.append(
+        Filters.CommunityList.Entry.Communities.Member(
+            global_admin=65001, local_admin=1
+        )
     )
+    cl.entry.append(entry)
     bgpfilter_root.bgp_filters.community_list.append(cl)
     with pytest.raises(bindings.YangValidationError, match="standard-type"):
+        bindings.validate_tree(*roots)
+
+
+def test_rd_type6_mac_is_blocked():
+    # The type-6 (MAC) RD case exists for standards completeness but
+    # is blocked with 'must false()' until FRR can parse it.
+    roots = _all_roots()
+    bgp_root = roots[0]
+    instance = Instance(vrf="default", autonomous_system=65001)
+    instance.afi_safis.l2vpn_evpn.rd.mac = "00:11:22:33:44:55"
+    bgp_root.bgp.instance.append(instance)
+    with pytest.raises(bindings.YangValidationError, match="type-6"):
         bindings.validate_tree(*roots)

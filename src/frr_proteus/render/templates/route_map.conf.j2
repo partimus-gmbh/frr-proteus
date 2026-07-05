@@ -109,8 +109,9 @@ route-map {{ rm.name }} {{ e.action }} {{ e.sequence }}
 {% if m.evpn.default_route %}
  match evpn default-route
 {% endif %}
-{% if m.evpn.rd %}
- match evpn rd {{ m.evpn.rd }}
+{% set evpn_rd = rd_text(m.evpn.rd) %}
+{% if evpn_rd %}
+ match evpn rd {{ evpn_rd }}
 {% endif %}
 {% if m.evpn.route_type %}
  match evpn route-type {{ m.evpn.route_type }}
@@ -207,26 +208,40 @@ route-map {{ rm.name }} {{ e.action }} {{ e.sequence }}
 {% if s.weight is not none %}
  set weight {{ s.weight }}
 {% endif %}
-{% if s.community %}
- set community {{ s.community }}
+{% if s.community.none %}
+ set community none
+{% else %}
+{% set comm_texts = community_texts(s.community) %}
+{% if comm_texts %}
+{% set additive = ' additive' if s.community.additive else '' %}
+ set community {{ comm_texts | join(' ') }}{{ additive }}
+{% endif %}
 {% endif %}
 {% if s.comm_list_delete %}
  set comm-list {{ s.comm_list_delete }} delete
 {% endif %}
-{% if s.large_community %}
- set large-community {{ s.large_community }}
+{% if s.large_community.none %}
+ set large-community none
+{% else %}
+{% set lcomm_texts = large_community_texts(s.large_community) %}
+{% if lcomm_texts %}
+{% set additive = ' additive' if s.large_community.additive else '' %}
+ set large-community {{ lcomm_texts | join(' ') }}{{ additive }}
+{% endif %}
 {% endif %}
 {% if s.large_comm_list_delete %}
  set large-comm-list {{ s.large_comm_list_delete }} delete
 {% endif %}
-{% if s.extcommunity_rt %}
- set extcommunity rt {{ s.extcommunity_rt }}
+{% set rt_texts = route_target_texts(s.extcommunity_rt) + s.extcommunity_rt.raw %}
+{% if rt_texts %}
+ set extcommunity rt {{ rt_texts | join(' ') }}
 {% endif %}
 {% if s.extcommunity_nt %}
  set extcommunity nt {{ s.extcommunity_nt }}
 {% endif %}
-{% if s.extcommunity_soo %}
- set extcommunity soo {{ s.extcommunity_soo }}
+{% set soo_texts = route_target_texts(s.extcommunity_soo) + s.extcommunity_soo.raw %}
+{% if soo_texts %}
+ set extcommunity soo {{ soo_texts | join(' ') }}
 {% endif %}
 {% if s.extcommunity_color %}
  set extcommunity color {{ s.extcommunity_color }}

@@ -98,20 +98,43 @@ same shape (one `.j2` template, thin Python glue module, thin
   `/home/robin/work/srlinux-yang-models/all/v26.3.1/srl_nokia/models/`):
   (1) MUST NOT reference FRR's YANG at all. Standard value types come
   from RFC 6991: pristine copies of `ietf-inet-types.yang` /
-  `ietf-yang-types.yang` are vendored INTO `yang/custom/` (taken from
-  pyang's bundled modules), so the directory still compiles with only
-  itself on the pyang search path. Do NOT redefine types RFC 6991
-  provides (user was explicit) -- `proteus-types.yang` keeps only what
-  it can't express (as-number restricted to exclude 0, vni, RD,
-  evpn-esi, object-name, RT groupings). Pick types by SEMANTICS: the
-  `-no-zone` address variants (FRR config text never carries %zone),
-  `inet:ipv4-/ipv6-prefix`, `yang:mac-address`, and `yang:dotted-quad`
-  for 32-bit identifiers in dotted notation (router-id, cluster-id,
-  originator-id) which are NOT addresses. Codegen note: RFC 6991
-  patterns contain XSD `\p{...}` escapes; the pyangbind fork translates
-  them to ASCII classes (fixed in pybind_dataclass.py -- previously the
-  whole base pattern was silently dropped and derived types like
-  ipv4-address-no-zone validated almost nothing).
+  `ietf-yang-types.yang` (from pyang's bundled modules) are vendored
+  under `yang/vendor/ietf/` -- ALL vendored external YANG goes under
+  `yang/vendor/<origin>/`, never mixed into yang/custom; the custom
+  search path is [yang/custom, yang/vendor/ietf] (generate_bindings).
+  Do NOT redefine types RFC 6991 provides (user was explicit) --
+  `proteus-types.yang` keeps only what it can't express. Pick types by
+  SEMANTICS: the `-no-zone` address variants (FRR config text never
+  carries %zone), `inet:ipv4-/ipv6-prefix`, `yang:mac-address`,
+  `yang:hex-string` length-restricted for octet strings (evpn-esi =
+  length 29), and `yang:dotted-quad` for 32-bit identifiers in dotted
+  notation (router-id, cluster-id, originator-id) which are NOT
+  addresses. Codegen note: RFC 6991 patterns contain XSD `\p{...}`
+  escapes; the pyangbind fork translates them to ASCII classes (fixed
+  in pybind_dataclass.py -- previously the whole base pattern was
+  silently dropped and derived types like ipv4-address-no-zone
+  validated almost nothing).
+  (1b) Values with standard internal structure are STRUCTURED, never
+  pattern-checked strings (user was explicit): route distinguishers
+  (RFC 4364 administrator/assigned-number per type, grouping
+  pt:route-distinguisher), communities (pt:community-set /
+  pt:community-value: uint16 pairs + well-known enum -- the 14 tokens
+  FRR's community_gettoken accepts; `internet` was REMOVED upstream),
+  large communities (pt:large-community-set, RFC 8092 GA/LD1/LD2),
+  route targets AND route origins. Route Target (RFC 4360 subtype
+  0x02) and Route Origin / site-of-origin (subtype 0x03) are DIFFERENT
+  extended communities -- separate pt groupings, never reuse
+  route-target for an soo node (user called the old mac-vrf-soo `uses
+  pt:route-target` "factually incorrect"). Every structured set
+  carries a `raw` string fallback rendered verbatim -- deliberately
+  matching/scrubbing malformed values is a legitimate use. Formats
+  FRR can't parse yet are still modeled but BLOCKED with `must
+  "false()"` + explanatory error-message (e.g. the type-6 MAC RD) so
+  unblocking is a one-line delete; do NOT simply omit standard
+  encodings. Gotcha: an all-empty container counts as unconfigured
+  (mandatory choice inside is skipped), so "this container is
+  required" needs a `must` on the PARENT (see the EVPN type-5 network
+  rd), and a must on the container itself won't fire when it's empty.
   (2) No `augment` unless it REALLY earns its keep --
   FRR's augment-everything style is what made their model unreadable;
   sibling modules contribute content via plain `import` + `uses`

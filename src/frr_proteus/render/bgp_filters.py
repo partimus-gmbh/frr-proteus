@@ -9,16 +9,21 @@ only -- the legacy numbered form is excluded from the schema.
 
 from __future__ import annotations
 
+from frr_proteus.render import helpers
 from frr_proteus.render._env import env
 
 _template = env.get_template("bgp_filters.conf.j2")
 
-# (list field, standard-values field) per community-list flavor, for
-# the type-vs-value backstop check below.
+# (list field, standard-values container field, texts helper) per
+# community-list flavor, for the type-vs-value backstop check below.
 _COMMUNITY_LISTS = [
-    ("community_list", "community"),
-    ("large_community_list", "large_community"),
-    ("extcommunity_list", "extcommunity"),
+    ("community_list", "communities", helpers.community_texts),
+    (
+        "large_community_list",
+        "large_communities",
+        helpers.large_community_texts,
+    ),
+    ("extcommunity_list", "extcommunities", helpers.extcommunity_texts),
 ]
 
 
@@ -31,11 +36,13 @@ def render_bgp_filters(root) -> str:
     standard list must carry literal values, every entry of an
     expanded list a regex.
     """
-    for list_field, values_field in _COMMUNITY_LISTS:
+    for list_field, values_field, texts in _COMMUNITY_LISTS:
         for clist in getattr(root.bgp_filters, list_field):
             for entry in clist.entry:
-                values = getattr(entry, values_field)
-                value_set = entry.regex if clist.type == "expanded" else values
+                if clist.type == "expanded":
+                    value_set = entry.regex
+                else:
+                    value_set = texts(getattr(entry, values_field))
                 if not value_set:
                     raise ValueError(
                         f"{list_field.replace('_', '-')} {clist.name!r} entry "
@@ -46,6 +53,11 @@ def render_bgp_filters(root) -> str:
                             else "literal values"
                         )
                     )
+    for alias in root.community_aliases.alias:
+        if helpers.community_value_text(alias.community) is None:
+            raise ValueError(
+                f"community alias {alias.name!r} has no community value"
+            )
     return _template.render(
         bgp_filters=root.bgp_filters,
         community_aliases=root.community_aliases,

@@ -60,6 +60,78 @@ def route_target_texts(rt_set, *, include_wildcard: bool = True) -> list[str]:
     return texts
 
 
+def rd_text(rd) -> str | None:
+    """Render a proteus-types route-distinguisher container into FRR's
+    CLI token: '<administrator>:<assigned-number>' for the structured
+    types 0/1/2, the raw string verbatim, or None when unconfigured.
+
+    The type-6 MAC case is included for completeness but blocked in the
+    schema (must false() -- FRR cannot parse it), so it never reaches a
+    validated tree.
+    """
+    for encoding in (rd.as2, rd.ipv4, rd.as4):
+        if encoding.administrator is not None:
+            return f"{encoding.administrator}:{encoding.assigned_number}"
+    if rd.mac:
+        return rd.mac
+    if rd.raw:
+        return rd.raw
+    return None
+
+
+def community_texts(cset) -> list[str]:
+    """Render a proteus-types community-set (structured members,
+    well-known names, raw fallbacks) into FRR's CLI tokens, in that
+    order. Raw entries are emitted verbatim -- deliberately
+    unvalidated (matching/scrubbing malformed communities is a real
+    use case)."""
+    return [
+        *(f"{m.global_admin}:{m.local_admin}" for m in cset.member),
+        *cset.well_known,
+        *cset.raw,
+    ]
+
+
+def large_community_texts(cset) -> list[str]:
+    """Render a proteus-types large-community-set into 'GA:LD1:LD2'
+    tokens plus raw fallbacks."""
+    return [
+        *(
+            f"{m.global_admin}:{m.local_data_1}:{m.local_data_2}"
+            for m in cset.member
+        ),
+        *cset.raw,
+    ]
+
+
+def community_value_text(value) -> str | None:
+    """Render a proteus-types community-value container (one community:
+    standard, well-known, large, or raw) into its CLI token, or None
+    when unconfigured."""
+    if value.community.global_admin is not None:
+        return f"{value.community.global_admin}:{value.community.local_admin}"
+    if value.well_known:
+        return value.well_known
+    if value.large_community.global_admin is not None:
+        lc = value.large_community
+        return f"{lc.global_admin}:{lc.local_data_1}:{lc.local_data_2}"
+    if value.raw:
+        return value.raw
+    return None
+
+
+def extcommunity_texts(ec) -> list[str]:
+    """Render an extcommunity-list standard entry's container into
+    'rt <RT>' / 'soo <SoO>' tokens plus raw fallbacks (raw entries
+    carry their own rt/soo keyword). Route targets and route origins
+    are distinct RFC 4360 subtypes, hence the two sets."""
+    return [
+        *(f"rt {t}" for t in route_target_texts(ec.route_target)),
+        *(f"soo {t}" for t in route_target_texts(ec.route_origin)),
+        *ec.raw,
+    ]
+
+
 # Experimental-scheme fields on the instance-level l2vpn-evpn container
 # (proteus-bgp-evpn-experimental.yang's augment) that produce NO output
 # in the frr format. vxlan_underlay is absent on purpose: it translates

@@ -103,12 +103,21 @@ def test_set_lines():
     s.ip_next_hop = "peer-address"
     s.local_preference = 0
     s.metric = "+rtt"
-    s.community = "65001:999 additive"
+    s.community.member.append(
+        type(s.community).Member(global_admin=65001, local_admin=999)
+    )
+    s.community.additive = True
     s.comm_list_delete = "STRIP"
     s.large_comm_list_delete = "LSTRIP"
     s.as_path_exclude_access_list = "ASP"
     s.aggregator.as_ = 65001
     s.aggregator.address = "192.0.2.1"
+    s.extcommunity_rt.as2.append(
+        type(s.extcommunity_rt).As2(global_admin=65001, local_admin=10)
+    )
+    s.extcommunity_soo.ipv4.append(
+        type(s.extcommunity_soo).Ipv4(global_admin="192.0.2.1", local_admin=7)
+    )
     s.extcommunity_bandwidth.value = "cumulative"
     s.extcommunity_bandwidth.non_transitive = True
     s.atomic_aggregate = True
@@ -123,9 +132,30 @@ def test_set_lines():
     assert " set large-comm-list LSTRIP delete\n" in text
     assert " set as-path exclude as-path-access-list ASP\n" in text
     assert " set aggregator as 65001 192.0.2.1\n" in text
+    assert " set extcommunity rt 65001:10\n" in text
+    assert " set extcommunity soo 192.0.2.1:7\n" in text
     assert " set extcommunity bandwidth cumulative non-transitive\n" in text
     assert " set atomic-aggregate\n" in text
     assert " set extcommunity evpn rmac 00:11:22:33:44:55\n" in text
+
+
+def test_set_community_none_and_raw_fallback():
+    root, entry = _root_with_entry()
+    entry.set.community.none = True
+    assert " set community none\n" in render_route_maps(root)
+
+    root2, entry2 = _root_with_entry()
+    # raw fallback: deliberately setting a value outside the standard
+    # forms renders verbatim.
+    entry2.set.community.raw.append("4294967296:1")
+    assert " set community 4294967296:1\n" in render_route_maps(root2)
+
+
+def test_match_evpn_rd_structured():
+    root, entry = _root_with_entry()
+    entry.match.evpn.rd.as2.administrator = 65001
+    entry.match.evpn.rd.as2.assigned_number = 100
+    assert " match evpn rd 65001:100\n" in render_route_maps(root)
 
 
 def test_multiple_entries_each_get_a_block():

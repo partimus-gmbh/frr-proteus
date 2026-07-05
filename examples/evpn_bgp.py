@@ -52,9 +52,11 @@ def build_default_instance(*, local_as: int, router_id: str) -> Instance:
     evpn.advertise_svi_ip = True
 
     for vni_id, rd_ip in [(101, "10.10.10.10"), (102, "10.10.10.10")]:
-        vni = EvpnAf.Vni(vni_id=vni_id, rd=f"{rd_ip}:{vni_id}")
-        # Route targets are structured: encoding-specific integer
-        # components, not "AS:NN" strings.
+        vni = EvpnAf.Vni(vni_id=vni_id)
+        # RDs and route targets are structured: an explicit RFC 4364 /
+        # RFC 4360 encoding with typed components, not "X:NN" strings.
+        vni.rd.ipv4.administrator = rd_ip
+        vni.rd.ipv4.assigned_number = vni_id
         vni.route_target_import.as2.append(
             EvpnAf.Vni.RouteTargetImport.As2(
                 global_admin=65000, local_admin=vni_id
