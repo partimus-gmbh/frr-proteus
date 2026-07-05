@@ -69,9 +69,9 @@ comments and are freely omitted.
   express are left out). `render_evpn_global()` renders the global
   `evpn` block (experimental format only). Underlay references are
   leafrefs plus a YANG `must` requiring the target to be marked
-  `vxlan-underlay`; since generated validation never evaluates
-  `must`, call `frr_proteus.validate_underlay_refs()` alongside
-  `validate_tree()`.
+  `vxlan-underlay`; `validate_tree()` enforces both (pass the
+  experimental module root alongside the BGP root so the global
+  block's references are covered).
 
 ## How it works
 
@@ -91,8 +91,10 @@ comments and are freely omitted.
    runtime on assignment (`YangValidationError`), and a module-level
    `validate_tree(*roots)` checks the structural/referential rules that
    can only be judged on a finished tree (leafref integrity, mandatory
-   leaves, list keys/`unique`, min-/max-elements, choice exclusivity)
-   -- `examples/evpn_bgp.py` calls it before rendering. Generated with
+   leaves, list keys/`unique`, min-/max-elements, choice exclusivity,
+   and `must`/`when` XPath constraints, evaluated by an XPath 1.0
+   subset engine embedded in the generated runtime) --
+   `examples/evpn_bgp.py` calls it before rendering. Generated with
    `--no-dataclass-defaults` (YANG defaults deliberately not applied;
    unset leaf == `None`), plus `--dataclass-serde` (RFC 7951 JSON via
    `to_ietf_json`/`from_ietf_json`), `--dataclass-xpaths` (schema-path

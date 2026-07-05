@@ -110,10 +110,12 @@ same shape (one `.j2` template, thin Python glue module, thin
   (cycle) -- documented in the module description. Its CLI text
   follows the scheme's spec example, NOT bgpd source (nothing to
   verify against). Underlay references must point at an instance
-  *marked vxlan-underlay*: stated as YANG `must` (which validate_tree
-  never evaluates) and enforced by
-  `frr_proteus.validate.validate_underlay_refs(bgp_root, exp_root)` --
-  call it alongside validate_tree for experimental-scheme data.
+  *marked vxlan-underlay*: stated as YANG `must` and enforced by
+  validate_tree, which evaluates must/when now -- pass the
+  experimental module root alongside the BGP root so the global
+  block's references are covered (the old
+  `frr_proteus.validate.validate_underlay_refs()` Python check is
+  retired).
   Gotcha:
   `validate_tree()` resolves leafrefs by absolute schema path, so it
   must be passed the *module root* objects -- `validate_tree(
@@ -195,7 +197,8 @@ same shape (one `.j2` template, thin Python glue module, thin
   are enforced on *assignment* (including constructor kwargs), raising
   `YangValidationError`; `None` is always accepted; leaf-list elements
   are checked on list assignment but not on `.append()`; structural
-  rules (mandatory, list keys, when/must) are not checked. This project
+  rules (mandatory, list keys, when/must) are deferred to
+  validate_tree, not checked on assignment. This project
   generates with `--no-dataclass-defaults`: applying YANG defaults
   would break the falsy-means-unconfigured contract the renderers rely
   on. Structural/referential rules are covered by the module-level
@@ -203,8 +206,15 @@ same shape (one `.j2` template, thin Python glue module, thin
   built -- creation order stays free): leafref referential integrity,
   mandatory leaves, list keys present + unique, `unique` groups,
   leaf-list value uniqueness, min-/max-elements, choice exclusivity /
-  mandatory choices, and it re-checks every value (so it also catches
-  what `.append()` bypassed); `must`/`when` are never evaluated. All
+  mandatory choices, it re-checks every value (so it also catches
+  what `.append()` bypassed), and it evaluates `must`/`when` with an
+  XPath 1.0 subset engine embedded in the generated runtime (location
+  paths, predicates, current(), comparisons, and/or, core functions,
+  exact-match derived-from-or-self; when-contexts per RFC 7950
+  7.21.5; expressions outside the subset are skipped, never
+  misjudged; opt-out: `--no-dataclass-must-when`). Absolute must/when
+  paths resolve across all roots passed to validate_tree, so pass
+  every module root the expressions reach into. All
   violations are aggregated into one `YangValidationError` with
   instance paths. This project also generates with
   `--dataclass-origin-comments` (a `# from file:line, via uses/augment

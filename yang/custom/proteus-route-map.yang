@@ -657,12 +657,15 @@ module proteus-route-map {
           }
 
           container aggregator {
+            must "as and address" {
+              error-message
+                "'set aggregator as' takes AS number and address
+                 together";
+            }
             description
               "'set aggregator as ASNUM A.B.C.D' (bgp_routemap.c).
-               Both leaves must be set together (single CLI line);
-               // not expressible without 'must', which the generated
-               // validator never evaluates -- renderer should treat
-               // a half-set container as an error.";
+               Both leaves must be set together -- a single CLI line
+               (the 'must').";
             leaf as {
               type pt:as-number;
             }

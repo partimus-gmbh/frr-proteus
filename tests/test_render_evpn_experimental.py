@@ -281,9 +281,7 @@ def test_underlay_vrf_leafref_enforced():
         bindings.validate_tree(root, exp_root)
 
 
-def test_validate_underlay_refs_enforces_vxlan_underlay_role():
-    from frr_proteus import validate_underlay_refs
-
+def test_underlay_vrf_must_enforces_vxlan_underlay_role():
     root = bindings.ProteusBgp()
     exp_root = bindings.ProteusBgpEvpnExperimental()
     underlay = _new_instance(vrf="underlay-red")
@@ -296,14 +294,16 @@ def test_validate_underlay_refs_enforces_vxlan_underlay_role():
     exp_root.evpn.default_underlay_vrf = "underlay-red"
     exp_root.evpn.vlan_based_evi.append(_evi("shared", underlay="underlay-red"))
 
-    validate_underlay_refs(root, exp_root)  # all point at a marked VRF
+    bindings.validate_tree(root, exp_root)  # all point at a marked VRF
 
     # the referenced instance exists (leafref fine!) but lacks the
     # vxlan-underlay role -- exactly the case the leafref can't catch
+    # and the YANG `must` statements do: validate_tree evaluates them
     underlay.afi_safis.l2vpn_evpn.vxlan_underlay = False
-    with pytest.raises(ValueError, match="not marked vxlan-underlay") as exc:
-        validate_underlay_refs(root, exp_root)
+    with pytest.raises(
+        bindings.YangValidationError, match="must reference a VRF"
+    ) as exc:
+        bindings.validate_tree(root, exp_root)
     # every reference site is reported: tenant, tenant EVI, global
     # default, global EVI
-    assert str(exc.value).count("underlay-red") == 4
-    assert "4 underlay reference violation(s)" in str(exc.value)
+    assert "4 violation(s)" in str(exc.value)

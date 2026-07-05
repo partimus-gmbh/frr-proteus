@@ -122,10 +122,9 @@ module proteus-bgp {
          mandatory in YANG because a peer-group member may inherit it
          from the group -- but FRR rejects any other neighbor
          configuration until a neighbor has remote-as from somewhere.
-         // A conditional-mandatory ('mandatory unless peer-group is
-         // set / this is a peer-group') needs 'when'/'must', which
-         // the generated validator never evaluates; validate in the
-         // renderer instead.";
+         // This grouping is shared with peer-group, so the
+         // conditional-mandatory rule lives as a 'must' on the
+         // neighbor list itself (validate_tree-enforced).";
     }
 
     container local-as {
@@ -334,10 +333,14 @@ module proteus-bgp {
       type uint8 {
         range "1..254";
       }
+      must "not(../ebgp-multihop)" {
+        error-message
+          "ttl-security hops and ebgp-multihop are mutually
+           exclusive";
+      }
       description
         "'neighbor X ttl-security hops (1-254)' (GTSM, RFC 5082).
-         Mutually exclusive with ebgp-multihop in FRR.
-         // Not expressible without 'must'; renderer/user beware.";
+         Mutually exclusive with ebgp-multihop in FRR (the 'must').";
     }
 
     leaf disable-connected-check {
@@ -391,16 +394,25 @@ module proteus-bgp {
       leaf keepalive {
         type uint16;
         units "seconds";
+        must "../holdtime" {
+          error-message
+            "'neighbor X timers' takes keepalive and holdtime
+             together";
+        }
         description
           "First argument of 'neighbor X timers (0-65535) (0-65535)'.";
       }
       leaf holdtime {
         type uint16;
         units "seconds";
+        must "../keepalive" {
+          error-message
+            "'neighbor X timers' takes keepalive and holdtime
+             together";
+        }
         description
           "Second argument of 'neighbor X timers'. Set both or
-           neither (one CLI line).
-           // One-line pairing not expressible without 'must'.";
+           neither -- one CLI line (the 'must' pair).";
       }
       leaf connect {
         type uint16 {
@@ -616,9 +628,13 @@ module proteus-bgp {
         type uint8 {
           range "1..6";
         }
+        must "../tx = 'best-selected'" {
+          error-message
+            "tx-best-selected requires tx = best-selected";
+        }
         description
-          "Path count for tx = best-selected. Meaningless otherwise.
-           // Pairing not expressible without 'must'.";
+          "Path count for tx = best-selected; meaningless (and
+           rejected by the 'must') otherwise.";
       }
       leaf disable-rx {
         type boolean;
@@ -839,10 +855,13 @@ module proteus-bgp {
       leaf origin {
         type boolean;
         default "false";
+        must ". = 'false' or not(../count)" {
+          error-message
+            "allowas-in origin and count are mutually exclusive";
+        }
         description
           "Only accept if our AS is the origin. Mutually exclusive
-           with count (one CLI slot).
-           // Not expressible without 'must'.";
+           with count -- one CLI slot (the 'must').";
       }
       leaf route-map {
         type leafref {
@@ -876,11 +895,21 @@ module proteus-bgp {
     }
 
     container filters {
+      must "not(distribute-list-in and prefix-list-in)" {
+        error-message
+          "distribute-list and prefix-list are mutually exclusive
+           per direction (in)";
+      }
+      must "not(distribute-list-out and prefix-list-out)" {
+        error-message
+          "distribute-list and prefix-list are mutually exclusive
+           per direction (out)";
+      }
       description
         "Per-direction filtering (bgp_config_write_filter in
          bgpd/bgp_vty.c). Note FRR's 'one slot' rule: distribute-list
-         and prefix-list are mutually exclusive per direction.
-         // Not expressible without 'must'.";
+         and prefix-list are mutually exclusive per direction (the
+         'must' pair).";
       leaf distribute-list-in {
         // TODO(leafref): access-lists are not modeled yet.
         type string;
@@ -988,12 +1017,18 @@ module proteus-bgp {
     }
 
     container dampening {
+      must "not(reuse-threshold or suppress-threshold or max-suppress-time)
+            or (half-life and reuse-threshold and suppress-threshold
+                and max-suppress-time)" {
+        error-message
+          "dampening takes none of the numbers, only half-life, or
+           all four";
+      }
       description
         "'neighbor X dampening [(1-45) [(1-20000) (1-20000)
          (1-255)]]': per-neighbor route-flap dampening
          (bgp_config_write_peer_damp in bgp_damp.c). Either give none
-         of the numbers, only half-life, or all four.
-         // Grouping rule not expressible without 'must'.";
+         of the numbers, only half-life, or all four (the 'must').";
       leaf enabled {
         type boolean;
         default "false";
@@ -1071,11 +1106,18 @@ module proteus-bgp {
     }
 
     container dampening {
+      must "not(reuse-threshold or suppress-threshold or max-suppress-time)
+            or (half-life and reuse-threshold and suppress-threshold
+                and max-suppress-time)" {
+        error-message
+          "dampening takes none of the numbers, only half-life, or
+           all four";
+      }
       description
         "'bgp dampening [(1-45) [(1-20000) (1-50000) (1-255)]]':
          AF-level route-flap dampening (bgp_config_write_damp in
          bgp_damp.c). Same all-or-nothing parameter grouping as the
-         per-neighbor variant.";
+         per-neighbor variant (the 'must').";
       leaf enabled {
         type boolean;
         default "false";
@@ -1105,6 +1147,10 @@ module proteus-bgp {
     }
 
     container distance {
+      must "(ebgp and ibgp and local) or not(ebgp or ibgp or local)" {
+        error-message
+          "'distance bgp' takes all three distances together";
+      }
       description
         "Administrative distance (bgp_config_write_distance in
          bgp_route.c).";
@@ -1114,8 +1160,8 @@ module proteus-bgp {
         }
         description
           "'distance bgp (1-255) (1-255) (1-255)', first argument.
-           All three must be set together (one CLI line).
-           // Not expressible without 'must'.";
+           All three must be set together -- one CLI line (the
+           'must' on the container).";
       }
       leaf ibgp {
         type uint8 {
@@ -1201,9 +1247,10 @@ module proteus-bgp {
         description
           "Source protocol (FRR's generated FRR_IP[6]_REDIST_STR_BGPD
            token set, minus vnc).
-           // The v4/v6-only restrictions are not enforced (would
-           // need per-AF enum copies or 'must'); FRR rejects the
-           // wrong ones at load time.";
+           // The v4/v6-only restrictions are not enforced: this
+           // grouping is shared by all AFs, so it would need per-AF
+           // enum copies or per-AF 'must' statements at every use
+           // site. FRR rejects the wrong ones at load time.";
       }
       leaf instance {
         type uint16 {
@@ -1997,11 +2044,16 @@ module proteus-bgp {
       }
 
       container tcp-keepalive {
+        must "idle and interval and probes" {
+          error-message
+            "'bgp tcp-keepalive' takes idle, interval and probes
+             together";
+        }
         description
           "'bgp tcp-keepalive (1-65535) (1-65535) (1-30)': TCP
            keepalive idle time, interval and probe count for BGP
-           sessions. All three set together (one CLI line).
-           // Not expressible without 'must'.";
+           sessions. All three set together -- one CLI line (the
+           'must').";
         leaf idle {
           type uint16 {
             range "1..65535";
@@ -2233,9 +2285,18 @@ module proteus-bgp {
 
       list neighbor {
         key "address";
+        must "remote-as
+              or ../peer-group[name = current()/peer-group]/remote-as" {
+          error-message
+            "a neighbor needs remote-as, directly or via its
+             peer-group";
+        }
         description
           "One BGP peer: its session-level 'neighbor X ...' lines
-           plus per-address-family blocks.";
+           plus per-address-family blocks. remote-as must come from
+           the neighbor itself or its peer-group (the 'must' -- the
+           conditional-mandatory rule the shared remote-as leaf
+           cannot state).";
 
         leaf address {
           type union {

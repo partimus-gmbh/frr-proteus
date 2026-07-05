@@ -85,10 +85,8 @@ module proteus-bgp-evpn-experimental {
         description
           "'underlay-vrf NAME': the VXLAN underlay this EVI's
            tunnels ride on. Must reference an existing BGP instance
-           (leafref, validate_tree-enforced) that is marked
-           vxlan-underlay (the 'must' above -- the generated
-           validator never evaluates must, so this half is enforced
-           by frr_proteus.validate.validate_underlay_refs()).";
+           (leafref) that is marked vxlan-underlay (the 'must'
+           above); validate_tree enforces both.";
       }
 
       leaf origination-l2vni {
@@ -144,12 +142,9 @@ module proteus-bgp-evpn-experimental {
       }
       description
         "'underlay-vrf NAME': which VXLAN underlay this tenant VRF
-         uses. Must reference an existing BGP instance (leafref,
-         validate_tree-enforced) that is marked vxlan-underlay (the
-         'must' -- enforced by
-         frr_proteus.validate.validate_underlay_refs(), since the
-         generated validator never evaluates must); overrides the
-         global default-underlay-vrf.";
+         uses. Must reference an existing BGP instance (leafref)
+         that is marked vxlan-underlay (the 'must'); validate_tree
+         enforces both. Overrides the global default-underlay-vrf.";
     }
 
     container origination-l3vni {
@@ -198,10 +193,8 @@ module proteus-bgp-evpn-experimental {
       description
         "'default-underlay-vrf NAME': underlay used by tenant VRFs
          and EVIs that don't set their own underlay-vrf. Must
-         reference an existing BGP instance (leafref,
-         validate_tree-enforced) that is marked vxlan-underlay (the
-         'must' -- enforced by
-         frr_proteus.validate.validate_underlay_refs()).";
+         reference an existing BGP instance (leafref) that is marked
+         vxlan-underlay (the 'must'); validate_tree enforces both.";
     }
 
     uses vlan-based-evi;
