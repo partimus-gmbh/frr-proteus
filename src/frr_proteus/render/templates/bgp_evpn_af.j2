@@ -1,36 +1,34 @@
-{# L2VPN EVPN address-family body. Included from bgp.conf.j2 when the
-current afi-safi entry is l2vpn-evpn; `bgp` and `evpn` (the
-afi_safi.l2vpn_evpn generated dataclass, see
-yang/frr-proteus-bgp-evpn.yang) are in scope from the caller.
+{# L2VPN EVPN address-family body. Included from bgp.conf.j2 when
+evpn_configured(instance) says the block is needed; `instance` (the
+/bgp/instance entry) and `evpn` (instance.afi_safis.l2vpn_evpn, see
+yang/custom/proteus-bgp-evpn.yang) are in scope from the caller.
 
 FRR distinguishes the default-instance EVPN role (advertise-all-vni, the
 per-VNI list, flooding, ...) from a per-VRF instance's EVPN role (rd,
 route-target, advertise ipv4/ipv6 unicast for L3VPN route leaking) by
 which VRF the enclosing `router bgp` belongs to, not by YANG structure --
 so this template just renders whichever fields are actually set,
-regardless of instance role. Per-neighbor EVPN knobs (activate,
-route-reflector-client, route-map in/out) come from frr-bgp.yang's own
-augment of the neighbor's l2vpn-evpn afi-safi entry, not from our
-augmentation -- see helpers.neighbor_afi_safi(). #}
+regardless of instance role. #}
  !
  address-family l2vpn evpn
-{% for neighbor in bgp.neighbors.neighbor %}
-{% set addr = neighbor.remote_address %}
-{% set n_afi = neighbor_afi_safi(neighbor, "l2vpn-evpn") %}
-{% if n_afi and n_afi.enabled %}
+{% for neighbor in instance.neighbor %}
+{% set addr = neighbor.address %}
+{% set n_af = neighbor.afi_safis.l2vpn_evpn %}
+{% if n_af.activate %}
   neighbor {{ addr }} activate
 {% endif %}
-{% if n_afi and n_afi.l2vpn_evpn.route_reflector.route_reflector_client %}
+{% if n_af.route_reflector_client %}
   neighbor {{ addr }} route-reflector-client
 {% endif %}
-{% if n_afi and n_afi.l2vpn_evpn.filter_config.rmap_import %}
-  neighbor {{ addr }} route-map {{ n_afi.l2vpn_evpn.filter_config.rmap_import }} in
+{% if n_af.filters.route_map_in %}
+  neighbor {{ addr }} route-map {{ n_af.filters.route_map_in }} in
 {% endif %}
-{% if n_afi and n_afi.l2vpn_evpn.filter_config.rmap_export %}
-  neighbor {{ addr }} route-map {{ n_afi.l2vpn_evpn.filter_config.rmap_export }} out
+{% if n_af.filters.route_map_out %}
+  neighbor {{ addr }} route-map {{ n_af.filters.route_map_out }} out
 {% endif %}
-{% if n_afi and n_afi.l2vpn_evpn.as_path_options.allow_own_as %}
-  neighbor {{ addr }} allowas-in {{ n_afi.l2vpn_evpn.as_path_options.allow_own_as }}
+{% if n_af.allowas_in.enabled %}
+{% set count = " " ~ n_af.allowas_in.count if n_af.allowas_in.count else "" %}
+  neighbor {{ addr }} allowas-in{{ count }}
 {% endif %}
 {% endfor %}
 {% if evpn.advertise_all_vni %}

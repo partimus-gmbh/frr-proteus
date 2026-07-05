@@ -1,7 +1,8 @@
 """Step 2 prototype: build an EVPN VTEP's BGP config -- default instance
 (advertise-all-vni, per-VNI RDs/route-targets) plus two L3VPN/EVPN VRF
 instances (auto and explicit route-targets, type-5 advertisement) -- as
-structured Python data and render it to bgpd config text.
+structured Python data (yang/custom/proteus-bgp*.yang bindings) and
+render it to bgpd config text.
 
 Loosely modeled on frr/tests/topotests/bgp_evpn_vxlan_svd_topo1/PE1's
 config (not a byte-for-byte copy -- see that topotest for the real
@@ -16,54 +17,35 @@ Run with the generated bindings on the path, e.g.:
 
 import pathlib
 import sys
+from typing import TypeAlias
 
 sys.path.insert(0, "src")
 
-from frr_proteus._generated.frr_bgp import FrrRouting, validate_tree
+from frr_proteus._generated.proteus import ProteusBgp, validate_tree
 from frr_proteus.render import render_bgp_instance
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
-Proto = FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol
-Bgp = Proto.Bgp
-GlobalAfiSafi = Bgp.Global.AfiSafis.AfiSafi
-NeighborAfiSafi = Bgp.Neighbors.Neighbor.AfiSafis.AfiSafi
+Instance: TypeAlias = ProteusBgp.Bgp.Instance
+EvpnAf: TypeAlias = Instance.AfiSafis.L2vpnEvpn
 
 
-def _new_bgp_instance(
-    routing: FrrRouting, *, name: str, local_as: int, vrf: str = "default"
-) -> Bgp:
-    # frr-routing keys the control-plane-protocol list on (type, name, vrf)
-    proto = Proto(type="frr-bgp:bgp", name=name, vrf=vrf)
-    routing.routing.control_plane_protocols.control_plane_protocol.append(proto)
-    proto.bgp.global_.local_as = local_as
-    return proto.bgp
-
-
-def _evpn_af(bgp: Bgp) -> GlobalAfiSafi.L2vpnEvpn:
-    afi_safi = GlobalAfiSafi(afi_safi_name="l2vpn-evpn")
-    bgp.global_.afi_safis.afi_safi.append(afi_safi)
-    return afi_safi.l2vpn_evpn
-
-
-def build_default_instance(routing: FrrRouting, *, local_as: int, router_id: str) -> Bgp:
-    bgp = _new_bgp_instance(routing, name="default", local_as=local_as)
-    bgp.global_.router_id = router_id
-
-    neighbor = Bgp.Neighbors.Neighbor(remote_address="10.30.30.30")
-    neighbor.neighbor_remote_as.remote_as_type = "internal"
-    neighbor.afi_safis.afi_safi.append(
-        NeighborAfiSafi(afi_safi_name="l2vpn-evpn", enabled=True)
+def build_default_instance(*, local_as: int, router_id: str) -> Instance:
+    instance = Instance(
+        vrf="default", autonomous_system=local_as, router_id=router_id
     )
-    bgp.neighbors.neighbor.append(neighbor)
 
-    evpn = _evpn_af(bgp)
+    neighbor = Instance.Neighbor(address="10.30.30.30", remote_as="internal")
+    neighbor.afi_safis.l2vpn_evpn.activate = True
+    instance.neighbor.append(neighbor)
+
+    evpn = instance.afi_safis.l2vpn_evpn
     evpn.advertise_all_vni = True
     evpn.advertise_svi_ip = True
 
     for vni_id, rd_ip in [(101, "10.10.10.10"), (102, "10.10.10.10")]:
         evpn.vni.append(
-            GlobalAfiSafi.L2vpnEvpn.Vni(
+            EvpnAf.Vni(
                 vni_id=vni_id,
                 rd=f"{rd_ip}:{vni_id}",
                 route_target_import=[f"65000:{vni_id}"],
@@ -71,43 +53,46 @@ def build_default_instance(routing: FrrRouting, *, local_as: int, router_id: str
             )
         )
 
-    return bgp
+    return instance
 
 
-def build_vrf_instance_auto_rt(routing: FrrRouting, *, local_as: int, vrf: str) -> Bgp:
-    bgp = _new_bgp_instance(routing, name=vrf, local_as=local_as, vrf=vrf)
+def build_vrf_instance_auto_rt(*, local_as: int, vrf: str) -> Instance:
+    instance = Instance(vrf=vrf, autonomous_system=local_as)
 
-    evpn = _evpn_af(bgp)
+    evpn = instance.afi_safis.l2vpn_evpn
     evpn.route_target_import.append("*:300")
     evpn.route_target_import.append("auto")
 
-    return bgp
+    return instance
 
 
-def build_vrf_instance_type5(routing: FrrRouting, *, local_as: int, vrf: str) -> Bgp:
-    bgp = _new_bgp_instance(routing, name=vrf, local_as=local_as, vrf=vrf)
+def build_vrf_instance_type5(*, local_as: int, vrf: str) -> Instance:
+    instance = Instance(vrf=vrf, autonomous_system=local_as)
 
-    evpn = _evpn_af(bgp)
+    evpn = instance.afi_safis.l2vpn_evpn
     evpn.advertise_ipv4_unicast.enabled = True
 
-    return bgp
+    return instance
 
 
 def main() -> None:
-    routing = FrrRouting()
-
-    default = build_default_instance(routing, local_as=65000, router_id="10.10.10.10")
-    vrf_red = build_vrf_instance_auto_rt(routing, local_as=65000, vrf="vrf-red")
-    vrf_purple = build_vrf_instance_type5(routing, local_as=65000, vrf="vrf-purple")
+    root = ProteusBgp()
+    root.bgp.instance.append(
+        build_default_instance(local_as=65000, router_id="10.10.10.10")
+    )
+    root.bgp.instance.append(
+        build_vrf_instance_auto_rt(local_as=65000, vrf="vrf-red")
+    )
+    root.bgp.instance.append(
+        build_vrf_instance_type5(local_as=65000, vrf="vrf-purple")
+    )
 
     # Whole-tree pass: leafref integrity, mandatory leaves, list keys,
     # choice rules -- everything on-assignment validation cannot judge.
-    validate_tree(routing)
+    validate_tree(root)
 
-    text = (
-        render_bgp_instance(default)
-        + render_bgp_instance(vrf_red, vrf="vrf-red")
-        + render_bgp_instance(vrf_purple, vrf="vrf-purple")
+    text = "".join(
+        render_bgp_instance(instance) for instance in root.bgp.instance
     )
 
     OUT_DIR.mkdir(exist_ok=True)

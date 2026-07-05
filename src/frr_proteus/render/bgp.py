@@ -1,4 +1,4 @@
-"""Render a generated FRR-BGP YANG instance into bgpd CLI config text.
+"""Render a proteus-bgp YANG instance into bgpd CLI config text.
 
 FRR's bgpd has no northbound backend: unlike staticd, ripd, and other
 YANG-converted daemons, there is no bgpd/bgp_nb.c and no `cli_show`
@@ -6,10 +6,17 @@ callbacks to reuse (confirmed by `grep -rn cli_show frr/bgpd/` -- zero
 hits). So there is no existing YANG-to-text mapping to derive
 automatically. templates/bgp.conf.j2 hand-replicates the relevant
 `vty_out` calls from bgpd/bgp_vty.c (`bgp_config_write`,
-`bgp_config_write_family`, the neighbor remote-as printing block); the
-Jinja environment setup and field-picking helpers live here and in
-helpers.py. Codegen (the pybind-dataclass plugin in our pyangbind fork)
-only gets us the typed input structure -- not this rendering layer.
+`bgp_config_write_family`, the neighbor remote-as printing block);
+the Jinja environment setup lives here and the one field-picking
+helper in helpers.py. Codegen (the pybind-dataclass plugin in our
+pyangbind fork) only gets us the typed input structure -- not this
+rendering layer.
+
+The input schema is the custom self-contained model
+(yang/custom/proteus-bgp.yang, generated as
+frr_proteus._generated.proteus). The old FRR-schema bindings
+(_generated/frr_bgp, from frr/yang + yang/augments) are still
+generated for reference but have no renderer anymore.
 """
 
 from __future__ import annotations
@@ -30,26 +37,26 @@ _env = jinja2.Environment(
     undefined=jinja2.StrictUndefined,
 )
 _env.globals.update(
-    remote_as_text=helpers.remote_as_text,
-    afi_safi_name=helpers.afi_safi_name,
-    afi_safi_cli_text=helpers.afi_safi_cli_text,
-    afi_safi_networks=helpers.afi_safi_networks,
-    neighbor_afi_safi=helpers.neighbor_afi_safi,
+    evpn_configured=helpers.evpn_configured,
 )
 
 _bgp_template = _env.get_template("bgp.conf.j2")
 
 
-def render_bgp_instance(bgp, *, vrf: str | None = None) -> str:
-    """Render one BGP YANG instance into bgpd config text.
+def render_bgp_instance(instance) -> str:
+    """Render one BGP instance into bgpd config text.
 
-    `bgp` is the generated `bgp` dataclass reachable at
-    `.../control-plane-protocol/bgp` (i.e. `control_plane_protocol.bgp`,
-    not the list entry itself). `vrf` is the name of the VRF this instance
-    is bound to; leave it as None (or pass "default") for bgpd's default
-    instance, which renders as a plain `router bgp <asn>` with no `vrf`
-    clause, matching bgp_config_write() in bgpd/bgp_vty.c.
+    `instance` is one entry of the generated `/bgp/instance` list
+    (`frr_proteus._generated.proteus.ProteusBgp.Bgp.Instance`). Its
+    `vrf` key selects the enclosing VRF; "default" (or unset) renders
+    as a plain `router bgp <asn>` with no `vrf` clause, matching
+    bgp_config_write() in bgpd/bgp_vty.c.
+
+    Renderer scope is still steps 1+2 (basic BGP + EVPN); the schema
+    models far more than this template renders, and every new field
+    needs its CLI text confirmed against bgpd's config-write code
+    before being added here.
     """
-    if not bgp.global_.local_as:
-        raise ValueError("bgp global/local-as is not set")
-    return _bgp_template.render(bgp=bgp, vrf=vrf)
+    if not instance.autonomous_system:
+        raise ValueError("instance autonomous-system is not set")
+    return _bgp_template.render(instance=instance)

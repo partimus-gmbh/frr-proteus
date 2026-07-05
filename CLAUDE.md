@@ -42,7 +42,7 @@ CLI syntax purely from a fixture without checking the DEFUN/DEFPY too).
 under `render/templates/*.j2` walk the generated dataclasses close to
 directly;
 `render/helpers.py` holds only the handful of functions a template
-genuinely can't express (enum branching, identityref prefix stripping).
+genuinely can't express (currently just subtree-emptiness checks).
 The user was explicit about this after rejecting an earlier all-Python
 renderer as "completely unreadable" -- keep new protocol renderers to the
 same shape (one `.j2` template, thin Python glue module, thin
@@ -95,15 +95,16 @@ same shape (one `.j2` template, thin Python glue module, thin
   bgp_vty.c/bgp_evpn_vty.c DEFUN/DEFPY behind every leaf -- keep
   doing that; don't add leaves whose CLI text isn't verified there.
   Codegen emits these as the `_generated/proteus/` package (root class
-  `ProteusBgp`); `_generated/frr_bgp/` (from the FRR schema) is still
-  what the renderers consume until they're migrated. Gotcha:
+  `ProteusBgp`); the renderers, tests and examples all consume this
+  package now. `_generated/frr_bgp/` (from the FRR schema) is still
+  generated for reference but has no renderer. Gotcha:
   `validate_tree()` resolves leafrefs by absolute schema path, so it
   must be passed the *module root* objects -- `validate_tree(
   ProteusBgp_instance, ProteusRouteMap_instance)` -- not the `bgp` /
   `route_maps` containers below them; with a container as root every
   leafref "fails" because recorded value paths lose the top component.
-- `yang/augments/` -- the older approach, kept while renderers still
-  use the FRR-schema bindings: project-authored `augment`s of FRR's
+- `yang/augments/` -- the older, now renderer-less approach, kept as
+  reference: project-authored `augment`s of FRR's
   own modules *from outside* (targeting FRR's schema paths with
   explicit `frr-bgp:`-prefixed node names) rather than editing the
   vendored `frr/` submodule. `frr-proteus-bgp-evpn.yang` fills in
@@ -199,10 +200,14 @@ same shape (one `.j2` template, thin Python glue module, thin
   variant backend `pybind-dataclass-dumb` is kept in the fork.
 - `src/frr_proteus/render/` -- templates under `templates/*.j2` (one per
   protocol/AF, e.g. `bgp.conf.j2`, `bgp_evpn_af.j2`) walk the generated
-  dataclasses close to directly, with minimal template logic. `helpers.py`
-  holds the small amount of Python glue templates can't express cleanly
-  and is exposed to templates as Jinja globals. `bgp.py` wires up the
-  Jinja `Environment` and exposes `render_bgp_instance()`.
+  *proteus* dataclasses (`/bgp/instance` entries) close to directly, with
+  minimal template logic. `helpers.py` holds the small amount of Python
+  glue templates can't express cleanly (has_config/evpn_configured
+  subtree-emptiness checks -- the old identityref/enum helpers died with
+  the FRR-schema migration) and is exposed to templates as Jinja globals.
+  `bgp.py` wires up the Jinja `Environment` and exposes
+  `render_bgp_instance(instance)` (takes one instance list entry; the
+  vrf clause comes from its `vrf` key).
   **Whitespace gotcha:** with `trim_blocks=True`, *any* line ending in a
   `{% %}` tag has its trailing newline eaten -- including a content line
   that just happens to end with an inline `{% endif %}` (not only

@@ -1,6 +1,6 @@
 """Step 1 prototype: build a two-router eBGP config as structured Python
-data (via the typed dataclasses generated from FRR's own frr-bgp.yang) and
-render it to bgpd config text.
+data (via the typed dataclasses generated from the custom
+yang/custom/proteus-bgp.yang model) and render it to bgpd config text.
 
 Writes rendered bgpd config text to out/r1_bgpd.conf and out/r2_bgpd.conf
 (relative to the repo root) for evaluation. Run with the generated
@@ -10,93 +10,68 @@ bindings on the path, e.g.:
 
 import pathlib
 import sys
-from typing import Literal, TypeAlias
+from typing import TypeAlias
 
 sys.path.insert(0, "src")
 
-from frr_proteus._generated.frr_bgp import FrrRouting
+from frr_proteus._generated.proteus import ProteusBgp, validate_tree
 from frr_proteus.render import render_bgp_instance
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
-Proto: TypeAlias = FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol
-BGP: TypeAlias = Proto.Bgp
+Instance: TypeAlias = ProteusBgp.Bgp.Instance
 
 
-def build_bgp_instance(
+def build_router(
     *,
     local_as: int,
     router_id: str,
     neighbor_addr: str,
-    neighbor_remote_as_type: Literal["internal", "external"],
+    neighbor_remote_as: int | str,
     network: str,
-) -> BGP:
-    #FRR = FrrRouting()
-    #proto = Proto(type="frr-bgp:bgp", name="default")
-    #FRR.routing.control_plane_protocols.control_plane_protocol.append(proto)
-    # bgp = proto.bgp
-
-    bgp = BGP()
-
-    bgp.global_.local_as = local_as
-    bgp.global_.router_id = router_id
-
-    neighbor = BGP.Neighbors.Neighbor(remote_address=neighbor_addr)
-    neighbor.neighbor_remote_as.remote_as_type = neighbor_remote_as_type
-    bgp.neighbors.neighbor.append(neighbor)
-
-    afi_safi = BGP.Global.AfiSafis.AfiSafi(afi_safi_name="ipv4-unicast")
-    afi_safi.ipv4_unicast.network_config.append(
-        BGP.Global.AfiSafis.AfiSafi.Ipv4Unicast.NetworkConfig(prefix=network)
+) -> ProteusBgp:
+    root = ProteusBgp()
+    instance = Instance(
+        vrf="default", autonomous_system=local_as, router_id=router_id
     )
-    bgp.global_.afi_safis.afi_safi.append(afi_safi)
+    instance.neighbor.append(
+        Instance.Neighbor(address=neighbor_addr, remote_as=neighbor_remote_as)
+    )
+    instance.afi_safis.ipv4_unicast.network.append(
+        Instance.AfiSafis.Ipv4Unicast.Network(prefix=network)
+    )
+    root.bgp.instance.append(instance)
+    return root
 
-    return bgp
 
-
-def main2() -> None:
-    r1 = build_bgp_instance(
+def main() -> None:
+    r1 = build_router(
         local_as=65001,
         router_id="192.168.255.1",
         neighbor_addr="192.168.255.2",
-        neighbor_remote_as_type="external",
+        neighbor_remote_as="external",
         network="192.0.2.0/24",
     )
-    r2 = build_bgp_instance(
+    r2 = build_router(
         local_as=65002,
         router_id="192.168.255.2",
         neighbor_addr="192.168.255.1",
-        neighbor_remote_as_type="external",
+        neighbor_remote_as="external",
         network="198.51.100.0/24",
     )
 
     OUT_DIR.mkdir(exist_ok=True)
-    for name, bgp in [("r1_bgpd.conf", r1), ("r2_bgpd.conf", r2)]:
-        text = render_bgp_instance(bgp)
+    for name, root in [("r1_bgpd.conf", r1), ("r2_bgpd.conf", r2)]:
+        # Whole-tree pass: mandatory leaves, list keys, leafrefs --
+        # everything on-assignment validation cannot judge.
+        validate_tree(root)
+        text = "".join(
+            render_bgp_instance(instance) for instance in root.bgp.instance
+        )
         (OUT_DIR / name).write_text(text)
         print(f"--- {OUT_DIR / name} ---")
         print(text, end="")
 
-BGP: TypeAlias = FrrRouting.Routing.ControlPlaneProtocols.ControlPlaneProtocol.Bgp
-
-def main() -> None:
-
-    r1 = BGP()
-
-    r1.global_.local_as = 65001
-    r1.global_.router_id = "192.168.255.1"
-
-    neighbor = BGP.Neighbors.Neighbor(remote_address="192.168.255.2")
-    neighbor.neighbor_remote_as.remote_as_type = "external"
-    r1.neighbors.neighbor.append(neighbor)
-
-    afi_safi = BGP.Global.AfiSafis.AfiSafi(afi_safi_name="ipv4-unicast")
-    afi_safi.ipv4_unicast.network_config.append(
-        BGP.Global.AfiSafis.AfiSafi.Ipv4Unicast.NetworkConfig(prefix="192.0.2.0/24")
-    )
-    r1.global_.afi_safis.afi_safi.append(afi_safi)
-
-    print(render_bgp_instance(r1))
 
 if __name__ == "__main__":
     main()

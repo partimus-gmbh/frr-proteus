@@ -1,42 +1,39 @@
 {# BGP instance renderer.
 
-Traverses the generated `bgp` dataclass directly (frr-bgp.yang shape),
-mirroring the structure and content of bgpd/bgp_vty.c's bgp_config_write()
-/ bgp_config_write_family(). Field-picking logic that doesn't fit cleanly
-in a template (enum branching, identityref prefix stripping) lives in
-render/helpers.py and is exposed here as globals.
+Traverses one `instance` entry of the proteus-bgp.yang bindings
+(/bgp/instance, yang/custom/proteus-bgp.yang) directly, mirroring the
+structure and content of bgpd/bgp_vty.c's bgp_config_write() /
+bgp_config_write_family(). The custom schema maps almost 1:1 onto the
+CLI, so the only helper needed is evpn_configured() (subtree-emptiness
+check, render/helpers.py).
 
 Note the standalone " !" line before a non-empty address-family block:
 that mirrors bgp_vty.c's `vty_frame(vty, " !\n address-family ...")`,
 which FRR only flushes once the block has real content -- so an
 address-family with no networks/config produces no output at all,
 including no leading "!". #}
-{% set vrf_clause = " vrf " ~ vrf if vrf and vrf != "default" else "" %}
-router bgp {{ bgp.global_.local_as }}{{ vrf_clause }}
-{% if bgp.global_.router_id %}
- bgp router-id {{ bgp.global_.router_id }}
+{% set vrf_clause = " vrf " ~ instance.vrf if instance.vrf and instance.vrf != "default" else "" %}
+router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
+{% if instance.router_id %}
+ bgp router-id {{ instance.router_id }}
 {% endif %}
-{% for neighbor in bgp.neighbors.neighbor %}
-{% set remote_as = remote_as_text(neighbor) %}
-{% if remote_as %}
- neighbor {{ neighbor.remote_address }} remote-as {{ remote_as }}
+{% for neighbor in instance.neighbor %}
+{% if neighbor.remote_as is not none %}
+ neighbor {{ neighbor.address }} remote-as {{ neighbor.remote_as }}
 {% endif %}
 {% endfor %}
-{% for afi_safi in bgp.global_.afi_safis.afi_safi %}
-{% set name = afi_safi_name(afi_safi) %}
-{% if name == "l2vpn-evpn" %}
-{% set evpn = afi_safi.l2vpn_evpn %}
-{% include "bgp_evpn_af.j2" %}
-{% else %}
-{% set networks = afi_safi_networks(afi_safi) %}
-{% if networks %}
+{% for af_cli, af in [("ipv4 unicast", instance.afi_safis.ipv4_unicast), ("ipv6 unicast", instance.afi_safis.ipv6_unicast)] %}
+{% if af.network %}
  !
- address-family {{ afi_safi_cli_text(afi_safi) }}
-{% for prefix in networks %}
-  network {{ prefix }}
+ address-family {{ af_cli }}
+{% for net in af.network %}
+  network {{ net.prefix }}
 {% endfor %}
  exit-address-family
 {% endif %}
-{% endif %}
 {% endfor %}
+{% if evpn_configured(instance) %}
+{% set evpn = instance.afi_safis.l2vpn_evpn %}
+{% include "bgp_evpn_af.j2" %}
+{% endif %}
 !

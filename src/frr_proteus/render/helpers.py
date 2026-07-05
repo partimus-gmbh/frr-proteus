@@ -1,73 +1,46 @@
-"""Small bindings-to-Jinja glue functions for the bgp.conf.j2 template.
+"""Small bindings-to-Jinja glue functions for the BGP templates.
 
 Kept deliberately thin: anything that's just "read this YANG field and
-print it" belongs in the template. What lives here is logic the template
-can't reasonably express -- picking apart an enum-typed leaf
-(remote-as-type), or YANG `identityref` string values (which may be
-written module-prefixed, e.g. "frr-routing:ipv4-unicast", or bare).
+print it" belongs in the template. The proteus schema (yang/custom/)
+made most of the old glue unnecessary -- no identityref prefixes to
+strip, no afi-safi list to scan, no remote-as-type enum to branch on
+(remote-as is one union leaf whose value is the CLI token). What's left
+is the one thing Jinja can't express: deciding whether a generated
+subtree contains any configuration at all.
 """
 
 from __future__ import annotations
 
-# AFI-SAFI identityref name (stripped of module prefix) -> the two CLI
-# tokens bgp_vty.c's bgp_config_write_family() writes after
-# "address-family". Only what step 1 needs; EVPN and others get added
-# once frr-proteus has a YANG model for them.
-_AFI_SAFI_CLI_TEXT = {
-    "ipv4-unicast": "ipv4 unicast",
-    "ipv6-unicast": "ipv6 unicast",
-    "l2vpn-evpn": "l2vpn evpn",
-}
+import dataclasses
 
 
-def strip_yang_prefix(identityref: object) -> str:
-    """"frr-routing:ipv4-unicast" -> "ipv4-unicast"."""
-    return str(identityref).split(":", 1)[-1]
+def has_config(node: object) -> bool:
+    """True if any leaf anywhere under this generated dataclass is set.
+
+    Mirrors the bindings' semantics: an unset leaf is None, an empty
+    list/leaf-list is unset, and a container "exists" only if some
+    descendant leaf is set (YANG non-presence container existence).
+    """
+    for field in dataclasses.fields(node):  # type: ignore[arg-type]
+        value = getattr(node, field.name)
+        if dataclasses.is_dataclass(value) and not isinstance(value, type):
+            if has_config(value):
+                return True
+        elif isinstance(value, list):
+            if value:
+                return True
+        elif value is not None:
+            return True
+    return False
 
 
-def afi_safi_name(afi_safi) -> str:
-    return strip_yang_prefix(afi_safi.afi_safi_name)
-
-
-def afi_safi_cli_text(afi_safi) -> str:
-    name = afi_safi_name(afi_safi)
-    cli_text = _AFI_SAFI_CLI_TEXT.get(name)
-    if cli_text is None:
-        raise ValueError(
-            f"unsupported afi-safi {name!r}; only "
-            f"{sorted(_AFI_SAFI_CLI_TEXT)} are implemented so far"
-        )
-    return cli_text
-
-
-def afi_safi_networks(afi_safi) -> list[str]:
-    """Prefixes configured under this afi-safi's `network-config` list,
-    e.g. from the ipv4-unicast entry of `bgp.global_.afi_safis.afi_safi`."""
-    container = getattr(afi_safi, afi_safi_name(afi_safi).replace("-", "_"))
-    return [entry.prefix for entry in container.network_config]
-
-
-def neighbor_afi_safi(neighbor, name: str):
-    """`neighbor`'s afi-safi list entry named `name` (e.g. "l2vpn-evpn",
-    with or without a module prefix), or None if this neighbor has no
-    configuration for that AFI-SAFI at all."""
-    bare = strip_yang_prefix(name)
-    for entry in neighbor.afi_safis.afi_safi:
-        if strip_yang_prefix(entry.afi_safi_name) == bare:
-            return entry
-    return None
-
-
-def remote_as_text(neighbor) -> str | None:
-    """Mirror bgp_vty.c's peer->as_type switch (AS_SPECIFIED/INTERNAL/
-    EXTERNAL/AUTO) for one neighbor's `remote-as` token."""
-    ras = neighbor.neighbor_remote_as
-    as_type_raw = ras.remote_as_type
-    if not as_type_raw:
-        return None
-    as_type = strip_yang_prefix(as_type_raw)
-    if as_type == "as-specified":
-        return str(ras.remote_as)
-    if as_type in ("internal", "external"):
-        return as_type
-    raise ValueError(f"unsupported remote-as-type {as_type!r}")
+def evpn_configured(instance) -> bool:
+    """Whether this instance needs an 'address-family l2vpn evpn' block:
+    any instance-level EVPN config, or any neighbor with EVPN AF
+    config."""
+    if has_config(instance.afi_safis.l2vpn_evpn):
+        return True
+    return any(
+        has_config(neighbor.afi_safis.l2vpn_evpn)
+        for neighbor in instance.neighbor
+    )

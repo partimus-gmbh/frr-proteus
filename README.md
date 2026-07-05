@@ -50,8 +50,8 @@ comments and are freely omitted.
   link-state families, RPKI caches, BMP, VNC) are listed in
   `proteus-bgp.yang`'s description. Codegen produces bindings for both
   schemas (`_generated/frr_bgp/` and `_generated/proteus/`); the
-  renderers still consume the former, migration to the custom schema is
-  the next step.
+  renderers, tests and examples consume the custom (`proteus`) schema;
+  the FRR-schema bindings remain as a reference artifact.
 
 ## How it works
 
@@ -86,8 +86,10 @@ comments and are freely omitted.
    text; `render/bgp.py` sets up the Jinja environment, and
    `render/helpers.py` holds the handful of functions (exposed to
    templates as globals) that don't fit cleanly in template syntax --
-   enum branching on `remote-as-type`, stripping YANG's module-prefixed
-   identityref strings. This layer is *not* generated -- YANG only
+   currently just "does this subtree contain any config" checks; the
+   custom schema maps onto the CLI closely enough that the old
+   identityref/enum glue disappeared. This layer is *not* generated --
+   YANG only
    describes valid config shape, not FRR's CLI syntax. Its logic is
    derived directly from reading `frr/bgpd/bgp_vty.c` and
    `frr/bgpd/bgp_evpn_vty.c`'s `DEFUN`/`DEFPY` command definitions.
