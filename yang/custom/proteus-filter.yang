@@ -138,10 +138,12 @@ module proteus-filter {
               "What the entry matches: everything ('any') or a
                prefix with optional length bounds.";
 
-            leaf any {
-              type empty;
-              description
-                "'... <permit|deny> any'.";
+            case any {
+              leaf any {
+                type empty;
+                description
+                  "'... <permit|deny> any'.";
+              }
             }
             case prefix {
               leaf prefix {
@@ -206,10 +208,12 @@ module proteus-filter {
               "What the entry matches: everything ('any') or a
                prefix with optional length bounds.";
 
-            leaf any {
-              type empty;
-              description
-                "'... <permit|deny> any'.";
+            case any {
+              leaf any {
+                type empty;
+                description
+                  "'... <permit|deny> any'.";
+              }
             }
             case prefix {
               leaf prefix {
@@ -285,10 +289,12 @@ module proteus-filter {
               "What the entry matches: everything ('any') or a
                prefix.";
 
-            leaf any {
-              type empty;
-              description
-                "'... <permit|deny> any'.";
+            case any {
+              leaf any {
+                type empty;
+                description
+                  "'... <permit|deny> any'.";
+              }
             }
             case prefix {
               leaf prefix {
@@ -345,10 +351,12 @@ module proteus-filter {
               "What the entry matches: everything ('any') or a
                prefix.";
 
-            leaf any {
-              type empty;
-              description
-                "'... <permit|deny> any'.";
+            case any {
+              leaf any {
+                type empty;
+                description
+                  "'... <permit|deny> any'.";
+              }
             }
             case prefix {
               leaf prefix {
@@ -406,15 +414,19 @@ module proteus-filter {
               "What the entry matches: everything ('any') or one MAC
                address.";
 
-            leaf any {
-              type empty;
-              description
-                "'... <permit|deny> any'.";
+            case any {
+              leaf any {
+                type empty;
+                description
+                  "'... <permit|deny> any'.";
+              }
             }
-            leaf mac {
-              type yang:mac-address;
-              description
-                "'... <permit|deny> XX:XX:XX:XX:XX:XX'.";
+            case mac {
+              leaf mac {
+                type yang:mac-address;
+                description
+                  "'... <permit|deny> XX:XX:XX:XX:XX:XX'.";
+              }
             }
           }
         }

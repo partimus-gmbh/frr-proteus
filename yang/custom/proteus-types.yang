@@ -94,75 +94,85 @@ module proteus-types {
          '<administrator>:<assigned-number>'; the type is implicit in
          the administrator's syntax, exactly how FRR re-parses it.";
 
-      container as2 {
-        description
-          "Type 0: 2-octet AS administrator, 4-octet assigned
-           number.";
-        leaf administrator {
-          type uint16;
-          mandatory true;
+      case as2 {
+        container as2 {
           description
-            "2-byte AS number (administrator subfield).";
-        }
-        leaf assigned-number {
-          type uint32;
-          mandatory true;
-          description
-            "4-byte assigned number subfield.";
+            "Type 0: 2-octet AS administrator, 4-octet assigned
+             number.";
+          leaf administrator {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte AS number (administrator subfield).";
+          }
+          leaf assigned-number {
+            type uint32;
+            mandatory true;
+            description
+              "4-byte assigned number subfield.";
+          }
         }
       }
-      container ipv4 {
-        description
-          "Type 1: IPv4-address administrator, 2-octet assigned
-           number.";
-        leaf administrator {
-          type inet:ipv4-address-no-zone;
-          mandatory true;
+      case ipv4 {
+        container ipv4 {
           description
-            "IPv4 address (administrator subfield).";
-        }
-        leaf assigned-number {
-          type uint16;
-          mandatory true;
-          description
-            "2-byte assigned number subfield.";
+            "Type 1: IPv4-address administrator, 2-octet assigned
+             number.";
+          leaf administrator {
+            type inet:ipv4-address-no-zone;
+            mandatory true;
+            description
+              "IPv4 address (administrator subfield).";
+          }
+          leaf assigned-number {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte assigned number subfield.";
+          }
         }
       }
-      container as4 {
-        description
-          "Type 2 (RFC 5668-style): 4-octet AS administrator, 2-octet
-           assigned number.";
-        leaf administrator {
-          type uint32;
-          mandatory true;
+      case as4 {
+        container as4 {
           description
-            "4-byte AS number (administrator subfield).";
-        }
-        leaf assigned-number {
-          type uint16;
-          mandatory true;
-          description
-            "2-byte assigned number subfield.";
+            "Type 2 (RFC 5668-style): 4-octet AS administrator, 2-octet
+             assigned number.";
+          leaf administrator {
+            type uint32;
+            mandatory true;
+            description
+              "4-byte AS number (administrator subfield).";
+          }
+          leaf assigned-number {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte assigned number subfield.";
+          }
         }
       }
-      leaf mac {
-        type yang:mac-address;
-        must "false()" {
-          error-message
-            "type-6 (MAC) route distinguishers are standard but FRR's
-             CLI cannot parse them (str2prefix_rd accepts only ASN:NN
-             / A.B.C.D:NN) -- remove this must once FRR does";
+      case mac {
+        leaf mac {
+          type yang:mac-address;
+          must "false()" {
+            error-message
+              "type-6 (MAC) route distinguishers are standard but FRR's
+               CLI cannot parse them (str2prefix_rd accepts only ASN:NN
+               / A.B.C.D:NN) -- remove this must once FRR does";
+          }
+          description
+            "Type 6: 6-octet MAC address (RFC 8294's encoding list, via
+             RFC 7432). Standard but unusable with FRR -- see the
+             blocking 'must'.";
         }
-        description
-          "Type 6: 6-octet MAC address (RFC 8294's encoding list, via
-           RFC 7432). Standard but unusable with FRR -- see the
-           blocking 'must'.";
       }
-      leaf raw {
-        type string;
-        description
-          "Fallback: the RD text emitted verbatim, for values outside
-           every structured form.";
+      case raw {
+        leaf raw {
+          type string;
+          description
+            "Fallback: the RD text emitted verbatim, for values outside
+             every structured form.";
+        }
       }
     }
   }
@@ -283,43 +293,51 @@ module proteus-types {
       description
         "Which kind of community this is.";
 
-      container community {
-        description
-          "One RFC 1997 'AA:NN' community.";
-        leaf global-admin {
-          type uint16;
-          mandatory true;
-        }
-        leaf local-admin {
-          type uint16;
-          mandatory true;
-        }
-      }
-      leaf well-known {
-        type well-known-community;
-        description
-          "A well-known community by name.";
-      }
-      container large-community {
-        description
-          "One RFC 8092 'GA:LD1:LD2' large community.";
-        leaf global-admin {
-          type uint32;
-          mandatory true;
-        }
-        leaf local-data-1 {
-          type uint32;
-          mandatory true;
-        }
-        leaf local-data-2 {
-          type uint32;
-          mandatory true;
+      case community {
+        container community {
+          description
+            "One RFC 1997 'AA:NN' community.";
+          leaf global-admin {
+            type uint16;
+            mandatory true;
+          }
+          leaf local-admin {
+            type uint16;
+            mandatory true;
+          }
         }
       }
-      leaf raw {
-        type string;
-        description
-          "Fallback: emitted verbatim.";
+      case well-known {
+        leaf well-known {
+          type well-known-community;
+          description
+            "A well-known community by name.";
+        }
+      }
+      case large-community {
+        container large-community {
+          description
+            "One RFC 8092 'GA:LD1:LD2' large community.";
+          leaf global-admin {
+            type uint32;
+            mandatory true;
+          }
+          leaf local-data-1 {
+            type uint32;
+            mandatory true;
+          }
+          leaf local-data-2 {
+            type uint32;
+            mandatory true;
+          }
+        }
+      }
+      case raw {
+        leaf raw {
+          type string;
+          description
+            "Fallback: emitted verbatim.";
+        }
       }
     }
   }
@@ -366,53 +384,59 @@ module proteus-types {
       description
         "Which RFC 4360 encoding this route target uses.";
 
-      container as2 {
-        description
-          "2-byte-AS encoding (type 0), rendered '<AS>:<NN>'.";
-        leaf global-admin {
-          type uint16;
-          mandatory true;
+      case as2 {
+        container as2 {
           description
-            "2-byte AS number (global administrator).";
-        }
-        leaf local-admin {
-          type uint32;
-          mandatory true;
-          description
-            "4-byte local administrator.";
-        }
-      }
-      container as4 {
-        description
-          "4-byte-AS encoding (type 2, RFC 5668), rendered
-           '<AS>:<NN>'.";
-        leaf global-admin {
-          type uint32;
-          mandatory true;
-          description
-            "4-byte AS number (global administrator).";
-        }
-        leaf local-admin {
-          type uint16;
-          mandatory true;
-          description
-            "2-byte local administrator.";
+            "2-byte-AS encoding (type 0), rendered '<AS>:<NN>'.";
+          leaf global-admin {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte AS number (global administrator).";
+          }
+          leaf local-admin {
+            type uint32;
+            mandatory true;
+            description
+              "4-byte local administrator.";
+          }
         }
       }
-      container ipv4 {
-        description
-          "IPv4-address encoding (type 1), rendered '<A.B.C.D>:<NN>'.";
-        leaf global-admin {
-          type inet:ipv4-address-no-zone;
-          mandatory true;
+      case as4 {
+        container as4 {
           description
-            "IPv4 address (global administrator).";
+            "4-byte-AS encoding (type 2, RFC 5668), rendered
+             '<AS>:<NN>'.";
+          leaf global-admin {
+            type uint32;
+            mandatory true;
+            description
+              "4-byte AS number (global administrator).";
+          }
+          leaf local-admin {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte local administrator.";
+          }
         }
-        leaf local-admin {
-          type uint16;
-          mandatory true;
+      }
+      case ipv4 {
+        container ipv4 {
           description
-            "2-byte local administrator.";
+            "IPv4-address encoding (type 1), rendered '<A.B.C.D>:<NN>'.";
+          leaf global-admin {
+            type inet:ipv4-address-no-zone;
+            mandatory true;
+            description
+              "IPv4 address (global administrator).";
+          }
+          leaf local-admin {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte local administrator.";
+          }
         }
       }
     }
@@ -494,54 +518,60 @@ module proteus-types {
       description
         "Which RFC 4360 encoding this route origin uses.";
 
-      container as2 {
-        description
-          "2-byte-AS encoding (type 0x00), rendered '<AS>:<NN>'.";
-        leaf global-admin {
-          type uint16;
-          mandatory true;
+      case as2 {
+        container as2 {
           description
-            "2-byte AS number (global administrator).";
-        }
-        leaf local-admin {
-          type uint32;
-          mandatory true;
-          description
-            "4-byte local administrator.";
-        }
-      }
-      container as4 {
-        description
-          "4-byte-AS encoding (type 0x02, RFC 5668), rendered
-           '<AS>:<NN>'.";
-        leaf global-admin {
-          type uint32;
-          mandatory true;
-          description
-            "4-byte AS number (global administrator).";
-        }
-        leaf local-admin {
-          type uint16;
-          mandatory true;
-          description
-            "2-byte local administrator.";
+            "2-byte-AS encoding (type 0x00), rendered '<AS>:<NN>'.";
+          leaf global-admin {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte AS number (global administrator).";
+          }
+          leaf local-admin {
+            type uint32;
+            mandatory true;
+            description
+              "4-byte local administrator.";
+          }
         }
       }
-      container ipv4 {
-        description
-          "IPv4-address encoding (type 0x01), rendered
-           '<A.B.C.D>:<NN>'.";
-        leaf global-admin {
-          type inet:ipv4-address-no-zone;
-          mandatory true;
+      case as4 {
+        container as4 {
           description
-            "IPv4 address (global administrator).";
+            "4-byte-AS encoding (type 0x02, RFC 5668), rendered
+             '<AS>:<NN>'.";
+          leaf global-admin {
+            type uint32;
+            mandatory true;
+            description
+              "4-byte AS number (global administrator).";
+          }
+          leaf local-admin {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte local administrator.";
+          }
         }
-        leaf local-admin {
-          type uint16;
-          mandatory true;
+      }
+      case ipv4 {
+        container ipv4 {
           description
-            "2-byte local administrator.";
+            "IPv4-address encoding (type 0x01), rendered
+             '<A.B.C.D>:<NN>'.";
+          leaf global-admin {
+            type inet:ipv4-address-no-zone;
+            mandatory true;
+            description
+              "IPv4 address (global administrator).";
+          }
+          leaf local-admin {
+            type uint16;
+            mandatory true;
+            description
+              "2-byte local administrator.";
+          }
         }
       }
     }
