@@ -45,10 +45,19 @@ comments and are freely omitted.
    format: nested `@dataclass` classes mirroring the YANG tree,
    `typing.Literal` for enums/identityrefs, `T | None` leaves -- fully
    understood by mypy/pyright and IDEs, no runtime dependency beyond
-   the stdlib). Generated with `--dataclass-validation`, so YANG value
-   restrictions (ranges, patterns, enum/identityref sets, ...) are also
-   enforced at runtime on assignment (`YangValidationError`); YANG
-   defaults are deliberately not applied (unset leaf == `None`). This
+   the stdlib). Validation is on by default: YANG value restrictions
+   (ranges, patterns, enum/identityref sets, ...) are enforced at
+   runtime on assignment (`YangValidationError`), and a module-level
+   `validate_tree(*roots)` checks the structural/referential rules that
+   can only be judged on a finished tree (leafref integrity, mandatory
+   leaves, list keys/`unique`, min-/max-elements, choice exclusivity)
+   -- `examples/evpn_bgp.py` calls it before rendering. Generated with
+   `--no-dataclass-defaults` (YANG defaults deliberately not applied;
+   unset leaf == `None`), plus `--dataclass-serde` (RFC 7951 JSON via
+   `to_ietf_json`/`from_ietf_json`), `--dataclass-xpaths` (schema-path
+   ClassVars and a `data_path()` instance-path helper), and
+   `--dataclass-origin-comments` (a provenance comment above each
+   grouping/augment-contributed field -- most of the FRR tree). This
    is a build artifact, not checked into git -- regenerate it before
    first use.
 2. **Jinja2 renderer:** `src/frr_proteus/render/templates/*.j2` walk the
