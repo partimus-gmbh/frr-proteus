@@ -60,8 +60,10 @@ def build_vrf_instance_auto_rt(*, local_as: int, vrf: str) -> Instance:
     instance = Instance(vrf=vrf, autonomous_system=local_as)
 
     evpn = instance.afi_safis.l2vpn_evpn
+    # Wildcard RTs (local admin only) are import-only; the 'auto'
+    # sentinel is its own leaf, not a magic list value.
     evpn.route_target_import.append("*:300")
-    evpn.route_target_import.append("auto")
+    evpn.route_target_import_auto = True
 
     return instance
 

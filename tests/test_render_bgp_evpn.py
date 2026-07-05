@@ -101,6 +101,63 @@ def test_vrf_rd_and_route_target():
     assert "  route-target import 65000:300\n" in text
 
 
+def test_vrf_route_target_wildcard_and_auto():
+    instance = _new_instance(vrf="vrf-red")
+    evpn = instance.afi_safis.l2vpn_evpn
+    evpn.route_target_import = ["*:300"]
+    evpn.route_target_import_auto = True
+    evpn.route_target_export_auto = True
+
+    text = render_bgp_instance(instance)
+    assert "  route-target import *:300\n" in text
+    assert "  route-target import auto\n" in text
+    assert "  route-target export auto\n" in text
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "65000:100",  # AS2:NN
+        "4200000000:100",  # AS4:NN
+        "10.10.10.10:100",  # IPv4:NN
+    ],
+)
+def test_vrf_route_target_export_fully_qualified_forms(value):
+    instance = _new_instance(vrf="vrf-red")
+    instance.afi_safis.l2vpn_evpn.route_target_export = [value]
+
+    assert f"  route-target export {value}\n" in render_bgp_instance(instance)
+
+
+def test_vrf_route_target_export_rejects_wildcard_and_auto():
+    evpn = _new_instance(vrf="vrf-red").afi_safis.l2vpn_evpn
+    # export is always fully qualified: no wildcard, no 'auto' string
+    # (the auto sentinel is the route-target-export-auto leaf).
+    with pytest.raises(bindings.YangValidationError):
+        evpn.route_target_export = ["*:300"]
+    with pytest.raises(bindings.YangValidationError):
+        evpn.route_target_export = ["auto"]
+
+
+def test_vni_route_target_rejects_wildcard_and_auto():
+    vni = EvpnAf.Vni(vni_id=101)
+    # per-VNI RTs have no wildcard/auto grammar at all
+    with pytest.raises(bindings.YangValidationError):
+        vni.route_target_import = ["*:300"]
+    with pytest.raises(bindings.YangValidationError):
+        vni.route_target_import = ["auto"]
+
+
+def test_route_target_value_range_enforced():
+    evpn = _new_instance(vrf="vrf-red").afi_safis.l2vpn_evpn
+    # AS2 form caps the local admin at 32 bits, AS4 form the local
+    # admin at 16 bits -- 70000:70000 fits neither, 65536:65536 neither.
+    with pytest.raises(bindings.YangValidationError):
+        evpn.route_target_export = ["70000:70000"]
+    with pytest.raises(bindings.YangValidationError):
+        evpn.route_target_export = ["65000:4294967296"]
+
+
 @pytest.mark.parametrize(
     "gateway_ip,route_map,expected",
     [

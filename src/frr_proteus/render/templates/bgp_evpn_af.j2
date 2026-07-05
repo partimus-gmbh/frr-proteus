@@ -71,9 +71,15 @@ regardless of instance role. #}
 {% for rt in evpn.route_target_import %}
   route-target import {{ rt }}
 {% endfor %}
+{% if evpn.route_target_import_auto %}
+  route-target import auto
+{% endif %}
 {% for rt in evpn.route_target_export %}
   route-target export {{ rt }}
 {% endfor %}
+{% if evpn.route_target_export_auto %}
+  route-target export auto
+{% endif %}
 {% for rt in evpn.route_target_both %}
   route-target both {{ rt }}
 {% endfor %}
