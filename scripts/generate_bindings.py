@@ -24,7 +24,11 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 FRR_YANG_DIR = REPO_ROOT / "frr" / "yang"
 PROTEUS_YANG_DIR = REPO_ROOT / "yang"
 OUTPUT_DIR = REPO_ROOT / "src" / "frr_proteus" / "_generated"
-OUTPUT_FILE = OUTPUT_DIR / "frr_bgp.py"
+# A multi-file package (--dataclass-split-dir): _runtime.py/_types.py hold
+# the shared code once, one file per data-defining YANG module, and
+# __init__.py re-exports everything -- so imports of
+# frr_proteus._generated.frr_bgp are unchanged from the single-file days.
+OUTPUT_PACKAGE = OUTPUT_DIR / "frr_bgp"
 
 # YANG modules needed to fully resolve the BGP model (frr-bgp.yang includes
 # several submodules and imports these directly).
@@ -94,8 +98,8 @@ def main() -> None:
         str(FRR_YANG_DIR / "ietf"),
         "-p",
         str(PROTEUS_YANG_DIR),
-        "-o",
-        str(OUTPUT_FILE),
+        "--dataclass-split-dir",
+        str(OUTPUT_PACKAGE),
         *[str(m) for m in BGP_YANG_MODULES],
     ]
     print("running (in-process):", " ".join(argv))
@@ -108,7 +112,9 @@ def main() -> None:
             raise
     finally:
         sys.argv = old_argv
-    print(f"wrote {OUTPUT_FILE} ({OUTPUT_FILE.stat().st_size} bytes)")
+    files = sorted(OUTPUT_PACKAGE.glob("*.py"))
+    total = sum(f.stat().st_size for f in files)
+    print(f"wrote {len(files)} files ({total} bytes) under {OUTPUT_PACKAGE}")
 
 
 if __name__ == "__main__":

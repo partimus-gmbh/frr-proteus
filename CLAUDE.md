@@ -89,13 +89,23 @@ same shape (one `.j2` template, thin Python glue module, thin
   python3.11-only restriction applied to the unpatched PyPI release).
   Compiles
   `frr/yang/frr-bgp.yang` + `yang/frr-proteus-bgp-evpn.yang` together
-  into one bindings module. Gotcha: it locates the pyang plugin dir via
+  into the `frr_bgp/` bindings package (`--dataclass-split-dir` mode:
+  shared runtime/reusable types once in `_runtime.py`/`_types.py`, one
+  file per data-defining YANG module, `__init__.py` re-exports all --
+  imports look exactly like the old single-file module; note the BGP
+  tree lives in `frr_routing.py` because `frr-bgp.yang` only *augments*
+  `frr-routing`, defining no top-level data nodes of its own).
+  `scripts/generate_dataclass_bindings.py` is the generic driver for
+  pointing the same backend at any other model tree (tested on Nokia SR
+  Linux); `-o file.py` for single-file, `-d dir/` for a package.
+  Gotcha: it locates the pyang plugin dir via
   `pyangbind.plugin.pybind.__file__`, not `pyangbind.__path__` -- with
   the editable install, a process cwd'd at the repo root sees the
   submodule checkout dir (which holds the package one level down) as a
   same-named namespace package, and `__path__` then points at the wrong
   level.
-- `src/frr_proteus/_generated/` -- generated bindings. Gitignored
+- `src/frr_proteus/_generated/` -- generated bindings (the `frr_bgp/`
+  package). Gitignored
   (~1.3MB, trivially reproducible). Must be generated before running
   examples or tests. Shape: plain stdlib dataclasses, nested to mirror
   the YANG tree (`FrrRouting.Routing.ControlPlaneProtocols.
