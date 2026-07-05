@@ -74,11 +74,20 @@ def main() -> None:
         "-f",
         "pybind-dataclass",
         # The backend generates validation and YANG defaults by default;
-        # keep validation but opt out of defaults: renderers rely on
-        # "unset leaf is None / falsy means not explicitly configured",
-        # and applying YANG defaults would make default-valued knobs
-        # indistinguishable from configured ones.
+        # keep validation (which includes the validate_tree() whole-tree
+        # pass) but opt out of defaults: renderers rely on "unset leaf is
+        # None / falsy means not explicitly configured", and applying
+        # YANG defaults would make default-valued knobs indistinguishable
+        # from configured ones.
         "--no-dataclass-defaults",
+        # FRR's model is nearly all augments/groupings; annotate each
+        # generated node with where it actually comes from.
+        "--dataclass-origin-comments",
+        # RFC 7951 JSON (to_ietf_json/from_ietf_json) and schema/instance
+        # paths (_yang_schema_path, data_path) -- cheap to carry, useful
+        # for debugging and tests.
+        "--dataclass-serde",
+        "--dataclass-xpaths",
         "-p",
         str(FRR_YANG_DIR),
         "-p",

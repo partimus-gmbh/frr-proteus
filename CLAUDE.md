@@ -96,7 +96,7 @@ same shape (one `.j2` template, thin Python glue module, thin
   same-named namespace package, and `__path__` then points at the wrong
   level.
 - `src/frr_proteus/_generated/` -- generated bindings. Gitignored
-  (~335KB, trivially reproducible). Must be generated before running
+  (~1.3MB, trivially reproducible). Must be generated before running
   examples or tests. Shape: plain stdlib dataclasses, nested to mirror
   the YANG tree (`FrrRouting.Routing.ControlPlaneProtocols.
   ControlPlaneProtocol.Bgp...`), zero runtime deps, understood
@@ -127,8 +127,23 @@ same shape (one `.j2` template, thin Python glue module, thin
   rules (mandatory, list keys, when/must) are not checked. This project
   generates with `--no-dataclass-defaults`: applying YANG defaults
   would break the falsy-means-unconfigured contract the renderers rely
-  on. A feature-free variant backend `pybind-dataclass-dumb` is kept in
-  the fork.
+  on. Structural/referential rules are covered by the module-level
+  `validate_tree(*roots)` whole-tree pass (call it once the tree is
+  built -- creation order stays free): leafref referential integrity,
+  mandatory leaves, list keys present + unique, `unique` groups,
+  leaf-list value uniqueness, min-/max-elements, choice exclusivity /
+  mandatory choices, and it re-checks every value (so it also catches
+  what `.append()` bypassed); `must`/`when` are never evaluated. All
+  violations are aggregated into one `YangValidationError` with
+  instance paths. This project also generates with
+  `--dataclass-origin-comments` (a `# from file:line, via uses/augment
+  ...` comment above each grouping/augment-contributed node -- most of
+  the FRR tree), `--dataclass-serde` (`to_ietf_json`/`from_ietf_json`,
+  RFC 7951 JSON as plain dicts) and `--dataclass-xpaths`
+  (`_yang_schema_path` ClassVars + `data_path(root, node)` instance
+  paths). Everything is driven by per-class `_yang_fields` ClassVar
+  metadata tables; instances stay plain dataclasses. A feature-free
+  variant backend `pybind-dataclass-dumb` is kept in the fork.
 - `src/frr_proteus/render/` -- templates under `templates/*.j2` (one per
   protocol/AF, e.g. `bgp.conf.j2`, `bgp_evpn_af.j2`) walk the generated
   dataclasses close to directly, with minimal template logic. `helpers.py`

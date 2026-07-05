@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, "src")
 
-from frr_proteus._generated.frr_bgp import FrrRouting
+from frr_proteus._generated.frr_bgp import FrrRouting, validate_tree
 from frr_proteus.render import render_bgp_instance
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
@@ -30,8 +30,11 @@ GlobalAfiSafi = Bgp.Global.AfiSafis.AfiSafi
 NeighborAfiSafi = Bgp.Neighbors.Neighbor.AfiSafis.AfiSafi
 
 
-def _new_bgp_instance(routing: FrrRouting, *, name: str, local_as: int) -> Bgp:
-    proto = Proto(type="frr-bgp:bgp", name=name)
+def _new_bgp_instance(
+    routing: FrrRouting, *, name: str, local_as: int, vrf: str = "default"
+) -> Bgp:
+    # frr-routing keys the control-plane-protocol list on (type, name, vrf)
+    proto = Proto(type="frr-bgp:bgp", name=name, vrf=vrf)
     routing.routing.control_plane_protocols.control_plane_protocol.append(proto)
     proto.bgp.global_.local_as = local_as
     return proto.bgp
@@ -72,7 +75,7 @@ def build_default_instance(routing: FrrRouting, *, local_as: int, router_id: str
 
 
 def build_vrf_instance_auto_rt(routing: FrrRouting, *, local_as: int, vrf: str) -> Bgp:
-    bgp = _new_bgp_instance(routing, name=vrf, local_as=local_as)
+    bgp = _new_bgp_instance(routing, name=vrf, local_as=local_as, vrf=vrf)
 
     evpn = _evpn_af(bgp)
     evpn.route_target_import.append("*:300")
@@ -82,7 +85,7 @@ def build_vrf_instance_auto_rt(routing: FrrRouting, *, local_as: int, vrf: str) 
 
 
 def build_vrf_instance_type5(routing: FrrRouting, *, local_as: int, vrf: str) -> Bgp:
-    bgp = _new_bgp_instance(routing, name=vrf, local_as=local_as)
+    bgp = _new_bgp_instance(routing, name=vrf, local_as=local_as, vrf=vrf)
 
     evpn = _evpn_af(bgp)
     evpn.advertise_ipv4_unicast.enabled = True
@@ -96,6 +99,10 @@ def main() -> None:
     default = build_default_instance(routing, local_as=65000, router_id="10.10.10.10")
     vrf_red = build_vrf_instance_auto_rt(routing, local_as=65000, vrf="vrf-red")
     vrf_purple = build_vrf_instance_type5(routing, local_as=65000, vrf="vrf-purple")
+
+    # Whole-tree pass: leafref integrity, mandatory leaves, list keys,
+    # choice rules -- everything on-assignment validation cannot judge.
+    validate_tree(routing)
 
     text = (
         render_bgp_instance(default)
