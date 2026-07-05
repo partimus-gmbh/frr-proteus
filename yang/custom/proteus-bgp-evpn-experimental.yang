@@ -1,0 +1,182 @@
+module proteus-bgp-evpn-experimental {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/bgp-evpn-experimental";
+  prefix proteus-bgp-evpn-exp;
+
+  import proteus-types {
+    prefix pt;
+  }
+  import proteus-bgp {
+    prefix bgp;
+  }
+  import proteus-bgp-evpn {
+    prefix evpn;
+  }
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "Experimental EVPN configuration scheme (underlay VRFs, VNI
+     auto-discovery, per-VRF L3VNI origination, vlan-based EVI
+     blocks, and a global 'evpn' configuration block). These are
+     ADDITIONAL nodes: they are always part of the compiled custom
+     schema and coexist with the legacy EVPN nodes in one tree, so a
+     config object can carry both. Opting in happens at the
+     *renderer*, not the schema: render format 'experimental' emits
+     this scheme's syntax and drops the legacy EVPN command syntax;
+     the default 'frr' format emits legacy syntax and translates
+     these nodes where stock FRR has an equivalent (vlan-based-evi ->
+     'vni' block), leaving out what has none (vxlan-underlay,
+     underlay-vrf, origination-l3vni, ...).
+
+     This module is the one place the custom models use 'augment',
+     deliberately: its underlay references are leafrefs into
+     proteus-bgp's instance list, so the import direction is fixed
+     (this module imports proteus-bgp) and proteus-bgp cannot 'uses'
+     a grouping from here without an import cycle -- the instance-side
+     nodes can only arrive via augment. The global 'evpn' block is
+     this module's own top-level container, no augment involved.
+
+     Unlike the rest of yang/custom, the CLI text here is NOT
+     verifiable against bgpd's config-write code -- the scheme is
+     experimental and the rendering follows its specification
+     example, with FRR-style block conventions (exit-address-family,
+     exit-evi, a bare 'exit' closing the global block).";
+
+  revision 2026-07-05 {
+    description
+      "Initial revision.";
+  }
+
+  grouping vlan-based-evi {
+    description
+      "One 'vlan-based-evi NAME ... exit-evi' block: a VLAN-based
+       EVPN instance (one broadcast domain / L2VNI per EVI). Used
+       both inside a tenant VRF's 'address-family l2vpn evpn' and in
+       the global 'evpn' block.";
+
+    list vlan-based-evi {
+      key "name";
+      description
+        "'vlan-based-evi NAME' ... 'exit-evi'.";
+
+      leaf name {
+        type string {
+          length "1..max";
+        }
+        description
+          "EVI name.";
+      }
+
+      leaf underlay-vrf {
+        type leafref {
+          path "/bgp:bgp/bgp:instance/bgp:vrf";
+        }
+        description
+          "'underlay-vrf NAME': the VXLAN underlay this EVI's
+           tunnels ride on. Must reference an existing BGP instance
+           (validate_tree-enforced).
+           // That the referenced instance also has vxlan-underlay
+           // set is not expressible without 'must'; check it in the
+           // renderer/caller.";
+      }
+
+      leaf origination-l2vni {
+        type pt:vni;
+        description
+          "'origination-l2vni NNN': originate this EVI's routes with
+           the given L2VNI.";
+      }
+
+      uses evpn:vrf-route-targets;
+    }
+  }
+
+  /*
+   * Instance-side additions: new commands inside 'router bgp ...' /
+   * 'address-family l2vpn evpn'. See the module description for why
+   * this is an augment (opt-in removability) despite the custom
+   * models' no-augment rule.
+   */
+  augment "/bgp:bgp/bgp:instance/bgp:afi-safis/bgp:l2vpn-evpn" {
+    description
+      "Experimental-scheme commands in the instance-level
+       'address-family l2vpn evpn' block.";
+
+    leaf vxlan-underlay {
+      type boolean;
+      default "false";
+      description
+        "'vxlan-underlay': mark this BGP instance's VRF as a VXLAN
+         underlay (its EVPN sessions transport the tenant VNIs).";
+    }
+
+    leaf auto-discover-vnis {
+      type boolean;
+      default "false";
+      description
+        "'auto-discover-vnis': learn VNIs dynamically instead of
+         enumerating them. Underlay instances only.";
+    }
+
+    leaf underlay-vrf {
+      type leafref {
+        path "/bgp:bgp/bgp:instance/bgp:vrf";
+      }
+      description
+        "'underlay-vrf NAME': which VXLAN underlay this tenant VRF
+         uses. Must reference an existing BGP instance
+         (validate_tree-enforced); overrides the global
+         default-underlay-vrf.
+         // vxlan-underlay-role check on the target: see the EVI
+         // leaf's comment.";
+    }
+
+    container origination-l3vni {
+      description
+        "'origination-l3vni NNN [prefix-routes-only]': originate this
+         VRF's routes with the given L3VNI.";
+      leaf vni {
+        type pt:vni;
+        description
+          "The L3VNI.";
+      }
+      leaf prefix-routes-only {
+        type boolean;
+        default "false";
+        description
+          "Only originate type-5 (prefix) routes, no symmetric-IRB
+           MAC/IP handling.";
+      }
+    }
+
+    uses vlan-based-evi;
+  }
+
+  /*
+   * The global 'evpn' ... 'exit' configuration block -- a new
+   * top-level CLI node outside any 'router bgp' instance. Top-level
+   * data nodes of this module, no augment needed.
+   */
+  container evpn {
+    description
+      "Global 'evpn' configuration block ('evpn' ... 'exit'):
+       EVPN settings and EVIs that are not tied to one tenant BGP
+       instance.";
+
+    leaf default-underlay-vrf {
+      type leafref {
+        path "/bgp:bgp/bgp:instance/bgp:vrf";
+      }
+      description
+        "'default-underlay-vrf NAME': underlay used by tenant VRFs
+         and EVIs that don't set their own underlay-vrf. Must
+         reference an existing BGP instance
+         (validate_tree-enforced).";
+    }
+
+    uses vlan-based-evi;
+  }
+}

@@ -52,6 +52,22 @@ comments and are freely omitted.
   schemas (`_generated/frr_bgp/` and `_generated/proteus/`); the
   renderers, tests and examples consume the custom (`proteus`) schema;
   the FRR-schema bindings remain as a reference artifact.
+- **Experimental EVPN config scheme:**
+  `yang/custom/proteus-bgp-evpn-experimental.yang` adds typing for an
+  experimental EVPN configuration syntax (VXLAN underlay VRFs, VNI
+  auto-discovery, `origination-l3vni`/`origination-l2vni`,
+  `vlan-based-evi` blocks, a global `evpn` block with
+  `default-underlay-vrf`; underlay references are leafrefs into the
+  BGP instance list). The nodes are additional and always generated --
+  legacy and experimental typing coexist on one config object. The
+  choice happens at render time: `render_bgp_instance(instance,
+  format="experimental")` emits the new syntax and removes the legacy
+  EVPN command syntax, while the default `format="frr"` emits stock
+  FRR syntax and translates the experimental typing where an
+  equivalent exists (an EVI with an L2VNI becomes a `vni` block;
+  fields stock FRR cannot express are left out).
+  `render_evpn_global()` renders the global `evpn` block
+  (experimental format only).
 
 ## How it works
 

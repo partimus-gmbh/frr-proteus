@@ -32,8 +32,8 @@ router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
  exit-address-family
 {% endif %}
 {% endfor %}
-{% if evpn_configured(instance) %}
+{% if evpn_af_needed(instance, format) %}
 {% set evpn = instance.afi_safis.l2vpn_evpn %}
-{% include "bgp_evpn_af.j2" %}
+{% include evpn_af_template %}
 {% endif %}
 !

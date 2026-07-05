@@ -1,0 +1,40 @@
+{# Shared EVPN macros.
+
+vrf_route_targets: the VRF-shaped route-target block (fully qualified
+entries incl. import wildcard via route_target_texts(), plus the
+import/export auto flags). Shared by both address-family formats and
+by EVI bodies; per-VNI RT sets have no wildcard/auto and are rendered
+inline by the legacy template instead.
+
+vlan_based_evi: one 'vlan-based-evi NAME ... exit-evi' block
+(experimental scheme only). `pad` indents the header/exit-evi lines;
+body lines get one more space, mirroring FRR's vni-block indentation.
+Macro bodies deliberately don't end in a newline: the caller's
+`{{ ... }}` line supplies it. #}
+{% macro vrf_route_targets(holder, pad) %}
+{% for rt in route_target_texts(holder.route_target_import) %}
+{{ pad }}route-target import {{ rt }}
+{% endfor %}
+{% if holder.route_target_import.auto %}
+{{ pad }}route-target import auto
+{% endif %}
+{% for rt in route_target_texts(holder.route_target_export) %}
+{{ pad }}route-target export {{ rt }}
+{% endfor %}
+{% if holder.route_target_export.auto %}
+{{ pad }}route-target export auto
+{% endif %}
+{% for rt in route_target_texts(holder.route_target_both) %}
+{{ pad }}route-target both {{ rt }}
+{% endfor %}
+{% endmacro %}
+{% macro vlan_based_evi(evi, pad) %}
+{{ pad }}vlan-based-evi {{ evi.name }}
+{% if evi.underlay_vrf %}
+{{ pad }} underlay-vrf {{ evi.underlay_vrf }}
+{% endif %}
+{% if evi.origination_l2vni %}
+{{ pad }} origination-l2vni {{ evi.origination_l2vni }}
+{% endif %}
+{{ vrf_route_targets(evi, pad ~ " ") -}}
+{{ pad }}exit-evi{% endmacro %}

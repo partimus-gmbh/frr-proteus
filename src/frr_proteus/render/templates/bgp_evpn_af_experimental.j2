@@ -1,0 +1,29 @@
+{# L2VPN EVPN address-family block, EXPERIMENTAL config scheme
+(yang/custom/proteus-bgp-evpn-experimental.yang; requires an FRR build
+that speaks the scheme). Emits the new scheme's commands and REMOVES
+the legacy EVPN command syntax: advertise-all-vni, advertise-*,
+flooding, 'vni' blocks, rd and 'advertise ... unicast' are not part of
+this format's output even if set on the object. Per-neighbor lines and
+route-targets are shared syntax and render in both formats. #}
+{% import "evpn_macros.j2" as evpn_macros %}
+ !
+ address-family l2vpn evpn
+{% include "bgp_evpn_neighbors.j2" %}
+{% if evpn.vxlan_underlay %}
+  vxlan-underlay
+{% endif %}
+{% if evpn.auto_discover_vnis %}
+  auto-discover-vnis
+{% endif %}
+{% if evpn.underlay_vrf %}
+  underlay-vrf {{ evpn.underlay_vrf }}
+{% endif %}
+{% if evpn.origination_l3vni.vni %}
+{% set pro = " prefix-routes-only" if evpn.origination_l3vni.prefix_routes_only else "" %}
+  origination-l3vni {{ evpn.origination_l3vni.vni }}{{ pro }}
+{% endif %}
+{{ evpn_macros.vrf_route_targets(evpn, "  ") -}}
+{% for evi in evpn.vlan_based_evi %}
+{{ evpn_macros.vlan_based_evi(evi, "  ") }}
+{% endfor %}
+ exit-address-family

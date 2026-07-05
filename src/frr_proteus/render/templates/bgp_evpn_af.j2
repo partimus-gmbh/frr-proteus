@@ -1,36 +1,22 @@
-{# L2VPN EVPN address-family body. Included from bgp.conf.j2 when
-evpn_configured(instance) says the block is needed; `instance` (the
-/bgp/instance entry) and `evpn` (instance.afi_safis.l2vpn_evpn, see
-yang/custom/proteus-bgp-evpn.yang) are in scope from the caller.
+{# L2VPN EVPN address-family block, stock-FRR ("frr") format. Included
+from bgp.conf.j2 when evpn_configured(instance) says the block is
+needed; `instance` (the /bgp/instance entry) and `evpn`
+(instance.afi_safis.l2vpn_evpn) are in scope from the caller.
 
-FRR distinguishes the default-instance EVPN role (advertise-all-vni, the
-per-VNI list, flooding, ...) from a per-VRF instance's EVPN role (rd,
-route-target, advertise ipv4/ipv6 unicast for L3VPN route leaking) by
-which VRF the enclosing `router bgp` belongs to, not by YANG structure --
-so this template just renders whichever fields are actually set,
-regardless of instance role. #}
+Renders the legacy EVPN command set, plus a COMPATIBILITY TRANSLATION
+of the experimental-scheme typing into stock FRR syntax:
+  - vlan-based-evi with origination-l2vni N  ->  'vni N' block, with
+    its fully qualified route-targets ('vni' RT lines support neither
+    wildcard nor auto, so those are dropped, as is underlay-vrf);
+    an EVI without origination-l2vni has no vni id and is dropped.
+  - vxlan-underlay, auto-discover-vnis, underlay-vrf,
+    origination-l3vni have no stock-FRR equivalent and are left out.
+The experimental format (bgp_evpn_af_experimental.j2) is the inverse:
+new scheme emitted, legacy syntax removed. #}
+{% import "evpn_macros.j2" as evpn_macros %}
  !
  address-family l2vpn evpn
-{% for neighbor in instance.neighbor %}
-{% set addr = neighbor.address %}
-{% set n_af = neighbor.afi_safis.l2vpn_evpn %}
-{% if n_af.activate %}
-  neighbor {{ addr }} activate
-{% endif %}
-{% if n_af.route_reflector_client %}
-  neighbor {{ addr }} route-reflector-client
-{% endif %}
-{% if n_af.filters.route_map_in %}
-  neighbor {{ addr }} route-map {{ n_af.filters.route_map_in }} in
-{% endif %}
-{% if n_af.filters.route_map_out %}
-  neighbor {{ addr }} route-map {{ n_af.filters.route_map_out }} out
-{% endif %}
-{% if n_af.allowas_in.enabled %}
-{% set count = " " ~ n_af.allowas_in.count if n_af.allowas_in.count else "" %}
-  neighbor {{ addr }} allowas-in{{ count }}
-{% endif %}
-{% endfor %}
+{% include "bgp_evpn_neighbors.j2" %}
 {% if evpn.advertise_all_vni %}
   advertise-all-vni
 {% endif %}
@@ -65,24 +51,25 @@ regardless of instance role. #}
 {% endif %}
   exit-vni
 {% endfor %}
+{% for evi in evpn.vlan_based_evi %}
+{% if evi.origination_l2vni %}
+  vni {{ evi.origination_l2vni }}
+{% for rt in route_target_texts(evi.route_target_import, include_wildcard=False) %}
+   route-target import {{ rt }}
+{% endfor %}
+{% for rt in route_target_texts(evi.route_target_export) %}
+   route-target export {{ rt }}
+{% endfor %}
+{% for rt in route_target_texts(evi.route_target_both) %}
+   route-target both {{ rt }}
+{% endfor %}
+  exit-vni
+{% endif %}
+{% endfor %}
 {% if evpn.rd %}
   rd {{ evpn.rd }}
 {% endif %}
-{% for rt in route_target_texts(evpn.route_target_import) %}
-  route-target import {{ rt }}
-{% endfor %}
-{% if evpn.route_target_import.auto %}
-  route-target import auto
-{% endif %}
-{% for rt in route_target_texts(evpn.route_target_export) %}
-  route-target export {{ rt }}
-{% endfor %}
-{% if evpn.route_target_export.auto %}
-  route-target export auto
-{% endif %}
-{% for rt in route_target_texts(evpn.route_target_both) %}
-  route-target both {{ rt }}
-{% endfor %}
+{{ evpn_macros.vrf_route_targets(evpn, "  ") -}}
 {% if evpn.advertise_ipv4_unicast.enabled %}
 {% set gw = " gateway-ip" if evpn.advertise_ipv4_unicast.gateway_ip else "" %}
 {% set rmap = " route-map " ~ evpn.advertise_ipv4_unicast.route_map if evpn.advertise_ipv4_unicast.route_map else "" %}

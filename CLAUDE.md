@@ -97,7 +97,19 @@ same shape (one `.j2` template, thin Python glue module, thin
   Codegen emits these as the `_generated/proteus/` package (root class
   `ProteusBgp`); the renderers, tests and examples all consume this
   package now. `_generated/frr_bgp/` (from the FRR schema) is still
-  generated for reference but has no renderer. Gotcha:
+  generated for reference but has no renderer.
+  `proteus-bgp-evpn-experimental.yang` models the user's experimental
+  EVPN config scheme (vxlan-underlay, auto-discover-vnis, underlay-vrf
+  leafrefs, origination-l3vni/-l2vni, vlan-based-evi blocks, global
+  `evpn` block). Its nodes are ADDITIONAL, always compiled into the
+  same package, and coexist with the legacy EVPN nodes on one object;
+  opting in happens at the renderer via the output format, not the
+  schema. It is the one permitted `augment` in yang/custom: its
+  underlay leafrefs point into proteus-bgp's instance list, fixing the
+  import direction, so proteus-bgp can't `uses` a grouping from it
+  (cycle) -- documented in the module description. Its CLI text
+  follows the scheme's spec example, NOT bgpd source (nothing to
+  verify against). Gotcha:
   `validate_tree()` resolves leafrefs by absolute schema path, so it
   must be passed the *module root* objects -- `validate_tree(
   ProteusBgp_instance, ProteusRouteMap_instance)` -- not the `bgp` /
@@ -206,8 +218,19 @@ same shape (one `.j2` template, thin Python glue module, thin
   subtree-emptiness checks -- the old identityref/enum helpers died with
   the FRR-schema migration) and is exposed to templates as Jinja globals.
   `bgp.py` wires up the Jinja `Environment` and exposes
-  `render_bgp_instance(instance)` (takes one instance list entry; the
-  vrf clause comes from its `vrf` key).
+  `render_bgp_instance(instance, format=...)` (takes one instance list
+  entry; the vrf clause comes from its `vrf` key) plus
+  `render_evpn_global(evpn, format=...)` for the experimental global
+  `evpn` block. Two output formats: `"frr"` (default) renders legacy
+  syntax and *translates* the experimental typing where stock FRR has
+  an equivalent (vlan-based-evi with origination-l2vni -> `vni` block,
+  wildcard/auto RTs and underlay fields dropped; global block dropped
+  entirely); `"experimental"` renders the new scheme's syntax and
+  removes legacy EVPN command syntax (neighbor lines and route-targets
+  are shared and render in both). Only the l2vpn evpn AF differs
+  between formats -- template selection via
+  `{% include evpn_af_template %}`; per-neighbor lines live in shared
+  `bgp_evpn_neighbors.j2`, RT/EVI rendering in `evpn_macros.j2`.
   **Whitespace gotcha:** with `trim_blocks=True`, *any* line ending in a
   `{% %}` tag has its trailing newline eaten -- including a content line
   that just happens to end with an inline `{% endif %}` (not only

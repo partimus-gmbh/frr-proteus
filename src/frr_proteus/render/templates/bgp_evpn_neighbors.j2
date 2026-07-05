@@ -1,0 +1,24 @@
+{# Per-neighbor lines of the l2vpn evpn address-family block. Shared
+between the frr and experimental formats: these are session/policy
+lines, not part of the legacy-vs-experimental EVPN scheme split.
+`instance` is in scope from the including template. #}
+{% for neighbor in instance.neighbor %}
+{% set addr = neighbor.address %}
+{% set n_af = neighbor.afi_safis.l2vpn_evpn %}
+{% if n_af.activate %}
+  neighbor {{ addr }} activate
+{% endif %}
+{% if n_af.route_reflector_client %}
+  neighbor {{ addr }} route-reflector-client
+{% endif %}
+{% if n_af.filters.route_map_in %}
+  neighbor {{ addr }} route-map {{ n_af.filters.route_map_in }} in
+{% endif %}
+{% if n_af.filters.route_map_out %}
+  neighbor {{ addr }} route-map {{ n_af.filters.route_map_out }} out
+{% endif %}
+{% if n_af.allowas_in.enabled %}
+{% set count = " " ~ n_af.allowas_in.count if n_af.allowas_in.count else "" %}
+  neighbor {{ addr }} allowas-in{{ count }}
+{% endif %}
+{% endfor %}
