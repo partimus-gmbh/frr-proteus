@@ -60,11 +60,14 @@ def route_target_texts(rt_set, *, include_wildcard: bool = True) -> list[str]:
     return texts
 
 
-# Fields the experimental EVPN scheme adds to the instance-level
-# l2vpn-evpn container (proteus-bgp-evpn-experimental.yang's augment).
-_EXPERIMENTAL_EVPN_FIELDS = frozenset(
+# Experimental-scheme fields on the instance-level l2vpn-evpn container
+# (proteus-bgp-evpn-experimental.yang's augment) that produce NO output
+# in the frr format. vxlan_underlay is absent on purpose: it translates
+# to 'advertise-all-vni', so it counts as renderable config there;
+# vlan_based_evi is listed but handled separately (translatable only
+# when an EVI carries an origination-l2vni).
+_FRR_UNRENDERABLE_EVPN_FIELDS = frozenset(
     {
-        "vxlan_underlay",
         "auto_discover_vnis",
         "underlay_vrf",
         "origination_l3vni",
@@ -108,6 +111,6 @@ def evpn_af_needed(instance, format: str) -> bool:
         return True
     if format == "experimental":
         return has_config(evpn)
-    if _has_config_except(evpn, _EXPERIMENTAL_EVPN_FIELDS):
+    if _has_config_except(evpn, _FRR_UNRENDERABLE_EVPN_FIELDS):
         return True
     return any(evi.origination_l2vni for evi in evpn.vlan_based_evi)

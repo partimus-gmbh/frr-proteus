@@ -64,10 +64,14 @@ comments and are freely omitted.
   format="experimental")` emits the new syntax and removes the legacy
   EVPN command syntax, while the default `format="frr"` emits stock
   FRR syntax and translates the experimental typing where an
-  equivalent exists (an EVI with an L2VNI becomes a `vni` block;
-  fields stock FRR cannot express are left out).
-  `render_evpn_global()` renders the global `evpn` block
-  (experimental format only).
+  equivalent exists (`vxlan-underlay` becomes `advertise-all-vni`, an
+  EVI with an L2VNI becomes a `vni` block; fields stock FRR cannot
+  express are left out). `render_evpn_global()` renders the global
+  `evpn` block (experimental format only). Underlay references are
+  leafrefs plus a YANG `must` requiring the target to be marked
+  `vxlan-underlay`; since generated validation never evaluates
+  `must`, call `frr_proteus.validate_underlay_refs()` alongside
+  `validate_tree()`.
 
 ## How it works
 

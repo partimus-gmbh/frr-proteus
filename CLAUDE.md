@@ -109,7 +109,12 @@ same shape (one `.j2` template, thin Python glue module, thin
   import direction, so proteus-bgp can't `uses` a grouping from it
   (cycle) -- documented in the module description. Its CLI text
   follows the scheme's spec example, NOT bgpd source (nothing to
-  verify against). Gotcha:
+  verify against). Underlay references must point at an instance
+  *marked vxlan-underlay*: stated as YANG `must` (which validate_tree
+  never evaluates) and enforced by
+  `frr_proteus.validate.validate_underlay_refs(bgp_root, exp_root)` --
+  call it alongside validate_tree for experimental-scheme data.
+  Gotcha:
   `validate_tree()` resolves leafrefs by absolute schema path, so it
   must be passed the *module root* objects -- `validate_tree(
   ProteusBgp_instance, ProteusRouteMap_instance)` -- not the `bgp` /
@@ -223,9 +228,10 @@ same shape (one `.j2` template, thin Python glue module, thin
   `render_evpn_global(evpn, format=...)` for the experimental global
   `evpn` block. Two output formats: `"frr"` (default) renders legacy
   syntax and *translates* the experimental typing where stock FRR has
-  an equivalent (vlan-based-evi with origination-l2vni -> `vni` block,
-  wildcard/auto RTs and underlay fields dropped; global block dropped
-  entirely); `"experimental"` renders the new scheme's syntax and
+  an equivalent (vxlan-underlay -> `advertise-all-vni` (direct
+  equivalent per the user), vlan-based-evi with origination-l2vni ->
+  `vni` block; wildcard/auto RTs, underlay refs and the global block
+  are dropped); `"experimental"` renders the new scheme's syntax and
   removes legacy EVPN command syntax (neighbor lines and route-targets
   are shared and render in both). Only the l2vpn evpn AF differs
   between formats -- template selection via

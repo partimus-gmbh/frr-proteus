@@ -27,9 +27,10 @@ module proteus-bgp-evpn-experimental {
      *renderer*, not the schema: render format 'experimental' emits
      this scheme's syntax and drops the legacy EVPN command syntax;
      the default 'frr' format emits legacy syntax and translates
-     these nodes where stock FRR has an equivalent (vlan-based-evi ->
-     'vni' block), leaving out what has none (vxlan-underlay,
-     underlay-vrf, origination-l3vni, ...).
+     these nodes where stock FRR has an equivalent (vxlan-underlay ->
+     'advertise-all-vni', vlan-based-evi -> 'vni' block), leaving out
+     what has none (auto-discover-vnis, underlay-vrf,
+     origination-l3vni, the global block, ...).
 
      This module is the one place the custom models use 'augment',
      deliberately: its underlay references are leafrefs into
@@ -74,13 +75,20 @@ module proteus-bgp-evpn-experimental {
         type leafref {
           path "/bgp:bgp/bgp:instance/bgp:vrf";
         }
+        must "/bgp:bgp/bgp:instance[bgp:vrf = current()]"
+           + "/bgp:afi-safis/bgp:l2vpn-evpn"
+           + "/proteus-bgp-evpn-exp:vxlan-underlay = 'true'" {
+          error-message
+            "underlay-vrf must reference a VRF whose BGP instance has
+             vxlan-underlay set";
+        }
         description
           "'underlay-vrf NAME': the VXLAN underlay this EVI's
            tunnels ride on. Must reference an existing BGP instance
-           (validate_tree-enforced).
-           // That the referenced instance also has vxlan-underlay
-           // set is not expressible without 'must'; check it in the
-           // renderer/caller.";
+           (leafref, validate_tree-enforced) that is marked
+           vxlan-underlay (the 'must' above -- the generated
+           validator never evaluates must, so this half is enforced
+           by frr_proteus.validate.validate_underlay_refs()).";
       }
 
       leaf origination-l2vni {
@@ -110,7 +118,9 @@ module proteus-bgp-evpn-experimental {
       default "false";
       description
         "'vxlan-underlay': mark this BGP instance's VRF as a VXLAN
-         underlay (its EVPN sessions transport the tenant VNIs).";
+         underlay (its EVPN sessions transport the tenant VNIs).
+         Direct equivalent of stock FRR's 'advertise-all-vni' -- the
+         'frr' output format renders it as exactly that line.";
     }
 
     leaf auto-discover-vnis {
@@ -125,13 +135,21 @@ module proteus-bgp-evpn-experimental {
       type leafref {
         path "/bgp:bgp/bgp:instance/bgp:vrf";
       }
+      must "/bgp:bgp/bgp:instance[bgp:vrf = current()]"
+         + "/bgp:afi-safis/bgp:l2vpn-evpn"
+         + "/proteus-bgp-evpn-exp:vxlan-underlay = 'true'" {
+        error-message
+          "underlay-vrf must reference a VRF whose BGP instance has
+           vxlan-underlay set";
+      }
       description
         "'underlay-vrf NAME': which VXLAN underlay this tenant VRF
-         uses. Must reference an existing BGP instance
-         (validate_tree-enforced); overrides the global
-         default-underlay-vrf.
-         // vxlan-underlay-role check on the target: see the EVI
-         // leaf's comment.";
+         uses. Must reference an existing BGP instance (leafref,
+         validate_tree-enforced) that is marked vxlan-underlay (the
+         'must' -- enforced by
+         frr_proteus.validate.validate_underlay_refs(), since the
+         generated validator never evaluates must); overrides the
+         global default-underlay-vrf.";
     }
 
     container origination-l3vni {
@@ -170,11 +188,20 @@ module proteus-bgp-evpn-experimental {
       type leafref {
         path "/bgp:bgp/bgp:instance/bgp:vrf";
       }
+      must "/bgp:bgp/bgp:instance[bgp:vrf = current()]"
+         + "/bgp:afi-safis/bgp:l2vpn-evpn"
+         + "/proteus-bgp-evpn-exp:vxlan-underlay = 'true'" {
+        error-message
+          "default-underlay-vrf must reference a VRF whose BGP
+           instance has vxlan-underlay set";
+      }
       description
         "'default-underlay-vrf NAME': underlay used by tenant VRFs
          and EVIs that don't set their own underlay-vrf. Must
-         reference an existing BGP instance
-         (validate_tree-enforced).";
+         reference an existing BGP instance (leafref,
+         validate_tree-enforced) that is marked vxlan-underlay (the
+         'must' -- enforced by
+         frr_proteus.validate.validate_underlay_refs()).";
     }
 
     uses vlan-based-evi;

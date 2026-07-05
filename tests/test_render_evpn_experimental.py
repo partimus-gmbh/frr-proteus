@@ -172,10 +172,9 @@ def test_frr_format_drops_evi_without_l2vni_and_underlay_fields():
 
 
 def test_frr_format_omits_af_block_for_untranslatable_only_config():
-    # An underlay instance carries only experimental fields with no frr
-    # equivalent: the frr format must not emit an empty AF block.
+    # Only untranslatable experimental fields: the frr format must not
+    # emit an empty AF block.
     instance = _new_instance(vrf="underlay-red")
-    instance.afi_safis.l2vpn_evpn.vxlan_underlay = True
     instance.afi_safis.l2vpn_evpn.auto_discover_vnis = True
 
     assert "address-family l2vpn evpn" not in render_bgp_instance(
@@ -188,6 +187,26 @@ def test_frr_format_omits_af_block_for_untranslatable_only_config():
     text = render_bgp_instance(instance, format="frr")
     assert " address-family l2vpn evpn\n" in text
     assert "  vni 100\n" in text
+
+
+def test_frr_format_translates_vxlan_underlay_to_advertise_all_vni():
+    instance = _new_instance(vrf="underlay-red")
+    instance.afi_safis.l2vpn_evpn.vxlan_underlay = True
+
+    text = render_bgp_instance(instance, format="frr")
+    assert "  advertise-all-vni\n" in text
+    assert "vxlan-underlay" not in text
+
+    # both fields set: still exactly one advertise-all-vni line
+    instance.afi_safis.l2vpn_evpn.advertise_all_vni = True
+    assert render_bgp_instance(instance, format="frr").count(
+        "advertise-all-vni"
+    ) == 1
+
+    # and the experimental format keeps the native spelling only
+    exp = render_bgp_instance(instance, format="experimental")
+    assert "  vxlan-underlay\n" in exp
+    assert "advertise-all-vni" not in exp
 
 
 def test_legacy_and_experimental_coexist_in_experimental_format():
@@ -260,3 +279,31 @@ def test_underlay_vrf_leafref_enforced():
     tenant.afi_safis.l2vpn_evpn.underlay_vrf = "missing-vrf"
     with pytest.raises(bindings.YangValidationError, match="leafref"):
         bindings.validate_tree(root, exp_root)
+
+
+def test_validate_underlay_refs_enforces_vxlan_underlay_role():
+    from frr_proteus import validate_underlay_refs
+
+    root = bindings.ProteusBgp()
+    exp_root = bindings.ProteusBgpEvpnExperimental()
+    underlay = _new_instance(vrf="underlay-red")
+    underlay.afi_safis.l2vpn_evpn.vxlan_underlay = True
+    tenant = _new_instance(vrf="blue")
+    tenant.afi_safis.l2vpn_evpn.underlay_vrf = "underlay-red"
+    evi = _evi("blue-v100", underlay="underlay-red", l2vni=100)
+    tenant.afi_safis.l2vpn_evpn.vlan_based_evi.append(evi)
+    root.bgp.instance.extend([underlay, tenant])
+    exp_root.evpn.default_underlay_vrf = "underlay-red"
+    exp_root.evpn.vlan_based_evi.append(_evi("shared", underlay="underlay-red"))
+
+    validate_underlay_refs(root, exp_root)  # all point at a marked VRF
+
+    # the referenced instance exists (leafref fine!) but lacks the
+    # vxlan-underlay role -- exactly the case the leafref can't catch
+    underlay.afi_safis.l2vpn_evpn.vxlan_underlay = False
+    with pytest.raises(ValueError, match="not marked vxlan-underlay") as exc:
+        validate_underlay_refs(root, exp_root)
+    # every reference site is reported: tenant, tenant EVI, global
+    # default, global EVI
+    assert str(exc.value).count("underlay-red") == 4
+    assert "4 underlay reference violation(s)" in str(exc.value)

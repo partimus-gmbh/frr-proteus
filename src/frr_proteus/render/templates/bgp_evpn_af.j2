@@ -5,19 +5,21 @@ needed; `instance` (the /bgp/instance entry) and `evpn`
 
 Renders the legacy EVPN command set, plus a COMPATIBILITY TRANSLATION
 of the experimental-scheme typing into stock FRR syntax:
+  - vxlan-underlay  ->  'advertise-all-vni' (its direct stock
+    equivalent; emitted once even if both fields are set).
   - vlan-based-evi with origination-l2vni N  ->  'vni N' block, with
     its fully qualified route-targets ('vni' RT lines support neither
     wildcard nor auto, so those are dropped, as is underlay-vrf);
     an EVI without origination-l2vni has no vni id and is dropped.
-  - vxlan-underlay, auto-discover-vnis, underlay-vrf,
-    origination-l3vni have no stock-FRR equivalent and are left out.
+  - auto-discover-vnis, underlay-vrf, origination-l3vni have no
+    stock-FRR equivalent and are left out.
 The experimental format (bgp_evpn_af_experimental.j2) is the inverse:
 new scheme emitted, legacy syntax removed. #}
 {% import "evpn_macros.j2" as evpn_macros %}
  !
  address-family l2vpn evpn
 {% include "bgp_evpn_neighbors.j2" %}
-{% if evpn.advertise_all_vni %}
+{% if evpn.advertise_all_vni or evpn.vxlan_underlay %}
   advertise-all-vni
 {% endif %}
 {% if evpn.advertise_default_gw %}
