@@ -44,14 +44,20 @@ def build_default_instance(*, local_as: int, router_id: str) -> Instance:
     evpn.advertise_svi_ip = True
 
     for vni_id, rd_ip in [(101, "10.10.10.10"), (102, "10.10.10.10")]:
-        evpn.vni.append(
-            EvpnAf.Vni(
-                vni_id=vni_id,
-                rd=f"{rd_ip}:{vni_id}",
-                route_target_import=[f"65000:{vni_id}"],
-                route_target_export=[f"65000:{vni_id}"],
+        vni = EvpnAf.Vni(vni_id=vni_id, rd=f"{rd_ip}:{vni_id}")
+        # Route targets are structured: encoding-specific integer
+        # components, not "AS:NN" strings.
+        vni.route_target_import.as2.append(
+            EvpnAf.Vni.RouteTargetImport.As2(
+                global_admin=65000, local_admin=vni_id
             )
         )
+        vni.route_target_export.as2.append(
+            EvpnAf.Vni.RouteTargetExport.As2(
+                global_admin=65000, local_admin=vni_id
+            )
+        )
+        evpn.vni.append(vni)
 
     return instance
 
@@ -60,10 +66,10 @@ def build_vrf_instance_auto_rt(*, local_as: int, vrf: str) -> Instance:
     instance = Instance(vrf=vrf, autonomous_system=local_as)
 
     evpn = instance.afi_safis.l2vpn_evpn
-    # Wildcard RTs (local admin only) are import-only; the 'auto'
-    # sentinel is its own leaf, not a magic list value.
-    evpn.route_target_import.append("*:300")
-    evpn.route_target_import_auto = True
+    # Wildcard RTs (local administrator only) are import-only; the
+    # 'auto' sentinel is its own leaf, not a magic list value.
+    evpn.route_target_import.wildcard = [300]
+    evpn.route_target_import.auto = True
 
     return instance
 

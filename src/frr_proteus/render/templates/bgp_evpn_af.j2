@@ -51,13 +51,13 @@ regardless of instance role. #}
 {% if vni.rd %}
    rd {{ vni.rd }}
 {% endif %}
-{% for rt in vni.route_target_import %}
+{% for rt in route_target_texts(vni.route_target_import) %}
    route-target import {{ rt }}
 {% endfor %}
-{% for rt in vni.route_target_export %}
+{% for rt in route_target_texts(vni.route_target_export) %}
    route-target export {{ rt }}
 {% endfor %}
-{% for rt in vni.route_target_both %}
+{% for rt in route_target_texts(vni.route_target_both) %}
    route-target both {{ rt }}
 {% endfor %}
 {% if vni.flooding %}
@@ -68,19 +68,19 @@ regardless of instance role. #}
 {% if evpn.rd %}
   rd {{ evpn.rd }}
 {% endif %}
-{% for rt in evpn.route_target_import %}
+{% for rt in route_target_texts(evpn.route_target_import) %}
   route-target import {{ rt }}
 {% endfor %}
-{% if evpn.route_target_import_auto %}
+{% if evpn.route_target_import.auto %}
   route-target import auto
 {% endif %}
-{% for rt in evpn.route_target_export %}
+{% for rt in route_target_texts(evpn.route_target_export) %}
   route-target export {{ rt }}
 {% endfor %}
-{% if evpn.route_target_export_auto %}
+{% if evpn.route_target_export.auto %}
   route-target export auto
 {% endif %}
-{% for rt in evpn.route_target_both %}
+{% for rt in route_target_texts(evpn.route_target_both) %}
   route-target both {{ rt }}
 {% endfor %}
 {% if evpn.advertise_ipv4_unicast.enabled %}

@@ -69,16 +69,17 @@ def test_flooding(value):
 
 def test_vni_block():
     instance = _new_instance()
-    instance.afi_safis.l2vpn_evpn.vni.append(
-        EvpnAf.Vni(
-            vni_id=101,
-            rd="10.10.10.10:101",
-            route_target_import=["65000:101"],
-            route_target_export=["65000:101"],
-            route_target_both=["65000:999"],
-            flooding="disable",
-        )
+    vni = EvpnAf.Vni(vni_id=101, rd="10.10.10.10:101", flooding="disable")
+    vni.route_target_import.as2.append(
+        EvpnAf.Vni.RouteTargetImport.As2(global_admin=65000, local_admin=101)
     )
+    vni.route_target_export.as2.append(
+        EvpnAf.Vni.RouteTargetExport.As2(global_admin=65000, local_admin=101)
+    )
+    vni.route_target_both.as2.append(
+        EvpnAf.Vni.RouteTargetBoth.As2(global_admin=65000, local_admin=999)
+    )
+    instance.afi_safis.l2vpn_evpn.vni.append(vni)
 
     text = render_bgp_instance(instance)
     assert "  vni 101\n" in text
@@ -94,7 +95,9 @@ def test_vrf_rd_and_route_target():
     instance = _new_instance(vrf="vrf-red")
     evpn = instance.afi_safis.l2vpn_evpn
     evpn.rd = "10.10.10.10:101"
-    evpn.route_target_import.append("65000:300")
+    evpn.route_target_import.as2.append(
+        EvpnAf.RouteTargetImport.As2(global_admin=65000, local_admin=300)
+    )
 
     text = render_bgp_instance(instance)
     assert "  rd 10.10.10.10:101\n" in text
@@ -104,9 +107,9 @@ def test_vrf_rd_and_route_target():
 def test_vrf_route_target_wildcard_and_auto():
     instance = _new_instance(vrf="vrf-red")
     evpn = instance.afi_safis.l2vpn_evpn
-    evpn.route_target_import = ["*:300"]
-    evpn.route_target_import_auto = True
-    evpn.route_target_export_auto = True
+    evpn.route_target_import.wildcard = [300]
+    evpn.route_target_import.auto = True
+    evpn.route_target_export.auto = True
 
     text = render_bgp_instance(instance)
     assert "  route-target import *:300\n" in text
@@ -114,48 +117,64 @@ def test_vrf_route_target_wildcard_and_auto():
     assert "  route-target export auto\n" in text
 
 
-@pytest.mark.parametrize(
-    "value",
-    [
-        "65000:100",  # AS2:NN
-        "4200000000:100",  # AS4:NN
-        "10.10.10.10:100",  # IPv4:NN
-    ],
-)
-def test_vrf_route_target_export_fully_qualified_forms(value):
+def test_vrf_route_target_export_all_encodings():
     instance = _new_instance(vrf="vrf-red")
-    instance.afi_safis.l2vpn_evpn.route_target_export = [value]
+    export = instance.afi_safis.l2vpn_evpn.route_target_export
+    export.as2.append(
+        EvpnAf.RouteTargetExport.As2(global_admin=65000, local_admin=4200000000)
+    )
+    export.as4.append(
+        EvpnAf.RouteTargetExport.As4(global_admin=4200000000, local_admin=100)
+    )
+    export.ipv4.append(
+        EvpnAf.RouteTargetExport.Ipv4(global_admin="10.10.10.10", local_admin=100)
+    )
 
-    assert f"  route-target export {value}\n" in render_bgp_instance(instance)
+    text = render_bgp_instance(instance)
+    assert "  route-target export 65000:4200000000\n" in text
+    assert "  route-target export 4200000000:100\n" in text
+    assert "  route-target export 10.10.10.10:100\n" in text
 
 
-def test_vrf_route_target_export_rejects_wildcard_and_auto():
-    evpn = _new_instance(vrf="vrf-red").afi_safis.l2vpn_evpn
-    # export is always fully qualified: no wildcard, no 'auto' string
-    # (the auto sentinel is the route-target-export-auto leaf).
+def test_route_target_wildcard_and_auto_are_import_only():
+    # export has no wildcard field, VNI RT sets have neither wildcard
+    # nor auto -- the invalid combinations are structurally impossible,
+    # not just invalid values.
+    import dataclasses
+
+    export_fields = {
+        f.name for f in dataclasses.fields(EvpnAf.RouteTargetExport)
+    }
+    assert "wildcard" not in export_fields
+    assert "auto" in export_fields
+
+    both_fields = {f.name for f in dataclasses.fields(EvpnAf.RouteTargetBoth)}
+    assert "wildcard" not in both_fields
+    assert "auto" not in both_fields
+
+    for cls in (
+        EvpnAf.Vni.RouteTargetImport,
+        EvpnAf.Vni.RouteTargetExport,
+        EvpnAf.Vni.RouteTargetBoth,
+    ):
+        names = {f.name for f in dataclasses.fields(cls)}
+        assert "wildcard" not in names
+        assert "auto" not in names
+
+
+def test_route_target_component_ranges_enforced():
+    # as2: 2-byte AS, 4-byte local admin; as4: the reverse.
     with pytest.raises(bindings.YangValidationError):
-        evpn.route_target_export = ["*:300"]
+        EvpnAf.RouteTargetExport.As2(global_admin=70000, local_admin=100)
     with pytest.raises(bindings.YangValidationError):
-        evpn.route_target_export = ["auto"]
-
-
-def test_vni_route_target_rejects_wildcard_and_auto():
-    vni = EvpnAf.Vni(vni_id=101)
-    # per-VNI RTs have no wildcard/auto grammar at all
+        EvpnAf.RouteTargetExport.As4(global_admin=65000, local_admin=70000)
     with pytest.raises(bindings.YangValidationError):
-        vni.route_target_import = ["*:300"]
+        EvpnAf.RouteTargetExport.As2(global_admin=65000, local_admin=4294967296)
     with pytest.raises(bindings.YangValidationError):
-        vni.route_target_import = ["auto"]
-
-
-def test_route_target_value_range_enforced():
-    evpn = _new_instance(vrf="vrf-red").afi_safis.l2vpn_evpn
-    # AS2 form caps the local admin at 32 bits, AS4 form the local
-    # admin at 16 bits -- 70000:70000 fits neither, 65536:65536 neither.
+        EvpnAf.RouteTargetExport.Ipv4(global_admin="999.1.1.1", local_admin=100)
     with pytest.raises(bindings.YangValidationError):
-        evpn.route_target_export = ["70000:70000"]
-    with pytest.raises(bindings.YangValidationError):
-        evpn.route_target_export = ["65000:4294967296"]
+        instance = _new_instance(vrf="vrf-red")
+        instance.afi_safis.l2vpn_evpn.route_target_import.wildcard = [4294967296]
 
 
 @pytest.mark.parametrize(

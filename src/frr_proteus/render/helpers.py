@@ -34,6 +34,25 @@ def has_config(node: object) -> bool:
     return False
 
 
+def route_target_texts(rt_set) -> list[str]:
+    """Render a proteus-types route-target-set container (plus, where
+    present, the EVPN VRF import 'wildcard' leaf-list) into FRR's CLI
+    tokens: '<AS>:<NN>' / '<A.B.C.D>:<NN>' / '*:<NN>'.
+
+    All three encoding lists carry global-admin/local-admin pairs, so
+    one f-string covers them; the encoding distinction only matters
+    for validation ranges and on the wire, not in the rendered text.
+    The 'auto' sentinel is a separate leaf and rendered by the
+    template, not here.
+    """
+    texts = [
+        f"{rt.global_admin}:{rt.local_admin}"
+        for rt in [*rt_set.as2, *rt_set.as4, *rt_set.ipv4]
+    ]
+    texts += [f"*:{local_admin}" for local_admin in getattr(rt_set, "wildcard", None) or []]
+    return texts
+
+
 def evpn_configured(instance) -> bool:
     """Whether this instance needs an 'address-family l2vpn evpn' block:
     any instance-level EVPN config, or any neighbor with EVPN AF

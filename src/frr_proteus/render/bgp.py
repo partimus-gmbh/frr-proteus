@@ -38,6 +38,7 @@ _env = jinja2.Environment(
 )
 _env.globals.update(
     evpn_configured=helpers.evpn_configured,
+    route_target_texts=helpers.route_target_texts,
 )
 
 _bgp_template = _env.get_template("bgp.conf.j2")

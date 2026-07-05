@@ -63,72 +63,76 @@ module proteus-bgp-evpn {
 
   grouping vni-route-targets {
     description
-      "Per-VNI route-target lists (bgp_evpn_vni_rt_cmd: one RT per
-       line). Fully qualified route targets only -- the per-VNI
-       grammar has no 'auto' or wildcard form.";
+      "Per-VNI route-target configuration (bgp_evpn_vni_rt_cmd: one
+       'route-target <import|export|both> RT' line per entry). Fully
+       qualified route targets only -- the per-VNI grammar has no
+       'auto' or wildcard form, hence no such fields here.";
 
-    leaf-list route-target-import {
-      type pt:route-target;
+    container route-target-import {
       description
-        "'route-target import RT'.";
+        "'route-target import <RT>' entries.";
+      uses pt:route-target-set;
     }
-    leaf-list route-target-export {
-      type pt:route-target;
+    container route-target-export {
       description
-        "'route-target export RT'.";
+        "'route-target export <RT>' entries.";
+      uses pt:route-target-set;
     }
-    leaf-list route-target-both {
-      type pt:route-target;
+    container route-target-both {
       description
-        "'route-target both RT'.";
+        "'route-target both <RT>' entries.";
+      uses pt:route-target-set;
     }
   }
 
   grouping vrf-route-targets {
     description
       "Per-VRF-instance route-target configuration
-       (bgp_evpn_vrf_rt_cmd, several RTs per line; the 'auto'
-       sentinel comes via bgp_evpn_vrf_rt_auto_cmd and is modeled as
-       the explicit *-auto leaves, not as a magic list value).
-       Only *import* may use the wildcard '*:NN' form
+       (bgp_evpn_vrf_rt_cmd; the 'auto' sentinel comes via
+       bgp_evpn_vrf_rt_auto_cmd and is the explicit 'auto' leaf, not
+       a value). Only *import* may use the wildcard form '*:NN'
        (BGP_VRF_RT_WILD); export is always fully qualified, and
        'both' -- being import+export in one line -- is therefore
-       fully qualified too.";
+       fully qualified too, hence only import has wildcard/auto
+       fields at all.";
 
-    leaf-list route-target-import {
-      type union {
-        type pt:route-target;
-        type pt:route-target-wildcard;
+    container route-target-import {
+      description
+        "'route-target import ...' configuration.";
+      uses pt:route-target-set;
+      leaf-list wildcard {
+        type uint32;
+        description
+          "'route-target import *:NN' entries: only the local
+           administrator is given, any global administrator
+           matches.";
       }
-      description
-        "'route-target import <RT|*:NN>'.";
+      leaf auto {
+        type boolean;
+        default "false";
+        description
+          "'route-target import auto': derive the import RT from
+           AS:VNI (or per RFC 8365 with autort-rfc8365-compatible).
+           FRR stores a 'both auto' input as the import and export
+           flags and writes two lines back -- set both auto leaves
+           for that.";
+      }
     }
-    leaf-list route-target-export {
-      type pt:route-target;
+    container route-target-export {
       description
-        "'route-target export RT'.";
+        "'route-target export ...' configuration.";
+      uses pt:route-target-set;
+      leaf auto {
+        type boolean;
+        default "false";
+        description
+          "'route-target export auto'.";
+      }
     }
-    leaf-list route-target-both {
-      type pt:route-target;
+    container route-target-both {
       description
-        "'route-target both RT'.";
-    }
-
-    leaf route-target-import-auto {
-      type boolean;
-      default "false";
-      description
-        "'route-target import auto': derive the import RT from
-         AS:VNI (or per RFC 8365 with autort-rfc8365-compatible).
-         FRR stores a 'both auto' input as the import and export
-         flags and writes two lines back -- set both *-auto leaves
-         for that.";
-    }
-    leaf route-target-export-auto {
-      type boolean;
-      default "false";
-      description
-        "'route-target export auto'.";
+        "'route-target both <RT>' entries.";
+      uses pt:route-target-set;
     }
   }
 
@@ -206,12 +210,13 @@ module proteus-bgp-evpn {
          per VNI. (bgp_evpn_advertise_svi_ip_cmd)";
     }
 
-    leaf mac-vrf-soo {
-      type pt:route-target;
+    container mac-vrf-soo {
       description
         "'mac-vrf soo ASN:NN_OR_IP-ADDRESS:NN': site-of-origin for
          all MAC-VRFs, loop protection for anycast VTEPs
-         (macvrf_soo_global_cmd).";
+         (macvrf_soo_global_cmd). Unconfigured when no encoding is
+         set.";
+      uses pt:route-target;
     }
 
     leaf enable-resolve-overlay-index {
@@ -236,11 +241,11 @@ module proteus-bgp-evpn {
           "'ead-es-frag evi-limit (1-1000)': EVIs per EAD-per-ES
            fragment route (bgp_evpn_ead_es_frag_evi_limit_cmd).";
       }
-      leaf-list ead-es-route-target-export {
-        type pt:route-target;
+      container ead-es-route-target-export {
         description
           "'ead-es-route-target export RT' lines: RTs attached to
            EAD-per-ES routes (bgp_evpn_ead_es_rt_cmd).";
+        uses pt:route-target-set;
       }
       leaf use-es-l3nhg {
         type boolean;
