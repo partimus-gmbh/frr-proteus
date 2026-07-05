@@ -3,6 +3,12 @@ module proteus-bgp {
   namespace "https://github.com/robinchrist/frr-proteus/yang/custom/bgp";
   prefix proteus-bgp;
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+  import ietf-yang-types {
+    prefix yang;
+  }
   import proteus-types {
     prefix pt;
   }
@@ -375,7 +381,7 @@ module proteus-bgp {
 
     leaf update-source {
       type union {
-        type pt:ip-address;
+        type inet:ip-address-no-zone;
         type string;
       }
       description
@@ -1369,7 +1375,7 @@ module proteus-bgp {
           "'distance (1-255) A.B.C.D/M [ACCESSLIST_NAME]': distance
            override for routes matching a source prefix.";
         leaf prefix {
-          type pt:ipv4-prefix;
+          type inet:ipv4-prefix;
         }
         leaf distance {
           type uint8 {
@@ -1406,7 +1412,7 @@ module proteus-bgp {
           "'distance (1-255) X:X::X:X/M [ACCESSLIST_NAME]': distance
            override for routes matching a source prefix.";
         leaf prefix {
-          type pt:ipv6-prefix;
+          type inet:ipv6-prefix;
         }
         leaf distance {
           type uint8 {
@@ -1507,7 +1513,7 @@ module proteus-bgp {
          [matching-MED-only] [suppress-map NAME]'
          (bgp_config_write_network in bgp_route.c).";
       leaf prefix {
-        type pt:ipv4-prefix;
+        type inet:ipv4-prefix;
       }
       uses aggregate-address-options;
     }
@@ -1520,7 +1526,7 @@ module proteus-bgp {
         "'aggregate-address X:X::X:X/M [...]' -- same options as the
          IPv4 form.";
       leaf prefix {
-        type pt:ipv6-prefix;
+        type inet:ipv6-prefix;
       }
       uses aggregate-address-options;
     }
@@ -1578,7 +1584,7 @@ module proteus-bgp {
          (bgp_config_write_network in bgp_route.c;
          bgp_network_cmd).";
       leaf prefix {
-        type pt:ipv4-prefix;
+        type inet:ipv4-prefix;
       }
       uses network-options;
       leaf backdoor {
@@ -1598,7 +1604,7 @@ module proteus-bgp {
         "'network X:X::X:X/M [route-map NAME]
          [label-index (0-1048560)]'.";
       leaf prefix {
-        type pt:ipv6-prefix;
+        type inet:ipv6-prefix;
       }
       uses network-options;
     }
@@ -1857,20 +1863,24 @@ module proteus-bgp {
       }
 
       leaf router-id {
-        type pt:ipv4-address;
+        type yang:dotted-quad;
         description
-          "'bgp router-id A.B.C.D' (bgp_router_id_cmd).";
+          "'bgp router-id A.B.C.D' (bgp_router_id_cmd). A 32-bit
+           identifier in dotted notation, not an address (RFC 6991
+           dotted-quad).";
       }
 
       leaf cluster-id {
         type union {
-          type pt:ipv4-address;
+          type yang:dotted-quad;
           type uint32 {
             range "1..4294967295";
           }
         }
         description
-          "'bgp cluster-id <A.B.C.D|(1-4294967295)>'.";
+          "'bgp cluster-id <A.B.C.D|(1-4294967295)>': a 32-bit
+           identifier, in dotted notation or plain decimal (RFC 6991
+           dotted-quad, not an address).";
       }
 
       leaf fast-external-failover {
@@ -2464,8 +2474,8 @@ module proteus-bgp {
 
         leaf-list listen-range {
           type union {
-            type pt:ipv4-prefix;
-            type pt:ipv6-prefix;
+            type inet:ipv4-prefix;
+            type inet:ipv6-prefix;
           }
           description
             "'bgp listen range <A.B.C.D/M|X:X::X:X/M> peer-group
@@ -2535,7 +2545,7 @@ module proteus-bgp {
 
         leaf address {
           type union {
-            type pt:ip-address;
+            type inet:ip-address-no-zone;
             type string;
           }
           description

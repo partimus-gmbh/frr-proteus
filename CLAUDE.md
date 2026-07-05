@@ -96,10 +96,23 @@ same shape (one `.j2` template, thin Python glue module, thin
   stay strings; never put a leafref inside a union.
   Hard rules, per explicit user direction (gold standard:
   `/home/robin/work/srlinux-yang-models/all/v26.3.1/srl_nokia/models/`):
-  (1) MUST NOT reference FRR's YANG at all -- not even ietf-inet-types
-  is imported; `proteus-types.yang` carries the RFC 6991 patterns
-  itself, so `yang/custom/` compiles with only itself on the pyang
-  search path. (2) No `augment` unless it REALLY earns its keep --
+  (1) MUST NOT reference FRR's YANG at all. Standard value types come
+  from RFC 6991: pristine copies of `ietf-inet-types.yang` /
+  `ietf-yang-types.yang` are vendored INTO `yang/custom/` (taken from
+  pyang's bundled modules), so the directory still compiles with only
+  itself on the pyang search path. Do NOT redefine types RFC 6991
+  provides (user was explicit) -- `proteus-types.yang` keeps only what
+  it can't express (as-number restricted to exclude 0, vni, RD,
+  evpn-esi, object-name, RT groupings). Pick types by SEMANTICS: the
+  `-no-zone` address variants (FRR config text never carries %zone),
+  `inet:ipv4-/ipv6-prefix`, `yang:mac-address`, and `yang:dotted-quad`
+  for 32-bit identifiers in dotted notation (router-id, cluster-id,
+  originator-id) which are NOT addresses. Codegen note: RFC 6991
+  patterns contain XSD `\p{...}` escapes; the pyangbind fork translates
+  them to ASCII classes (fixed in pybind_dataclass.py -- previously the
+  whole base pattern was silently dropped and derived types like
+  ipv4-address-no-zone validated almost nothing).
+  (2) No `augment` unless it REALLY earns its keep --
   FRR's augment-everything style is what made their model unreadable;
   sibling modules contribute content via plain `import` + `uses`
   groupings (`proteus-bgp-evpn.yang` defines zero data nodes, only

@@ -3,6 +3,12 @@ module proteus-bgp-evpn {
   namespace "https://github.com/robinchrist/frr-proteus/yang/custom/bgp-evpn";
   prefix proteus-bgp-evpn;
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+  import ietf-yang-types {
+    prefix yang;
+  }
   import proteus-types {
     prefix pt;
   }
@@ -421,12 +427,12 @@ module proteus-bgp-evpn {
         type boolean;
       }
       leaf ip {
-        type pt:ipv4-address;
+        type inet:ipv4-address-no-zone;
         description
           "Static PIP address.";
       }
       leaf mac {
-        type pt:mac-address;
+        type yang:mac-address;
         description
           "Static PIP router MAC.";
       }
@@ -446,8 +452,8 @@ module proteus-bgp-evpn {
 
       leaf prefix {
         type union {
-          type pt:ipv4-prefix;
-          type pt:ipv6-prefix;
+          type inet:ipv4-prefix;
+          type inet:ipv6-prefix;
         }
         description
           "IP prefix carried in the type-5 route.";
@@ -479,13 +485,13 @@ module proteus-bgp-evpn {
           "'esi WORD': Ethernet Segment Identifier.";
       }
       leaf gwip {
-        type pt:ip-address;
+        type inet:ip-address-no-zone;
         mandatory true;
         description
           "'gwip <A.B.C.D|X:X::X:X>': gateway IP overlay index.";
       }
       leaf routermac {
-        type pt:mac-address;
+        type yang:mac-address;
         mandatory true;
         description
           "'routermac WORD'.";

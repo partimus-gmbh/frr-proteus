@@ -3,6 +3,12 @@ module proteus-filter {
   namespace "https://github.com/robinchrist/frr-proteus/yang/custom/filter";
   prefix proteus-filter;
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+  import ietf-yang-types {
+    prefix yang;
+  }
   import proteus-types {
     prefix pt;
   }
@@ -139,7 +145,7 @@ module proteus-filter {
             }
             case prefix {
               leaf prefix {
-                type pt:ipv4-prefix;
+                type inet:ipv4-prefix;
                 mandatory true;
                 description
                   "'... <permit|deny> A.B.C.D/M'.";
@@ -207,7 +213,7 @@ module proteus-filter {
             }
             case prefix {
               leaf prefix {
-                type pt:ipv6-prefix;
+                type inet:ipv6-prefix;
                 mandatory true;
                 description
                   "'... <permit|deny> X:X::X:X/M'.";
@@ -286,7 +292,7 @@ module proteus-filter {
             }
             case prefix {
               leaf prefix {
-                type pt:ipv4-prefix;
+                type inet:ipv4-prefix;
                 mandatory true;
                 description
                   "'... <permit|deny> A.B.C.D/M'.";
@@ -346,7 +352,7 @@ module proteus-filter {
             }
             case prefix {
               leaf prefix {
-                type pt:ipv6-prefix;
+                type inet:ipv6-prefix;
                 mandatory true;
                 description
                   "'... <permit|deny> X:X::X:X/M'.";
@@ -406,7 +412,7 @@ module proteus-filter {
                 "'... <permit|deny> any'.";
             }
             leaf mac {
-              type pt:mac-address;
+              type yang:mac-address;
               description
                 "'... <permit|deny> XX:XX:XX:XX:XX:XX'.";
             }

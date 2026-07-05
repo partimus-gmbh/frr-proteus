@@ -3,6 +3,12 @@ module proteus-route-map {
   namespace "https://github.com/robinchrist/frr-proteus/yang/custom/route-map";
   prefix proteus-route-map;
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+  import ietf-yang-types {
+    prefix yang;
+  }
   import proteus-types {
     prefix pt;
   }
@@ -196,7 +202,7 @@ module proteus-route-map {
                (lib/routemap_cli.c).";
           }
           leaf ip-next-hop-address {
-            type pt:ipv4-address;
+            type inet:ipv4-address-no-zone;
             description
               "'match ip next-hop address A.B.C.D'
                (bgp_routemap.c match_ip_next_hop_address_cmd).";
@@ -263,7 +269,7 @@ module proteus-route-map {
                (lib/routemap_cli.c).";
           }
           leaf ipv6-next-hop-address {
-            type pt:ipv6-address;
+            type inet:ipv6-address-no-zone;
             description
               "'match ipv6 next-hop address X:X::X:X'
                (bgp_routemap.c).";
@@ -416,7 +422,7 @@ module proteus-route-map {
 
           leaf peer {
             type union {
-              type pt:ip-address;
+              type inet:ip-address-no-zone;
               type enumeration {
                 enum local {
                   description
@@ -433,7 +439,7 @@ module proteus-route-map {
           }
           leaf src-peer {
             type union {
-              type pt:ip-address;
+              type inet:ip-address-no-zone;
               type string;
             }
             description
@@ -531,7 +537,7 @@ module proteus-route-map {
 
           leaf ip-next-hop {
             type union {
-              type pt:ipv4-address;
+              type inet:ipv4-address-no-zone;
               type enumeration {
                 enum peer-address {
                   description
@@ -548,12 +554,12 @@ module proteus-route-map {
                (lib/routemap_cli.c + bgp_routemap.c).";
           }
           leaf ipv6-next-hop-global {
-            type pt:ipv6-address;
+            type inet:ipv6-address-no-zone;
             description
               "'set ipv6 next-hop global X:X::X:X' (bgp_routemap.c).";
           }
           leaf ipv6-next-hop-local {
-            type pt:ipv6-address;
+            type inet:ipv6-address-no-zone;
             description
               "'set ipv6 next-hop local X:X::X:X'
                (lib/routemap_cli.c).";
@@ -569,12 +575,12 @@ module proteus-route-map {
               "'set ipv6 next-hop prefer-global' (bgp_routemap.c).";
           }
           leaf ipv4-vpn-next-hop {
-            type pt:ipv4-address;
+            type inet:ipv4-address-no-zone;
             description
               "'set ipv4 vpn next-hop A.B.C.D' (bgp_routemap.c).";
           }
           leaf ipv6-vpn-next-hop {
-            type pt:ipv6-address;
+            type inet:ipv6-address-no-zone;
             description
               "'set ipv6 vpn next-hop X:X::X:X' (bgp_routemap.c).";
           }
@@ -717,7 +723,7 @@ module proteus-route-map {
               type pt:as-number;
             }
             leaf address {
-              type pt:ipv4-address;
+              type inet:ipv4-address-no-zone;
             }
           }
 
@@ -767,9 +773,12 @@ module proteus-route-map {
               "'set origin <egp|igp|incomplete>' (bgp_routemap.c).";
           }
           leaf originator-id {
-            type pt:ipv4-address;
+            type yang:dotted-quad;
             description
-              "'set originator-id A.B.C.D' (bgp_routemap.c).";
+              "'set originator-id A.B.C.D' (bgp_routemap.c). A BGP
+               ORIGINATOR_ID is a router ID: a 32-bit identifier in
+               dotted notation (RFC 6991 dotted-quad), not an
+               address.";
           }
           leaf weight {
             type uint32;
@@ -869,14 +878,14 @@ module proteus-route-map {
                overlay index gateway IP for EVPN type-5 routes
                (bgp_routemap.c).";
             leaf ipv4 {
-              type pt:ipv4-address;
+              type inet:ipv4-address-no-zone;
             }
             leaf ipv6 {
-              type pt:ipv6-address;
+              type inet:ipv6-address-no-zone;
             }
           }
           leaf evpn-rmac {
-            type pt:mac-address;
+            type yang:mac-address;
             description
               "'set extcommunity evpn rmac X:X:X:X:X:X': Router MAC
                extended community (bgp_routemap.c).";

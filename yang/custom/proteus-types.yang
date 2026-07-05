@@ -3,90 +3,50 @@ module proteus-types {
   namespace "https://github.com/robinchrist/frr-proteus/yang/custom/types";
   prefix proteus-types;
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+
   organization
     "frr-proteus";
   contact
     "https://github.com/robinchrist/frr-proteus";
   description
     "Common typedefs and small shared groupings (structured route
-     targets) for the frr-proteus custom YANG models
-     (yang/custom/*). These models are deliberately self-contained:
-     they import nothing from FRR's own YANG tree (frr/yang/) and not
-     even ietf-inet-types, so the whole custom model set compiles with
-     just this directory on the search path. The address/prefix
-     patterns below are the standard RFC 6991 ietf-inet-types patterns
-     (minus the %zone-id part, which FRR CLI config text never
-     carries).";
+     targets) for the frr-proteus custom YANG models (yang/custom/*).
 
+     Standard value types come from RFC 6991 (ietf-inet-types /
+     ietf-yang-types) -- pristine copies of both modules are vendored
+     in this directory so the whole custom model set still compiles
+     with just this directory on the pyang search path, without
+     touching FRR's YANG tree. Only types RFC 6991 doesn't provide
+     (or provides with the wrong constraints) are defined here.
+
+     Conventions for the sibling modules: use the -no-zone address
+     variants (inet:ipv4-address-no-zone etc.) -- FRR CLI config text
+     never carries a %zone-id; use yang:dotted-quad where the value
+     is a 32-bit identifier in dotted notation rather than an actual
+     address (router-id, cluster-id, originator-id).";
+
+  revision 2026-07-06 {
+    description
+      "Replace hand-copied RFC 6991 patterns with imports of the real
+       ietf-inet-types / ietf-yang-types modules.";
+  }
   revision 2026-07-05 {
     description
       "Initial revision.";
   }
 
   typedef as-number {
-    type uint32 {
+    type inet:as-number {
       range "1..4294967295";
     }
     description
-      "BGP autonomous system number. FRR rejects ASN 0 (reserved,
-       RFC 7607), hence the range starting at 1. Only plain decimal
-       notation is modeled; FRR's asdot notation is out of scope.";
-  }
-
-  typedef ipv4-address {
-    type string {
-      pattern '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
-            + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])';
-    }
-    description
-      "An IPv4 address in dotted-quad notation.";
-  }
-
-  typedef ipv6-address {
-    type string {
-      pattern '((:|[0-9a-fA-F]{0,4}):)([0-9a-fA-F]{0,4}:){0,5}'
-            + '((([0-9a-fA-F]{0,4}:)?(:|[0-9a-fA-F]{0,4}))|'
-            + '(((25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.){3}'
-            + '(25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])))';
-      pattern '(([^:]+:){6}(([^:]+:[^:]+)|(.*\..*)))|'
-            + '((([^:]+:)*[^:]+)?::(([^:]+:)*[^:]+)?)';
-    }
-    description
-      "An IPv6 address in RFC 4291 text notation.";
-  }
-
-  typedef ip-address {
-    type union {
-      type ipv4-address;
-      type ipv6-address;
-    }
-    description
-      "An IPv4 or IPv6 address.";
-  }
-
-  typedef ipv4-prefix {
-    type string {
-      pattern '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
-            + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])'
-            + '/(([0-9])|([1-2][0-9])|(3[0-2]))';
-    }
-    description
-      "An IPv4 prefix in A.B.C.D/M notation.";
-  }
-
-  typedef ipv6-prefix {
-    type string {
-      pattern '((:|[0-9a-fA-F]{0,4}):)([0-9a-fA-F]{0,4}:){0,5}'
-            + '((([0-9a-fA-F]{0,4}:)?(:|[0-9a-fA-F]{0,4}))|'
-            + '(((25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.){3}'
-            + '(25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])))'
-            + '(/(([0-9])|([0-9]{2})|(1[0-1][0-9])|(12[0-8])))';
-      pattern '(([^:]+:){6}(([^:]+:[^:]+)|(.*\..*)))|'
-            + '((([^:]+:)*[^:]+)?::(([^:]+:)*[^:]+)?)'
-            + '(/.+)';
-    }
-    description
-      "An IPv6 prefix in X:X::X:X/M notation.";
+      "BGP autonomous system number. inet:as-number restricted to
+       exclude 0: FRR rejects ASN 0 (reserved, RFC 7607). Only plain
+       decimal notation is modeled; FRR's asdot notation is out of
+       scope.";
   }
 
   typedef object-name {
@@ -116,14 +76,6 @@ module proteus-types {
     }
     description
       "VXLAN Network Identifier (24-bit, 0 reserved).";
-  }
-
-  typedef mac-address {
-    type string {
-      pattern '[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}';
-    }
-    description
-      "An Ethernet MAC address in XX:XX:XX:XX:XX:XX notation.";
   }
 
   /*
@@ -197,7 +149,7 @@ module proteus-types {
         description
           "IPv4-address encoding (type 1), rendered '<A.B.C.D>:<NN>'.";
         leaf global-admin {
-          type ipv4-address;
+          type inet:ipv4-address-no-zone;
           mandatory true;
           description
             "IPv4 address (global administrator).";
@@ -255,7 +207,7 @@ module proteus-types {
         "IPv4-address route targets (type 1), rendered
          '<A.B.C.D>:<NN>'.";
       leaf global-admin {
-        type ipv4-address;
+        type inet:ipv4-address-no-zone;
         description
           "IPv4 address (global administrator).";
       }
