@@ -167,7 +167,7 @@ def add_import_policy(router: Router) -> None:
 
     neighbor = router.bgp.instance[0].neighbor[0]
     neighbor.bfd.enabled = True
-    neighbor.profile = "fast"
+    neighbor.bfd.profile = "fast"
     neighbor.afi_safis.ipv4_unicast.filters.route_map_in = "FROM-R2"
     # A comment on a node: rendered before the neighbor's first line.
     annotate(neighbor, comment="session to r2, import policy FROM-R2")

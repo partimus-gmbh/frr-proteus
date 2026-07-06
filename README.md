@@ -1,132 +1,110 @@
 # frr-proteus
 
-A Python library that takes structured config data -- shaped by FRR's own
-YANG models, extended with project-authored YANG where FRR's own is
-missing -- and renders it to FRR daemon text configuration. This is the
-"YANG to text config" route: FRR's BGP daemon has no northbound backend
-yet (no `bgpd/bgp_nb.c`, no `cli_show` callbacks), so there's no config
-parser to go through and no way to load structured config directly. Text
-config generation is the only path in.
+`frr-proteus` is a Python library and toolkit with the goal of making the automated creation of [FRRouting](https://github.com/FRRouting/frr) configurations easier.
 
-Output aims to be functionally correct and loadable, not byte-identical
-to what `show running-config` would print -- FRR's `!` lines are just
-comments and are freely omitted.
+**TL;DR: This library gives you custom YANG models for FRR configuration, generates nicely typed Python bindings, renders them to FRR text-based config and thus enables type-safe programmatic creation of FRR configs**
 
-## Status
+**STL;DR: YANG for FRR -> FRR config as Python types -> Text config by renderer**
 
-- **Step 1 (done):** basic BGP config generation -- `router bgp <asn>`,
-  `router-id`, neighbors with `remote-as`, `network` statements under
-  `address-family ipv4/ipv6 unicast`. See `examples/basic_bgp.py`.
-- **Step 2 (in progress):** EVPN config generation. FRR's own
-  `frr-bgp.yang` ships an empty, contentless `l2vpn-evpn` placeholder
-  container (every *other* AFI-SAFI gets real content augmented onto it;
-  this one never does), so `yang/augments/frr-proteus-bgp-evpn.yang` is a
-  project-authored augmentation filling that gap: `advertise-all-vni`,
-  per-VNI `rd`/`route-target`/`flooding`, `advertise-svi-ip`,
-  `advertise-default-gw`, `enable-resolve-overlay-index` for the default
-  BGP instance, and `rd`/`route-target`/`advertise ipv4|ipv6 unicast` for
-  per-VRF L3VPN/EVPN instances. Per-neighbor EVPN knobs (`activate`,
-  `route-reflector-client`, `route-map` in/out, `allowas-in`) needed no
-  new YANG -- FRR's own model already augments the neighbor side of
-  `l2vpn-evpn`, just not the instance side. See `examples/evpn_bgp.py`.
-  Verified against most of `frr/tests/topotests/bgp_evpn_*`,
-  `evpn_pim_*`, and `bgp_evpn_mh`; known gaps below.
-- **Custom YANG models (in progress):** FRR's own YANG is nearly
-  unreadable -- the configuration tree is scattered across a dozen files
-  of `augment` statements onto a generic control-plane-protocol list.
-  `yang/custom/` is a self-contained rewrite (`proteus-bgp.yang`,
-  `proteus-bgp-evpn.yang`, `proteus-route-map.yang`,
-  `proteus-types.yang`) that states the whole tree top-down in one
-  place, imports nothing from `frr/yang/`, and models address families
-  as nested containers instead of an identityref-keyed `afi-safi` list.
-  It covers the full config surface bgpd's own `bgp_config_write()`
-  path can persist -- instance/process options, peer-groups, the whole
-  neighbor session + per-AF surface, per-AF
-  network/aggregate/redistribute/distance/dampening, the complete
-  route-map match/set vocabulary (generic + BGP), and all of
-  `address-family l2vpn evpn` -- with route-map references as real
-  `leafref`s (checked by `validate_tree`). Deliberate exclusions
-  (SRv6, the detailed L3VPN `vpn_policy` block, encap/flowspec/
-  link-state families, RPKI caches, BMP, VNC) are listed in
-  `proteus-bgp.yang`'s description. Codegen produces bindings for both
-  schemas (`_generated/frr_bgp/` and `_generated/proteus/`); the
-  renderers, tests and examples consume the custom (`proteus`) schema;
-  the FRR-schema bindings remain as a reference artifact.
-- **Experimental EVPN config scheme:**
-  `yang/custom/proteus-bgp-evpn-experimental.yang` adds typing for an
-  experimental EVPN configuration syntax (VXLAN underlay VRFs, VNI
-  auto-discovery, `origination-l3vni`/`origination-l2vni`,
-  `vlan-based-evi` blocks, a global `evpn` block with
-  `default-underlay-vrf`; underlay references are leafrefs into the
-  BGP instance list). The nodes are additional and always generated --
-  legacy and experimental typing coexist on one config object. The
-  choice happens at render time: `render_bgp_instance(instance,
-  format="experimental")` emits the new syntax and removes the legacy
-  EVPN command syntax, while the default `format="frr"` emits stock
-  FRR syntax and translates the experimental typing where an
-  equivalent exists (`vxlan-underlay` becomes `advertise-all-vni`, an
-  EVI with an L2VNI becomes a `vni` block; fields stock FRR cannot
-  express are left out). `render_evpn_global()` renders the global
-  `evpn` block (experimental format only). Underlay references are
-  leafrefs plus a YANG `must` requiring the target to be marked
-  `vxlan-underlay`; `validate_tree()` enforces both (pass the
-  experimental module root alongside the BGP root so the global
-  block's references are covered).
+## Why was this project created?
+The industry has a problem: Configuration has been treated like text and not like structured data for a very long time, and still is. The same applies to output about operational state.
+
+Treating data like text, when in reality it is and should be structured data, brings a whole set of issues, such as no schema or pre-validation, fragile parsing (when all you have is text, parsing it is the only way out - but it's usually very cumbersome), inconsistent representations, ambiguity and type loss.. the list goes on.
+
+**All this results in error-prone and time-intensive automation for those systems.**
+
+We at [partimus](https://partimus.com/) are building large-scale automation for FRR, and we were not happy with the existing approaches to automating FRR configurations, which usually boils down to Jinja template. How many different Jinja templates for FRR exist in the wild? Probably way too many.
+
+FRR currently does not have a northbound API for BGP, and we disliked existing YANG models on which such a northbound API could be built a lot (the YANG files basically only consist of `augment` which makes them very hard to read and reason about - like most of the FRR source code :wink: ) 
+
+**We concluded: Scalable automation of FRR needs a proper data model, ideally YANG, and language bindings with typing(!) for good user experience (IDE auto completion, type checking as you go, etc...)**
+
+
+## What we did and what this project provides
+- Code generated by pyangbind does not provide any useful type hints -> **We forked pyangbind to generate new dataclass-based output with good type hints**
+- We disliked the existing FRR YANG models (see above why) -> **We built our own YANG models**
+- We created Jinja templates to render those YANG models to FRR text-based config
+- The libary code itself is a relatively thin wrapper on top of the Jinja templates
+
+The custom FRR YANG models were built to mirror the FRR CLI / text-based config relatively close, but with some additions and deviations, e.g. strongly typed route targets.
+
+## Experimental EVPN models
+This library also contains some experimental EVPN config models. These do not follow conventions e.g. from OpenConfig, or at least not intentionally. They were created based on the author's current mental model of EVPN. If you have input on this, feel free to have a chat with us!
+
+## Coverage
+BGP and EVPN should be relatively complete, other stuff mostly ignored for now.
+The data model and renderer supports comments via the `proteus-meta:comment` based on `ietf-yang-metadata:annotation` / `md:annotation`, so you can basically add comments to every bit of the FRR config (for automatically generated config that can still be understood and debugged by humans!)
+
+> [!CAUTION]
+> This library was primarily built for our purposes. While this may change in the future, you will notice that for now many things are opinionated, e.g. the way the custom FRR YANG models are built. The custom FRR YANG models were built to mirror the FRR CLI / text-based config relatively close, but with some additions and deviations, e.g. strongly typed route targets.
+
+> [!CAUTION]
+> Hic sunt dracones! Assume everything here is unstable, evil and wants to eat your cats and dogs.
+
+> [!NOTE]
+> Full Disclosure: This library was developed and evolved using Large Language Models (LLM), primarily Claude Fable and Claude Opus
+
+## Example
+
+From `examples/minimal_bgp.py`:
+```python
+from frr_proteus._generated.proteus import ProteusBgp, validate_tree
+from frr_proteus.render import render_bgp_instance
+
+# Top-Level YANG modules
+pr_bgp = ProteusBgp()
+
+# Create a single BGP instance with some basic properties
+instance = ProteusBgp.Instance(vrf="default", router_id="192.0.2.1")
+instance.autonomous_system.plain = 65000
+
+# Add a neighbor to the instance with a simple remote AS
+neighbor = ProteusBgp.Instance.Neighbor(address="192.0.2.2")
+neighbor.remote_as.plain = 65001
+instance.neighbor.append(neighbor)
+
+instance.afi_safis.ipv4_unicast.network.append(
+    ProteusBgp.Instance.AfiSafis.Ipv4Unicast.Network(prefix="198.51.100.0/24")
+)
+
+pr_bgp.instance.append(instance)
+
+validate_tree(pr_bgp)
+print(render_bgp_instance(instance), end="")
+```
+
+prints
+```
+!
+router bgp 65000
+ bgp router-id 192.0.2.1
+ neighbor 192.0.2.2 remote-as 65001
+ !
+ address-family ipv4 unicast
+  network 198.51.100.0/24
+ exit-address-family
+```
 
 ## How it works
 
-1. **Codegen (pyangbind):** `scripts/generate_bindings.py` runs
-   [pyang](https://github.com/mbj4668/pyang) with our
-   [pyangbind fork](https://github.com/robinchrist/pyangbind) (the
-   `pyangbind/` git submodule) as plugin against
-   `frr/yang/frr-bgp.yang` (a git submodule pinned to FRR master) plus
-   `yang/augments/frr-proteus-bgp-evpn.yang` (this project's own EVPN
-   augmentation), producing plain, fully type-hinted dataclasses under
-   `src/frr_proteus/_generated/` (the fork's `pybind-dataclass` output
-   format: nested `@dataclass` classes mirroring the YANG tree,
-   `typing.Literal` for enums/identityrefs, `T | None` leaves -- fully
-   understood by mypy/pyright and IDEs, no runtime dependency beyond
-   the stdlib). Validation is on by default: YANG value restrictions
-   (ranges, patterns, enum/identityref sets, ...) are enforced at
-   runtime on assignment (`YangValidationError`), and a module-level
-   `validate_tree(*roots)` checks the structural/referential rules that
-   can only be judged on a finished tree (leafref integrity, mandatory
-   leaves, list keys/`unique`, min-/max-elements, choice exclusivity,
-   and `must`/`when` XPath constraints, evaluated by an XPath 1.0
-   subset engine embedded in the generated runtime) --
-   `examples/evpn_bgp.py` calls it before rendering. Generated with
-   `--no-dataclass-defaults` (YANG defaults deliberately not applied;
-   unset leaf == `None`), plus `--dataclass-serde` (RFC 7951 JSON via
-   `to_ietf_json`/`from_ietf_json`), `--dataclass-xpaths` (schema-path
-   ClassVars and a `data_path()` instance-path helper), and
-   `--dataclass-origin-comments` (a provenance comment above each
-   grouping/augment-contributed field -- most of the FRR tree). This
-   is a build artifact, not checked into git -- regenerate it before
-   first use.
-2. **Jinja2 renderer:** `src/frr_proteus/render/templates/*.j2` walk the
-   generated dataclasses close to directly and emit bgpd config
-   text; `render/bgp.py` sets up the Jinja environment, and
-   `render/helpers.py` holds the handful of functions (exposed to
-   templates as globals) that don't fit cleanly in template syntax --
-   currently just "does this subtree contain any config" checks; the
-   custom schema maps onto the CLI closely enough that the old
-   identityref/enum glue disappeared. This layer is *not* generated --
-   YANG only
-   describes valid config shape, not FRR's CLI syntax. Its logic is
-   derived directly from reading `frr/bgpd/bgp_vty.c` and
-   `frr/bgpd/bgp_evpn_vty.c`'s `DEFUN`/`DEFPY` command definitions.
+### Codegen (pyangbind fork)
+`scripts/generate_bindings.py` runs [pyang](https://github.com/mbj4668/pyang) with our [pyangbind fork](https://github.com/robinchrist/pyangbind) (the `pyangbind/` git submodule) as plugin against `yang/custom/`. This producies plain, fully type-hinted dataclass-based bindings under `src/frr_proteus/_generated/`.
+Validation is on by default, so many YANG value restrictions (ranges, patterns, enum/identityref sets, ...) are enforced at runtime on assignment (`YangValidationError`). For more complex checks, a module-level `validate_tree(*roots)` exists. It checks the structural/referential rules that can only be judged on a finished tree (leafref integrity, mandatory leaves, list keys/`unique`, min-/max-elements, choice exclusivity, and `must`/`when` XPath constraints, evaluated by an XPath 1.0 subset engine embedded in the generated runtime)
+
+### Rendering / Generator (Using Jinja2)
+`src/frr_proteus/render/templates/*.j2` walk the generated binding's dataclasses almost to directly and emit FRR text config. The renderer has some options for nicer formatting of the generated text config, e.g. `heading`. The renderer has some helper functions, e.g. `heading.py`.
+
+`_comments.py` is responsible for rendering comments in the YANG (defined as YANG metadata `md:annotation comment` in `yang/custom/proteus-configuration-metadata.yang`) without polluting the templates with lots of comment hooks! Yes it's a hack, but arguably nicer than the alternatives.
+
+`helpers.py` has various helper functions.
+
+`experimental.py` is a translation layer for the experimental EVPN config scheme. It translates experimental EVPN config into the standard FRR syntax where possible. It sits between the experimental config and the rendering engine. The standard FRR syntax rendering paths in the rendering engine are generally unaware of the existence of existence of the experimental config scheme. There is an extra template for rendering the experimental config scheme in its native format.
 
 ## Setup
 
-Codegen uses the forked pyangbind vendored as the `pyangbind/` submodule
-(installed editable, never the PyPI release). The fork carries our fixes
-directly -- the bits-position bug that used to be monkeypatched in-memory,
-and Python 3.12+ support -- so any modern interpreter works for codegen now.
+Codegen uses the forked `pyangbind` vendored as the `pyangbind/` submodule.
 
-A single venv covers both codegen and the library -- pyangbind and pyang
-are codegen-only tools, but they're imported solely by
-`scripts/generate_bindings.py` (never by `src/frr_proteus`), so they can't
-leak into the runtime dependency set.
+A single venv covers both codegen and the library. `pyangbind` and `pyang` are codegen-only tools.
 
 ```sh
 git submodule update --init
@@ -136,24 +114,23 @@ python3 -m venv .venv
 # so it's a separate editable install.
 .venv/bin/pip install -e ".[dev,codegen]" -e ./pyangbind
 
+source ./.venv/bin/activate
+
 # one-time codegen (regenerate whenever the YANG models change):
-.venv/bin/python scripts/generate_bindings.py
+python scripts/generate_bindings.py
 
 # then use the library:
-PYTHONPATH=src .venv/bin/python examples/basic_bgp.py   # writes out/r1_bgpd.conf, out/r2_bgpd.conf
-PYTHONPATH=src .venv/bin/python examples/evpn_bgp.py    # writes out/evpn_frr.conf
-.venv/bin/pytest tests/
+python examples/basic_bgp.py
+
+# or execute tests (note that bare pytest will attempt to execute tests in the frr subdirectory and fail!)
+pytest tests/
 ```
 
 ## Packaging for use in another project
 
-The generated bindings under `src/frr_proteus/_generated/` are gitignored
-(reproducible, multi-MB), but they are ordinary Python sub-packages, so
-setuptools' package discovery bundles them into a **wheel** at build time
-(gitignore only affects the sdist file list, not wheel discovery). Building
-a wheel therefore ships a self-contained artifact -- bindings, Jinja
-templates and `py.typed` included -- whose only runtime dependency is
-`jinja2`. `pyangbind`/`pyang` are codegen-time only and are *not* pulled in.
+The generated bindings under `src/frr_proteus/_generated/` are gitignored, but they are ordinary Python sub-packages, so setuptools' package discovery bundles them into a **wheel** at build time (gitignore only affects the sdist file list, not wheel discovery).
+
+Building a wheel therefore ships a self-contained artifact with bindings, Jinja templates, etc. The only runtime dependency is `jinja2`. `pyangbind`/`pyang` are codegen-time only and are *not* pulled in.
 
 ```sh
 # regenerates the bindings, then builds dist/frr_proteus-<version>-py3-none-any.whl
@@ -163,68 +140,48 @@ scripts/build_package.sh
 other-project/.venv/bin/pip install /path/to/frr-proteus/dist/frr_proteus-0.1.0-py3-none-any.whl
 ```
 
-The consuming project then just imports it -- no source checkout, no codegen,
-no submodules on its side:
+The consuming project then just imports it. No source checkout, no codegen or no submodules.
 
 ```python
 from frr_proteus._generated.proteus import ProteusBgp, validate_tree
 from frr_proteus.render import render_bgp_instance, heading
 ```
 
-Because it is a plain wheel you can also install it straight from a built
-file URL, vendor the `.whl` into the other repo, or publish it to a private
-index -- whatever fits that project. A wheel is required (not `pip install
-/path/to/frr-proteus`), since a source install/sdist would rebuild without
-the gitignored bindings unless codegen has just run in-tree.
-
-## Known limitations
-
-Verified by reading FRR's C source and comparing against topotest fixture
-configs, not by loading generated config into a running bgpd -- worth
-doing before trusting this beyond evaluation:
-
-- No `bgp ebgp-requires-policy` handling yet. It defaults **on** in FRR, so
-  an eBGP session from generated config will establish but FRR will filter
-  all routes without an explicit policy. FRR's own topotests disable this
-  knob for exactly that reason.
-- `ipv6-unicast` is in the renderer's AFI-SAFI map, but nothing
-  auto-activates a v6 neighbor for it (`neighbor X activate`) -- untested,
-  likely incomplete for anything beyond a v4 `network` statement.
-- EVPN: per-neighbor `maximum-prefix` and `addpath-tx-all-paths` are not
-  modeled -- FRR's own YANG doesn't augment the neighbor's `l2vpn-evpn`
-  container with prefix-limit/add-paths groupings (unlike
-  `as-path-options`/`route-reflector`/`filter-config`, which it does), so
-  this needs a small additional augment in
-  `yang/augments/frr-proteus-bgp-evpn.yang` (or a couple of leaves in
-  `yang/custom/proteus-bgp-evpn.yang`), not yet done.
-- EVPN: per-VNI `advertise-default-gw`/`advertise-svi-ip` overrides and
-  `autort rfc8365-compatible` are not modeled (not exercised by the
-  topotests read so far).
-- Zebra-side Ethernet Segment (EVPN multihoming) config -- `evpn mh es-id`
-  etc. -- is out of scope entirely; it's zebra's surface, not bgpd's, and
-  this project is scoped to BGP.
+Because it is a plain wheel you can also install it straight from a built file URL, vendor the `.whl` into the other repo, or publish it to a private index. A wheel is required (not `pip install /path/to/frr-proteus`), since a source install/sdist would rebuild without the gitignored bindings unless codegen has just run in-tree.
 
 ## Repo layout
 
-- `frr/` -- git submodule, FRR master. Source of truth for both FRR's own
-  YANG models (`frr/yang/`) and the CLI behavior the renderer replicates
-  (`frr/bgpd/bgp_vty.c`, `frr/bgpd/bgp_evpn_vty.c`). We do not parse or
-  generate FRR C code.
-- `yang/augments/` -- project-authored YANG that extends FRR's own
-  modules from outside (via `augment`) rather than editing the vendored
-  submodule; EVPN so far.
-- `yang/custom/` -- the self-contained replacement models
-  (`proteus-*.yang`). No imports from `frr/yang/` at all, no `augment`
-  statements; one module per address family pulled together with plain
-  `import` + `uses` so the full tree reads top-down in
-  `proteus-bgp.yang`.
-- `pyangbind/` -- git submodule, our pyangbind fork; carries the
-  `pybind-dataclass` codegen backend (and fixes). Codegen-time only.
-- `src/frr_proteus/_generated/` -- generated dataclass bindings
-  (gitignored).
-- `src/frr_proteus/render/` -- Jinja2 templates (`templates/*.j2`) plus
-  the Python glue that wires them to the bindings (`bgp.py`,
-  `helpers.py`).
-- `scripts/generate_bindings.py` -- codegen entry point.
-- `examples/` -- runnable scripts building config data and rendering it.
-- `tests/` -- renderer tests against the generated bindings.
+Own components:
+- `src/frr_proteus/`: The library core
+  - `src/frr_proteus/render/`: The thin library layer that controls the rendering sits here
+     - `src/frr_proteus/render/templtaes/`: The Jinja templates
+  - `src/frr_proteus/_generated/`: Generated bindings go here
+- `yang/`: All YANG files go there
+  - `yang/custom/`: Our own YANG models for FRR, completely written from scratch (no references to original FRR YANG files at all!)
+  - `yang/vendor/`: Vendored dependencies, e.g. some IETF modules
+  - `yang/augments/`: Initial, mostly abandoned approach, that aimed to extends FRR's own
+    modules from outside (via `augment`) rather than editing the vendored to add missing features like EVPN
+- `scripts/`: Helper scripts
+  - `scripts/generate_bindings.py`: The main script to generate bindings from our custom bindings
+  - `scripts/generate_dataclass_bindings.py`: Helper script to call our `pybind-dataclass` plugin on YANG modules outside of the repository, automatically recurses
+  - `scripts/build_package.sh`: Helper to package this library including the generated bindings
+- `pyangbind/`: our pyangbind fork as git submodule, our backend / plugin is `pybind-dataclass`. Used at codetime gen only
+- `examples/`: Various examples
+- `tests/`: Various renderer tests against the generated bindings.
+- `frr/`: FRR as git submodule, master branch, used as source of truth for building new YANG models
+
+## Other notes
+You can run the `pybind-dataclass` plugin manually using e.g.
+```sh
+source ./.venv/bin/activate
+
+pyang --plugindir pyangbind/pyangbind/plugin/ -f pybind-dataclass -p pyangbind/tests/serialise/ -o /tmp/test1.py --dataclass-serde --dataclass-xpaths --dataclass-origin-comments pyangbind/tests/serialise/json-serialise/json-serialise.yang
+```
+
+## License
+This project is licensed under the Mozilla Public License Version 2.0. We chose this license, because it has the right balance between freedom of use, and the obligation to share improvements or modifications.
+
+Some files in this repository may be licensed under a different license, e.g. the vendored IETF YANG files.
+
+## The Name
+Proteus seemed like the most appropriate Greek god to name a project that transforms YANG into text-bsaed FRR configuration and makes the config process more versatile.
