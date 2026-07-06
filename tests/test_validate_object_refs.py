@@ -81,6 +81,35 @@ def test_route_map_prefix_list_ref_is_family_precise():
         bindings.validate_tree(*roots)
 
 
+def test_vpn_policy_route_map_refs():
+    roots = _all_roots()
+    bgp_root, rm_root = roots[:2]
+    neighbor = _bgp_neighbor(bgp_root)
+    del neighbor  # only need the instance
+    vpn = bgp_root.instance[0].afi_safis.ipv4_unicast.vpn
+    vpn.route_map_import = "VPN-IN"
+    with pytest.raises(bindings.YangValidationError, match="no matching instance"):
+        bindings.validate_tree(*roots)
+    rm_root.route_map.append(RouteMap(name="VPN-IN"))
+    bindings.validate_tree(*roots)
+
+
+def test_vpn_route_map_import_conflicts_with_import_vrf_route_map():
+    # Both write FRR's rmap_name[BGP_VPN_POLICY_DIR_FROMVPN]; the must
+    # forbids configuring them together.
+    roots = _all_roots()
+    bgp_root, rm_root = roots[:2]
+    _bgp_neighbor(bgp_root)
+    rm_root.route_map.append(RouteMap(name="VPN-IN"))
+    af4 = bgp_root.instance[0].afi_safis.ipv4_unicast
+    af4.import_vrf_route_map = "VPN-IN"
+    af4.vpn.route_map_import = "VPN-IN"
+    with pytest.raises(
+        bindings.YangValidationError, match="same import-route-map slot"
+    ):
+        bindings.validate_tree(*roots)
+
+
 def test_route_map_bgp_filter_refs():
     roots = _all_roots()
     _, rm_root, _, bgpfilter_root = roots[:4]

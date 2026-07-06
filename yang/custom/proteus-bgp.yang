@@ -57,11 +57,12 @@ module proteus-bgp {
      - SRv6 (segment-routing srv6, sid vpn export, per-AF 'sid
        export', encapsulation-srv6 neighbor knobs) -- out of scope
        until there's an SRv6 story.
-     - The MPLS L3VPN leaking detail block written by
-       bgp_vpn_policy_config_write_afi (rd vpn export, rt vpn
-       import/export, label vpn export, nexthop vpn export, route-map
-       vpn import/export) -- only the simple 'import|export vpn' /
-       'import vrf' knobs are modeled so far.
+     - 'rt|rt6 redirect import' (flowspec redirect, the tail of
+       bgp_vpn_policy_config_write_afi) -- excluded together with the
+       flowspec address family. The rest of that function's MPLS
+       L3VPN leaking detail block (rd/label/nexthop vpn export, rt
+       and route-map vpn import/export, import vrf route-map) IS
+       modeled in the af-vpn-leaking grouping.
      - Address families encap, flowspec, unreachability and
        link-state, plus their per-family extras (pbr, distribute
        bgp-fabric-link-state, retain route-target for encap).
@@ -1658,11 +1659,9 @@ module proteus-bgp {
   grouping af-vpn-leaking {
     description
       "Route leaking between this unicast AF and the VPN table /
-       other VRFs. Only the simple knobs are modeled.
-       // TODO(model): the detailed vpn_policy block written by
-       // bgp_vpn_policy_config_write_afi (rd vpn export, rt vpn
-       // import/export, label vpn export, nexthop vpn export,
-       // route-map vpn import/export) is not modeled yet.";
+       other VRFs: the simple 'import|export vpn' / 'import vrf'
+       knobs plus the detailed vpn-policy block written by
+       bgp_vpn_policy_config_write_afi in bgp_vty.c.";
 
     leaf export-vpn {
       type boolean;
@@ -1682,6 +1681,144 @@ module proteus-bgp {
         "'import vrf NAME' lines.
          // Deliberately not a leafref to /instance/vrf: FRR
          // auto-creates the target instance if it doesn't exist.";
+    }
+    leaf import-vrf-route-map {
+      type leafref {
+        path "/rmap:route-map/rmap:name";
+      }
+      description
+        "'import vrf route-map NAME'
+         (af_import_vrf_route_map_cmd): filter applied to
+         vrf-to-vrf imports. In FRR this shares the import
+         route-map slot with 'route-map vpn import' (which the
+         must below therefore forbids alongside it); unlike the
+         vpn block it stays effective while 'import vrf' is
+         active -- setting it even flags the AF for vrf-to-vrf
+         import on its own.";
+    }
+    container vpn {
+      description
+        "Detailed MPLS L3VPN leaking policy for this AF: the
+         '... vpn import|export ...' lines written by
+         bgp_vpn_policy_config_write_afi (bgp_vty.c). FRR's
+         config-write skips this whole block (except the import
+         route-map) while vrf-to-vrf leaking ('import vrf') is
+         active on the AF -- the vpn policy machinery is
+         vrf<->vpn-table leaking, not vrf<->vrf.
+         // 'sid vpn export' (SRv6) and 'rt|rt6 redirect import'
+         // (flowspec redirect) are excluded per module scope --
+         // see the module description.";
+
+      leaf route-map-import {
+        type leafref {
+          path "/rmap:route-map/rmap:name";
+        }
+        must "not(../../import-vrf-route-map)" {
+          error-message
+            "route-map vpn import and import vrf route-map occupy
+             the same import-route-map slot in FRR (rmap_name
+             [BGP_VPN_POLICY_DIR_FROMVPN]) -- configure only one";
+        }
+        description
+          "'route-map vpn import NAME'
+           (af_route_map_vpn_imexport_cmd): filter applied to
+           routes leaked from the VPN table into this AF.";
+      }
+      leaf route-map-export {
+        type leafref {
+          path "/rmap:route-map/rmap:name";
+        }
+        description
+          "'route-map vpn export NAME': filter applied to routes
+           leaked from this AF to the VPN table.";
+      }
+      container label-export {
+        description
+          "MPLS label attached to routes leaked to the VPN table.";
+        choice label {
+          description
+            "'label vpn export <(0-1048575)|auto>'
+             (af_label_vpn_export_cmd): a fixed label value or
+             kernel-allocated ('auto') -- one storage slot in FRR,
+             hence a choice.";
+          case value {
+            leaf value {
+              type uint32 {
+                range "0..1048575";
+              }
+              description
+                "Fixed MPLS label value.";
+            }
+          }
+          case auto {
+            leaf auto {
+              type boolean;
+              default "false";
+              description
+                "'label vpn export auto': allocate the label
+                 dynamically (from zebra's label manager).";
+            }
+          }
+        }
+        leaf allocation-mode {
+          type enumeration {
+            enum per-vrf {
+              description
+                "One label for the whole VRF (FRR's default).";
+            }
+            enum per-nexthop {
+              description
+                "One label per nexthop of the leaked routes.";
+            }
+          }
+          description
+            "'label vpn export allocation-mode
+             <per-vrf|per-nexthop>'
+             (af_label_vpn_export_allocation_mode_cmd). per-vrf is
+             FRR's default; its config-write emits only the
+             per-nexthop form, but we render an explicitly
+             configured per-vrf too -- loadable, resets to the
+             default.";
+        }
+      }
+      container rd-export {
+        description
+          "'rd vpn export <ASN:NN|A.B.C.D:NN>'
+           (af_rd_vpn_export_cmd): route distinguisher stamped on
+           routes leaked to the VPN table. All-empty counts as
+           unconfigured (the choice inside is only checked once
+           any member is set).";
+        uses pt:route-distinguisher;
+      }
+      leaf nexthop-export {
+        type union {
+          type inet:ipv4-address-no-zone;
+          type inet:ipv6-address-no-zone;
+        }
+        description
+          "'nexthop vpn export <A.B.C.D|X:X::X:X>'
+           (af_nexthop_vpn_export_cmd): nexthop stamped on routes
+           leaked to the VPN table (the DEFPY accepts either
+           family under either AF). FRR only persists the
+           with-address form, so the leaf is the address.";
+      }
+      container rt-import {
+        description
+          "'rt vpn import RTLIST' (af_rt_vpn_imexport_cmd): route
+           targets a VPN route must carry (match any) to be leaked
+           into this AF.";
+        uses pt:route-target-set;
+      }
+      container rt-export {
+        description
+          "'rt vpn export RTLIST': route targets attached to
+           routes leaked from this AF to the VPN table. FRR's
+           config-write collapses equal import+export sets into
+           one 'rt vpn both' line; we always emit the two
+           per-direction lines -- FRR parses them to the same
+           state.";
+        uses pt:route-target-set;
+      }
     }
   }
 

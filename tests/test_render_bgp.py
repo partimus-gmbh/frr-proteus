@@ -921,6 +921,72 @@ def test_vpn_leaking_and_nexthop_prefer_global():
     assert "  no nexthop prefer-global\n" in render_bgp_instance(instance)
 
 
+def test_import_vrf_route_map():
+    instance = _new_instance()
+    af4 = instance.afi_safis.ipv4_unicast
+    af4.import_vrf = ["BLUE"]
+    af4.import_vrf_route_map = "VRF-IMPORT"
+    text = render_bgp_instance(instance)
+    assert "  import vrf BLUE\n  import vrf route-map VRF-IMPORT\n" in text
+
+
+def test_vpn_policy_block_full_in_config_write_order():
+    instance = _new_instance()
+    vpn = instance.afi_safis.ipv4_unicast.vpn
+    vpn.route_map_import = "VPN-IN"
+    vpn.route_map_export = "VPN-OUT"
+    vpn.label_export.value = 12345
+    vpn.label_export.allocation_mode = "per-nexthop"
+    vpn.rd_export.as2.administrator = 65001
+    vpn.rd_export.as2.assigned_number = 100
+    vpn.nexthop_export = "192.0.2.1"
+    vpn.rt_import.as2.append(
+        Instance.AfiSafis.Ipv4Unicast.Vpn.RtImport.As2(
+            global_admin=65001, local_admin=101
+        )
+    )
+    vpn.rt_export.as2.append(
+        Instance.AfiSafis.Ipv4Unicast.Vpn.RtExport.As2(
+            global_admin=65001, local_admin=102
+        )
+    )
+    vpn.rt_export.ipv4.append(
+        Instance.AfiSafis.Ipv4Unicast.Vpn.RtExport.Ipv4(
+            global_admin="192.0.2.2", local_admin=7
+        )
+    )
+    text = render_bgp_instance(instance)
+    expected = (
+        "  route-map vpn import VPN-IN\n"
+        "  label vpn export 12345\n"
+        "  label vpn export allocation-mode per-nexthop\n"
+        "  rd vpn export 65001:100\n"
+        "  nexthop vpn export 192.0.2.1\n"
+        "  rt vpn import 65001:101\n"
+        "  rt vpn export 65001:102 192.0.2.2:7\n"
+        "  route-map vpn export VPN-OUT\n"
+    )
+    assert expected in text
+
+
+def test_vpn_label_export_auto_and_ipv6_nexthop():
+    instance = _new_instance()
+    vpn = instance.afi_safis.ipv6_unicast.vpn
+    vpn.label_export.auto = True
+    vpn.nexthop_export = "2001:db8::1"
+    text = render_bgp_instance(instance)
+    assert " address-family ipv6 unicast\n" in text
+    assert "  label vpn export auto\n" in text
+    assert "  nexthop vpn export 2001:db8::1\n" in text
+
+
+def test_vpn_block_empty_renders_nothing():
+    instance = _new_instance()
+    text = render_bgp_instance(instance)
+    assert "vpn export" not in text
+    assert "vpn import" not in text
+
+
 def test_all_eight_af_headers():
     instance = _new_instance()
     headers = {

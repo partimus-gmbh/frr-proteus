@@ -110,7 +110,7 @@ same shape (one `.j2` template, thin Python glue module, thin
   config-write path emits (bgp_config_write* in bgp_vty.c/bgp_route.c/
   bgp_damp.c/bgp_bfd.c, bgp_config_write_evpn_info in bgp_evpn_vty.c,
   route-map match/set vocabulary from lib/routemap_cli.c +
-  bgpd/bgp_routemap.c) -- exclusions (SRv6, vpn_policy leaking detail,
+  bgpd/bgp_routemap.c) -- exclusions (SRv6,
   encap/flowspec/link-state AFs, RPKI/BMP/VNC) are listed in
   proteus-bgp.yang's module description and marked with comments at
   the spot where they'd go. Object references (route-maps,
@@ -627,11 +627,14 @@ bgp_vty.c / bgp_evpn_vty.c / bgp_route.c / bgp_damp.c.
 ## Known model gaps
 
 These are SCHEMA exclusions (deliberate, listed in
-proteus-bgp.yang's module description), not renderer gaps: SRv6, the
-detailed vpn_policy leaking block (only export/import vpn +
-import vrf are modeled), encap/flowspec/unreachability/link-state
-AFs, RPKI cache config, BMP, VNC. (`as-notation dot` and asdot AS
-values are modeled since 2026-07-06.) Also:
+proteus-bgp.yang's module description), not renderer gaps: SRv6,
+encap/flowspec/unreachability/link-state AFs (incl. flowspec's
+`rt|rt6 redirect import`), RPKI cache config, BMP, VNC.
+(`as-notation dot`, asdot AS values, and the detailed vpn_policy
+leaking block -- the `vpn` container in af-vpn-leaking: rd/label/
+nexthop vpn export incl. `allocation-mode per-vrf|per-nexthop`, rt +
+route-map vpn import/export, import vrf route-map -- are modeled
+since 2026-07-06.) Also:
 
 - Zebra-side Ethernet Segment (EVPN multihoming) config -- `evpn mh
   es-id` etc. -- is genuinely out of scope, not just unimplemented. It's

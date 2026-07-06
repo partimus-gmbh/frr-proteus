@@ -95,6 +95,43 @@ including no leading "!". #}
 {% for vrf_name in (af.import_vrf if af.import_vrf is defined else []) %}
   import vrf {{ vrf_name }}
 {% endfor %}
+{% if af.import_vrf_route_map is defined and af.import_vrf_route_map %}
+  import vrf route-map {{ af.import_vrf_route_map }}
+{% endif %}
+{# Detailed vpn-policy block, bgp_vpn_policy_config_write_afi's order
+   (rt vpn both is FRR-side sugar for equal import+export sets; the
+   two per-direction lines parse to the same state). #}
+{% if af.vpn is defined %}
+{% if af.vpn.route_map_import %}
+  route-map vpn import {{ af.vpn.route_map_import }}
+{% endif %}
+{% if af.vpn.label_export.auto %}
+  label vpn export auto
+{% elif af.vpn.label_export.value is not none %}
+  label vpn export {{ af.vpn.label_export.value }}
+{% endif %}
+{% if af.vpn.label_export.allocation_mode %}
+  label vpn export allocation-mode {{ af.vpn.label_export.allocation_mode }}
+{% endif %}
+{% set vpn_rd = rd_text(af.vpn.rd_export) %}
+{% if vpn_rd %}
+  rd vpn export {{ vpn_rd }}
+{% endif %}
+{% if af.vpn.nexthop_export %}
+  nexthop vpn export {{ af.vpn.nexthop_export }}
+{% endif %}
+{% set vpn_rt_import = route_target_texts(af.vpn.rt_import) %}
+{% if vpn_rt_import %}
+  rt vpn import {{ vpn_rt_import | join(" ") }}
+{% endif %}
+{% set vpn_rt_export = route_target_texts(af.vpn.rt_export) %}
+{% if vpn_rt_export %}
+  rt vpn export {{ vpn_rt_export | join(" ") }}
+{% endif %}
+{% if af.vpn.route_map_export %}
+  route-map vpn export {{ af.vpn.route_map_export }}
+{% endif %}
+{% endif %}
 {% endmacro %}
 {% set instance_clause = " view " ~ instance.vrf if instance.instance_type == "view" else (" vrf " ~ instance.vrf if instance.vrf and instance.vrf != "default" else "") %}
 {# as-notation only changes how later show output formats ASNs; the
