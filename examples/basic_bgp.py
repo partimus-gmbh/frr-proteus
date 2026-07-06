@@ -26,6 +26,7 @@ from frr_proteus._generated.proteus import (
     ProteusFilter,
     ProteusInterface,
     ProteusRouteMap,
+    annotate,
     validate_tree,
 )
 from frr_proteus.render import (
@@ -146,6 +147,9 @@ def add_import_policy(router: Router) -> None:
     neighbor.bfd.enabled = True
     neighbor.profile = "fast"
     neighbor.afi_safis.ipv4_unicast.filters.route_map_in = "FROM-R2"
+    # RFC 7952 comment annotation (proteus-configuration-metadata.yang):
+    # rendered as a full-line '!' comment before the neighbor's lines.
+    annotate(neighbor, comment="session to r2, import policy FROM-R2")
 
 
 def main() -> None:

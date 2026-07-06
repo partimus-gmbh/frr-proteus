@@ -19,12 +19,18 @@ The experimental format (bgp_evpn_af_experimental.j2) is the inverse:
 new scheme emitted, legacy syntax removed. #}
 {% import "evpn_macros.j2" as evpn_macros %}
  !
+{% for c in comment_lines(evpn) %}
+ ! {{ c }}
+{% endfor %}
  address-family l2vpn evpn
 {# EVPN type-5 static 'network' statements come first, mirroring
    bgp_config_write_family's bgp_config_write_network call before the
    per-peer lines. FRR writes every mandatory token back
    (bgp_config_write_network_evpn). #}
 {% for net in evpn.network %}
+{% for c in comment_lines(net) %}
+  ! {{ c }}
+{% endfor %}
 {% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
   network {{ net.prefix }} rd {{ rd_text(net.rd) }} ethtag {{ net.ethtag }} label {{ net.label }} esi {{ net.esi }} gwip {{ net.gwip }} routermac {{ net.routermac }}{{ net_rmap }}
 {% endfor %}
@@ -35,6 +41,9 @@ new scheme emitted, legacy syntax removed. #}
 {# Per-VNI sub-blocks, write_vni_config's line order: rd, flooding,
    route-targets, then the per-VNI advertise overrides. #}
 {% for vni in evpn.vni %}
+{% for c in comment_lines(vni) %}
+  ! {{ c }}
+{% endfor %}
   vni {{ vni.vni_id }}
 {% set vni_rd = rd_text(vni.rd) %}
 {% if vni_rd %}

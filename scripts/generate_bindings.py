@@ -84,6 +84,10 @@ CUSTOM_MODULES = [
     CUSTOM_YANG_DIR / "proteus-interface.yang",
     CUSTOM_YANG_DIR / "proteus-vrf.yang",
     CUSTOM_YANG_DIR / "proteus-system.yang",
+    # RFC 7952 metadata annotations (the `comment` annotation). Defines
+    # no data nodes -- compiling it registers the annotations so the
+    # bindings' annotate()/annotations() and the '@' serde members work.
+    CUSTOM_YANG_DIR / "proteus-configuration-metadata.yang",
     # The experimental EVPN scheme's ADDITIONAL nodes -- always
     # compiled in; opting in/out of the scheme happens at the
     # renderer (output format), not the schema.

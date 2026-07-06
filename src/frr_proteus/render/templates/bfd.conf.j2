@@ -4,6 +4,9 @@
    profile); ' exit' closes the profile, 'exit' the bfd block. #}
 bfd
 {% for profile in bfd.profile %}
+{% for c in comment_lines(profile) %}
+ ! {{ c }}
+{% endfor %}
  profile {{ profile.name }}
 {% if profile.detect_multiplier %}
   detect-multiplier {{ profile.detect_multiplier }}

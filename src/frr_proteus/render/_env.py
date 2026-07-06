@@ -36,4 +36,5 @@ env.globals.update(
     route_target_texts=helpers.route_target_texts,
     route_origin_text=helpers.route_origin_text,
     has_config=helpers.has_config,
+    comment_lines=helpers.comment_lines,
 )

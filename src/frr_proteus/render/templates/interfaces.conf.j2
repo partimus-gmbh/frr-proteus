@@ -4,6 +4,9 @@
    ipv6_nd_ra_interval_cmd (sec and msec forms are a YANG choice, at
    most one renders). #}
 {% for interface in interfaces.interface %}
+{% for c in comment_lines(interface) %}
+! {{ c }}
+{% endfor %}
 interface {{ interface.name }}
 {% if interface.description %}
  description {{ interface.description }}

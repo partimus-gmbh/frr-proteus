@@ -1,0 +1,45 @@
+module proteus-configuration-metadata {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/configuration-metadata";
+  prefix proteus-meta;
+
+  import ietf-yang-metadata {
+    prefix md;
+  }
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "RFC 7952 metadata annotations for frr-proteus configuration
+     trees (modeled after Juniper's junos-configuration-metadata).
+     Annotations are instance metadata, not data nodes: they attach
+     to instances of nodes defined in the sibling proteus modules
+     without changing those modules' schemas.
+
+     This module deliberately defines only annotations -- per RFC
+     7952 section 3, a module containing md:annotation statements
+     should not define data nodes or groupings.";
+
+  revision 2026-07-06 {
+    description
+      "Initial version: the comment annotation.";
+  }
+
+  md:annotation comment {
+    type string;
+    description
+      "A free-form comment attached to a configuration element.
+
+       Rendered into the generated FRR config as full-line comments
+       immediately before the element's first line. FRR only has
+       single-line comments whose first non-whitespace character is
+       '!' or '#' (lib/command.c cmd_make_strvec, vtysh/vtysh.c
+       vtysh_read_file) -- there are no inline comments, so the
+       renderer always emits the comment on its own '!' line(s), one
+       per line of this value. Empty / whitespace-only comments are
+       not rendered. In RFC 7951 JSON the annotation follows RFC
+       7952 section 5.2 (metadata objects under '@' / '@member').";
+  }
+}

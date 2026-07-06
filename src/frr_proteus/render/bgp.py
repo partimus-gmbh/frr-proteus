@@ -44,6 +44,7 @@ _env.globals.update(
     asn_text=helpers.asn_text,
     remote_as_text=helpers.remote_as_text,
     confederation_peers_texts=helpers.confederation_peers_texts,
+    comment_lines=helpers.comment_lines,
 )
 # As a Jinja *test* so templates can write
 # `selectattr('afi_safis.ipv4_unicast.filters', 'has_config')`.

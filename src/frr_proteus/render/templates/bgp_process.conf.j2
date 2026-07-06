@@ -1,6 +1,9 @@
 {# Process-wide 'bgp ...' lines written before any 'router bgp' block:
 the bm-> globals at the start of bgp_config_write() in bgpd/bgp_vty.c,
 in its emission order. All top-level (no leading space). #}
+{% for c in comment_lines(process) %}
+! {{ c }}
+{% endfor %}
 {% if process.route_map_delay_timer is not none %}
 bgp route-map delay-timer {{ process.route_map_delay_timer }}
 {% endif %}

@@ -43,6 +43,30 @@ def confederation_peers_texts(peers) -> list[str]:
     ]
 
 
+def comment_lines(node, member=None, index=None) -> list[str]:
+    """Non-empty lines of the RFC 7952 ``comment`` annotation attached
+    to a node instance (see the generated bindings' ``annotate()``), a
+    leaf member, or a leaf-list member entry, ready to render as FRR
+    ``!`` comment lines before the element's first config line.
+
+    FRR only has whole-line comments -- a line whose first
+    non-whitespace character is '!' or '#' (lib/command.c
+    cmd_make_strvec, vtysh/vtysh.c vtysh_read_file); there are no
+    inline comments -- so a multi-line comment value becomes one list
+    element (one '!' line) per line, and empty / whitespace-only
+    comments render nothing. Reads the bindings' per-instance
+    ``_yang_metadata`` store directly (same addressing as
+    ``annotations()``) so the helpers work with any generated package
+    without importing one.
+    """
+    store = getattr(node, "_yang_metadata", None) or {}
+    key = member if index is None else (member, index)
+    comment = (store.get(key) or {}).get("comment")
+    if not comment or not str(comment).strip():
+        return []
+    return [line.rstrip() for line in str(comment).splitlines() if line.strip()]
+
+
 def has_config(node: object) -> bool:
     """True if any leaf anywhere under this generated dataclass is set.
 
