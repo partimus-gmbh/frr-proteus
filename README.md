@@ -145,6 +145,38 @@ PYTHONPATH=src .venv/bin/python examples/evpn_bgp.py    # writes out/evpn_frr.co
 .venv/bin/pytest tests/
 ```
 
+## Packaging for use in another project
+
+The generated bindings under `src/frr_proteus/_generated/` are gitignored
+(reproducible, multi-MB), but they are ordinary Python sub-packages, so
+setuptools' package discovery bundles them into a **wheel** at build time
+(gitignore only affects the sdist file list, not wheel discovery). Building
+a wheel therefore ships a self-contained artifact -- bindings, Jinja
+templates and `py.typed` included -- whose only runtime dependency is
+`jinja2`. `pyangbind`/`pyang` are codegen-time only and are *not* pulled in.
+
+```sh
+# regenerates the bindings, then builds dist/frr_proteus-<version>-py3-none-any.whl
+scripts/build_package.sh
+
+# install it into the consuming project (non-editable), e.g.:
+other-project/.venv/bin/pip install /path/to/frr-proteus/dist/frr_proteus-0.1.0-py3-none-any.whl
+```
+
+The consuming project then just imports it -- no source checkout, no codegen,
+no submodules on its side:
+
+```python
+from frr_proteus._generated.proteus import ProteusBgp, validate_tree
+from frr_proteus.render import render_bgp_instance, heading
+```
+
+Because it is a plain wheel you can also install it straight from a built
+file URL, vendor the `.whl` into the other repo, or publish it to a private
+index -- whatever fits that project. A wheel is required (not `pip install
+/path/to/frr-proteus`), since a source install/sdist would rebuild without
+the gitignored bindings unless codegen has just run in-tree.
+
 ## Known limitations
 
 Verified by reading FRR's C source and comparing against topotest fixture
