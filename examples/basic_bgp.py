@@ -8,6 +8,13 @@ the cross-module leafrefs and the object renderers. Everything renders
 into one combined frr.conf-shaped file per router (objects first, then
 the router bgp block).
 
+r1 is also sprinkled with RFC 7952 `comment` annotations
+(proteus-configuration-metadata.yang, attached via annotate()): they
+can sit on any node -- an instance, a neighbor, a prefix-list entry --
+or on an individual leaf, and the renderer emits each one
+automatically as full-line '!' comment(s) right before the annotated
+element's config line (FRR has no inline comments).
+
 Writes out/r1_frr.conf and out/r2_frr.conf (relative to the repo
 root). Run with the generated bindings on the path, e.g.:
     PYTHONPATH=src python3 examples/basic_bgp.py
@@ -120,35 +127,48 @@ def add_import_policy(router: Router) -> None:
     BFD profile on the session -- referenced via leafrefs, so
     validate_tree checks the names resolve."""
     pl = PrefixList4(name="PEER-ROUTES", description="what r2 may send")
-    pl.entry.append(
-        PrefixList4.Entry(
-            sequence=5, action="permit", prefix="198.51.100.0/24", le=32
-        )
+    entry5 = PrefixList4.Entry(
+        sequence=5, action="permit", prefix="198.51.100.0/24", le=32
     )
+    # A comment on a list entry. Placement is group-accurate: this
+    # renders at the top of the PEER-ROUTES lines (above the
+    # description line -- the filters template renders each list
+    # through one Jinja macro, and comments recorded inside a macro
+    # call attach to its first output line).
+    annotate(entry5, comment="r2's LAN, any subnet size")
+    pl.entry.append(entry5)
     router.filters.prefix_lists.ipv4.prefix_list.append(pl)
 
     rmap = RouteMap(name="FROM-R2")
+    # Multi-line comment: one '!' line per line of the value.
+    annotate(
+        rmap,
+        comment="import policy for the r2 session\n"
+        "prefix-list gate first, then prefer over other paths",
+    )
     entry = RouteMap.Entry(sequence=10, action="permit")
     entry.match.ip_address_prefix_list = "PEER-ROUTES"
     entry.set.local_preference = 200
+    # A comment on an individual LEAF: rendered right before the one
+    # 'set local-preference 200' line inside the route-map block.
+    annotate(entry.set, "local_preference", comment="win over the default 100")
     rmap.entry.append(entry)
     router.route_maps.route_map.append(rmap)
 
-    router.bfd.profile.append(
-        ProteusBfd.Profile(
-            name="fast",
-            detect_multiplier=3,
-            receive_interval=150,
-            transmit_interval=150,
-        )
+    profile = ProteusBfd.Profile(
+        name="fast",
+        detect_multiplier=3,
+        receive_interval=150,
+        transmit_interval=150,
     )
+    annotate(profile, comment="450 ms detection, direct links only")
+    router.bfd.profile.append(profile)
 
     neighbor = router.bgp.instance[0].neighbor[0]
     neighbor.bfd.enabled = True
     neighbor.profile = "fast"
     neighbor.afi_safis.ipv4_unicast.filters.route_map_in = "FROM-R2"
-    # RFC 7952 comment annotation (proteus-configuration-metadata.yang):
-    # rendered as a full-line '!' comment before the neighbor's lines.
+    # A comment on a node: rendered before the neighbor's first line.
     annotate(neighbor, comment="session to r2, import policy FROM-R2")
 
 
