@@ -30,12 +30,38 @@ def test_interface_blocks():
     )
     root.interface.append(Interface(name="swp2"))
     assert render_interfaces(root) == (
+        "!\n"
         "interface swp1\n"
         " description to spine1\n"
         "exit\n"
+        "!\n"
         "interface swp2\n"
         "exit\n"
     )
+
+
+def test_default_separator_before_section():
+    root = ProteusInterface()
+    root.interface.append(Interface(name="swp1"))
+    assert render_interfaces(root) == "!\ninterface swp1\nexit\n"
+
+
+def test_heading_none_disables_separator():
+    root = ProteusInterface()
+    root.interface.append(Interface(name="swp1"))
+    text = render_interfaces(root, heading=None)
+    assert text.startswith("interface swp1\n")
+
+
+def test_heading_prefix():
+    root = ProteusInterface()
+    root.interface.append(Interface(name="swp1"))
+    text = render_interfaces(root, heading="interfaces")
+    assert text.startswith("!\n! interfaces\n!\ninterface swp1\n")
+
+
+def test_heading_suppressed_when_empty():
+    assert render_interfaces(ProteusInterface(), heading="interfaces") == ""
 
 
 def test_ipv6_nd_ra_interval_seconds():
@@ -44,6 +70,7 @@ def test_ipv6_nd_ra_interval_seconds():
     intf.ipv6_nd.ra_interval = 5
     root.interface.append(intf)
     assert render_interfaces(root) == (
+        "!\n"
         "interface swp1\n"
         " ipv6 nd ra-interval 5\n"
         "exit\n"

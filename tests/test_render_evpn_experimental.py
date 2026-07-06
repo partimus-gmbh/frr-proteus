@@ -46,7 +46,7 @@ def test_underlay_instance_experimental_format():
     instance.afi_safis.l2vpn_evpn.auto_discover_vnis = True
 
     text = render_bgp_instance(instance, format="experimental")
-    assert text.startswith("router bgp 65000 vrf underlay-red\n")
+    assert text.startswith("!\nrouter bgp 65000 vrf underlay-red\n")
     assert " address-family l2vpn evpn\n" in text
     assert "  vxlan-underlay\n" in text
     assert "  auto-discover-vnis\n" in text
@@ -242,14 +242,14 @@ def test_render_evpn_global_experimental():
     evpn.vlan_based_evi.append(evi)
 
     text = render_evpn_global(evpn, format="experimental")
-    assert text.startswith("evpn\n")
+    assert text.startswith("!\nevpn\n")
     assert " default-underlay-vrf yellow\n" in text
     assert " vlan-based-evi shared-l2\n" in text
     assert "  underlay-vrf underlay-red\n" in text
     assert "  origination-l2vni 999\n" in text
     assert "  route-target import 65000:999\n" in text
     assert " exit-evi\n" in text
-    assert text.endswith("exit\n!\n")
+    assert text.endswith("exit\n")
 
 
 def test_render_evpn_global_frr_format_is_empty():

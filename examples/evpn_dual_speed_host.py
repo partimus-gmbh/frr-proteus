@@ -306,14 +306,18 @@ def main() -> None:
     )
     validate_tree(bgp, rmaps, filters, bgp_filters, system, vrfs, interfaces)
 
+    # Dependency-first: every object section renders before the
+    # sections that reference it (large-community lists before the
+    # route-maps matching them, those before the router bgp blocks).
     text = (
         render_system(system)
-        + render_vrfs(vrfs)
+        + render_vrfs(vrfs, heading="vrfs")
         + render_interfaces(interfaces)
-        + render_filters(filters)
-        + render_route_maps(rmaps)
-        + "".join(render_bgp_instance(i) for i in bgp.instance)
-        + render_bgp_filters(bgp_filters)
+        + render_filters(filters, heading="prefix-lists")
+        + render_bgp_filters(bgp_filters, heading="large-community lists")
+        + render_route_maps(rmaps, heading="route-maps")
+        + render_bgp_instance(bgp.instance[0], heading="bgp")
+        + "".join(render_bgp_instance(i) for i in bgp.instance[1:])
     )
     out = pathlib.Path(__file__).resolve().parent.parent / "out"
     out.mkdir(exist_ok=True)

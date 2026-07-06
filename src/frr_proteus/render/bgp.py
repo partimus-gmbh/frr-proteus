@@ -27,6 +27,7 @@ import jinja2
 
 from frr_proteus.render import helpers
 from frr_proteus.render._comments import render_with_comments
+from frr_proteus.render._heading import with_heading
 
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
 
@@ -77,7 +78,9 @@ def _evpn_af_template(format: str) -> str:
         ) from None
 
 
-def render_bgp_instance(instance, *, format: str = "frr") -> str:
+def render_bgp_instance(
+    instance, *, format: str = "frr", heading: str | None = "!"
+) -> str:
     """Render one BGP instance into bgpd config text.
 
     `instance` is one entry of the generated `/bgp/instance` list
@@ -100,18 +103,26 @@ def render_bgp_instance(instance, *, format: str = "frr") -> str:
     rendered line's CLI text is confirmed against bgpd's config-write
     code -- keep that rule for anything new. Process-wide 'bgp ...'
     lines are separate: see render_bgp_process().
+
+    `heading` defaults to "!" -- one bare separator line before
+    the section; pass a title for a three-line '!' heading instead,
+    or None for no prefix at all. Skipped when the section renders
+    empty -- see render._heading.
     """
     if helpers.asn_text(instance.autonomous_system) is None:
         raise ValueError("instance autonomous-system is not set")
-    return render_with_comments(
-        _bgp_template,
-        instance=instance,
-        format=format,
-        evpn_af_template=_evpn_af_template(format),
+    return with_heading(
+        heading,
+        render_with_comments(
+            _bgp_template,
+            instance=instance,
+            format=format,
+            evpn_af_template=_evpn_af_template(format),
+        ),
     )
 
 
-def render_bgp_process(process) -> str:
+def render_bgp_process(process, *, heading: str | None = "!") -> str:
     """Render the process-wide `/bgp/process` container into the 'bgp
     ...' lines FRR writes before any 'router bgp' block (the bm->
     globals at the top of bgp_config_write in bgpd/bgp_vty.c).
@@ -119,13 +130,21 @@ def render_bgp_process(process) -> str:
     `process` is the generated `ProteusBgp.Bgp.Process` container.
     Returns the empty string when nothing in it is configured, so
     callers can unconditionally prepend it to a composed frr.conf.
+    `heading` defaults to "!" -- one bare separator line before
+    the section; pass a title for a three-line '!' heading instead,
+    or None for no prefix at all. Skipped when the section renders
+    empty -- see render._heading.
     """
     if not helpers.has_config(process):
         return ""
-    return render_with_comments(_bgp_process_template, process=process)
+    return with_heading(
+        heading, render_with_comments(_bgp_process_template, process=process)
+    )
 
 
-def render_evpn_global(evpn, *, format: str = "frr") -> str:
+def render_evpn_global(
+    evpn, *, format: str = "frr", heading: str | None = "!"
+) -> str:
     """Render the experimental scheme's global 'evpn' ... 'exit' block.
 
     `evpn` is the generated top-level container
@@ -134,8 +153,14 @@ def render_evpn_global(evpn, *, format: str = "frr") -> str:
     "frr" format (and whenever the container holds no config) the
     result is the empty string -- stock FRR has no equivalent to
     translate it to, so per the compatibility rules it is left out.
+    `heading` defaults to "!" -- one bare separator line before
+    the section; pass a title for a three-line '!' heading instead,
+    or None for no prefix at all. Skipped when the section renders
+    empty -- see render._heading.
     """
     _evpn_af_template(format)  # validate the format name
     if format != "experimental" or not helpers.has_config(evpn):
         return ""
-    return render_with_comments(_evpn_global_template, evpn=evpn)
+    return with_heading(
+        heading, render_with_comments(_evpn_global_template, evpn=evpn)
+    )

@@ -34,6 +34,7 @@ def test_profile_block_structure():
         )
     )
     assert render_bfd(root) == (
+        "!\n"
         "bfd\n"
         " profile fast\n"
         "  detect-multiplier 3\n"
@@ -79,4 +80,4 @@ def test_flags_and_echo_intervals():
 def test_unset_leaves_render_nothing():
     root = ProteusBfd()
     root.profile.append(Profile(name="bare"))
-    assert render_bfd(root) == "bfd\n profile bare\n exit\nexit\n"
+    assert render_bfd(root) == "!\nbfd\n profile bare\n exit\nexit\n"

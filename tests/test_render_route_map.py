@@ -33,7 +33,7 @@ def test_empty_root_renders_nothing():
 
 def test_block_header_and_exit():
     root, _ = _root_with_entry()
-    assert render_route_maps(root) == "route-map RM permit 10\nexit\n"
+    assert render_route_maps(root) == "!\nroute-map RM permit 10\nexit\n"
 
 
 def test_action_required():
@@ -175,11 +175,38 @@ def test_match_evpn_rd_structured():
 
 
 def test_multiple_entries_each_get_a_block():
+    # Entries of ONE route-map stay contiguous; the '!' separator only
+    # goes between different route-maps.
     root, _ = _root_with_entry()
     rm = root.route_map[0]
     rm.entry.append(RouteMap.Entry(sequence=20, action="deny"))
     text = render_route_maps(root)
-    assert "route-map RM permit 10\nexit\nroute-map RM deny 20\nexit\n" == text
+    assert "!\nroute-map RM permit 10\nexit\nroute-map RM deny 20\nexit\n" == text
+
+
+def test_separator_between_route_maps():
+    root, _ = _root_with_entry()
+    other = RouteMap(name="OTHER")
+    other.entry.append(RouteMap.Entry(sequence=10, action="permit"))
+    root.route_map.append(other)
+    assert render_route_maps(root) == (
+        "!\n"
+        "route-map RM permit 10\n"
+        "exit\n"
+        "!\n"
+        "route-map OTHER permit 10\n"
+        "exit\n"
+    )
+
+
+def test_heading_prefix():
+    root, _ = _root_with_entry()
+    text = render_route_maps(root, heading="route-maps")
+    assert text.startswith("!\n! route-maps\n!\nroute-map RM permit 10\n")
+
+
+def test_heading_suppressed_when_empty():
+    assert render_route_maps(ProteusRouteMap(), heading="route-maps") == ""
 
 
 def test_set_metric_operations():

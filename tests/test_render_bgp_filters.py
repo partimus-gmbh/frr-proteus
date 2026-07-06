@@ -36,7 +36,7 @@ def test_as_path_access_list():
     root.as_path_access_list.append(asp)
     assert (
         render_bgp_filters(root)
-        == "bgp as-path access-list NO-PRIVATE seq 5 deny _6451[2-9]_\n"
+        == "!\nbgp as-path access-list NO-PRIVATE seq 5 deny _6451[2-9]_\n"
     )
 
 

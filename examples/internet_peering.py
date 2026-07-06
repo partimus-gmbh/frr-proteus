@@ -139,11 +139,18 @@ def build_instance() -> Instance:
 
 
 def main() -> None:
-    filters = ProteusFilter()
-    filters.prefix_lists.ipv4.prefix_list.extend([
-        prefix_list("OUR-PREFIXES", OUR_PREFIXES),
-        prefix_list("BOGONS", BOGONS, le=32),
-    ])
+    # Two separately titled prefix-list sections built as two
+    # ProteusFilter roots: validate_tree merges leafref targets across
+    # all roots it's given, so references resolve against both while
+    # each renders as its own heading= section.
+    own_filters = ProteusFilter()
+    own_filters.prefix_lists.ipv4.prefix_list.append(
+        prefix_list("OUR-PREFIXES", OUR_PREFIXES)
+    )
+    bogon_filters = ProteusFilter()
+    bogon_filters.prefix_lists.ipv4.prefix_list.append(
+        prefix_list("BOGONS", BOGONS, le=32)
+    )
 
     bgp_filters = ProteusBgpFilter()
     private = AsPathList(name="PRIVATE-ASNS")
@@ -164,13 +171,14 @@ def main() -> None:
 
     bgp = ProteusBgp()
     bgp.instance.append(build_instance())
-    validate_tree(bgp, rmaps, filters, bgp_filters)
+    validate_tree(bgp, rmaps, own_filters, bogon_filters, bgp_filters)
 
     text = (
-        render_filters(filters)
-        + render_bgp_filters(bgp_filters)
-        + render_route_maps(rmaps)
-        + render_bgp_instance(bgp.instance[0])
+        render_filters(own_filters, heading="our prefixes")
+        + render_filters(bogon_filters, heading="bogon filtering")
+        + render_bgp_filters(bgp_filters, heading="as-path lists")
+        + render_route_maps(rmaps, heading="route-maps")
+        + render_bgp_instance(bgp.instance[0], heading="bgp")
     )
     out = pathlib.Path(__file__).resolve().parent.parent / "out"
     out.mkdir(exist_ok=True)

@@ -8,4 +8,7 @@ vrf {{ vrf.name }}
  vni {{ vrf.l3vni }}{{ pro }}
 {% endif %}
 exit-vrf
+{% if not loop.last %}
+!
+{% endif %}
 {% endfor %}

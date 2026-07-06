@@ -12,4 +12,5 @@ evpn
 {{ evpn_macros.vlan_based_evi(evi, " ") }}
 {% endfor %}
 exit
-!
+{# no trailing '!' -- the next section brings its own leading
+   separator (render_* heading= default), so one here would double up #}

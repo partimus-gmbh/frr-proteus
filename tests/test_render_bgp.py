@@ -41,10 +41,11 @@ def _add_neighbor(instance: Instance, addr: str) -> Instance.Neighbor:
     return neighbor
 
 
-def test_router_bgp_header_and_trailing_bang():
+def test_router_bgp_header_and_leading_separator():
+    # Separators are leading-only (the heading= default "!"): a bare
+    # instance renders just the separator and header, no trailing '!'.
     text = render_bgp_instance(_new_instance())
-    assert text.startswith("router bgp 65001\n")
-    assert text.endswith("!\n")
+    assert text == "!\nrouter bgp 65001\n"
 
 
 def test_autonomous_system_required():
@@ -126,12 +127,12 @@ def test_address_family_omitted_when_no_networks():
 
 def test_vrf_clause():
     text = render_bgp_instance(_new_instance(vrf="RED"))
-    assert text.startswith("router bgp 65001 vrf RED\n")
+    assert text.startswith("!\nrouter bgp 65001 vrf RED\n")
 
 
 def test_default_vrf_has_no_vrf_clause():
     text = render_bgp_instance(_new_instance(vrf="default"))
-    assert text.startswith("router bgp 65001\n")
+    assert text.startswith("!\nrouter bgp 65001\n")
 
 
 def test_asdot_asn_structured():
@@ -139,7 +140,7 @@ def test_asdot_asn_structured():
     instance.autonomous_system.asdot.high = 64506
     instance.autonomous_system.asdot.low = 101
     text = render_bgp_instance(instance)
-    assert text.startswith("router bgp 64506.101\n")
+    assert text.startswith("!\nrouter bgp 64506.101\n")
 
 
 def test_asdot_asn_zero_rejected():
@@ -157,7 +158,7 @@ def test_as_notation_suffix_after_vrf_clause():
     instance = _new_instance(vrf="RED")
     instance.as_notation = "dot"
     text = render_bgp_instance(instance)
-    assert text.startswith("router bgp 65001 vrf RED as-notation dot\n")
+    assert text.startswith("!\nrouter bgp 65001 vrf RED as-notation dot\n")
 
 
 def test_as_notation_omitted_when_unset():
@@ -641,7 +642,7 @@ def test_view_instance_header():
     instance = _new_instance(vrf="LOOKINGGLASS")
     instance.instance_type = "view"
     text = render_bgp_instance(instance)
-    assert text.startswith("router bgp 65001 view LOOKINGGLASS\n")
+    assert text.startswith("!\nrouter bgp 65001 view LOOKINGGLASS\n")
 
 
 def test_negative_only_instance_knobs():

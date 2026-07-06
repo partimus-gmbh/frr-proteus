@@ -28,12 +28,25 @@ def test_vrf_blocks():
     root.vrf.append(Vrf(name="tnt1", l3vni=15000001))
     root.vrf.append(Vrf(name="tnt2"))
     assert render_vrfs(root) == (
+        "!\n"
         "vrf tnt1\n"
         " vni 15000001\n"
         "exit-vrf\n"
+        "!\n"
         "vrf tnt2\n"
         "exit-vrf\n"
     )
+
+
+def test_heading_prefix():
+    root = ProteusVrf()
+    root.vrf.append(Vrf(name="tnt1"))
+    text = render_vrfs(root, heading="vrfs")
+    assert text.startswith("!\n! vrfs\n!\nvrf tnt1\n")
+
+
+def test_heading_suppressed_when_empty():
+    assert render_vrfs(ProteusVrf(), heading="vrfs") == ""
 
 
 def test_prefix_routes_only_suffix():

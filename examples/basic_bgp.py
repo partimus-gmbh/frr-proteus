@@ -72,14 +72,15 @@ class Router:
         )
 
     def render(self) -> str:
-        # frr.conf composition: objects first (they read naturally
-        # before their users), then the router bgp blocks. FRR resolves
-        # references by name at load time, so the order is cosmetic.
+        # frr.conf composition: dependency-first -- every object
+        # section before the sections referencing it (prefix-lists
+        # before the route-maps consuming them, everything before the
+        # router bgp blocks).
         return "".join(
             [
+                render_bfd(self.bfd),
                 render_filters(self.filters),
                 render_route_maps(self.route_maps),
-                render_bfd(self.bfd),
                 *(
                     render_bgp_instance(instance)
                     for instance in self.bgp.instance

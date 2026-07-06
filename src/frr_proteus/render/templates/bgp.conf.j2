@@ -435,4 +435,5 @@ router bgp {{ asn_text(instance.autonomous_system) }}{{ instance_clause }}{{ not
 {% set evpn = instance.afi_safis.l2vpn_evpn %}
 {% include evpn_af_template %}
 {% endif %}
-!
+{# no trailing '!' -- the next section/instance brings its own leading
+   separator (render_* heading= default), so one here would double up #}

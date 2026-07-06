@@ -195,9 +195,9 @@ def build_device(device: Device) -> str:
     validate_tree(bgp, rmaps, filters, bfd, interfaces)
     return (
         render_interfaces(interfaces)
+        + render_bfd(bfd)
         + render_filters(filters)
         + render_route_maps(rmaps)
-        + render_bfd(bfd)
         + "".join(render_bgp_instance(i) for i in bgp.instance)
     )
 

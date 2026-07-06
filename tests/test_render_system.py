@@ -29,6 +29,7 @@ def test_all_lines_in_frr_write_order():
     root.log.syslog = "informational"
     root.service.integrated_vtysh_config = True
     assert render_system(root) == (
+        "!\n"
         "frr defaults datacenter\n"
         "hostname vtep-host-01\n"
         "log syslog informational\n"
@@ -39,10 +40,10 @@ def test_all_lines_in_frr_write_order():
 def test_integrated_vtysh_config_negative_form():
     root = ProteusSystem()
     root.service.integrated_vtysh_config = False
-    assert render_system(root) == "no service integrated-vtysh-config\n"
+    assert render_system(root) == "!\nno service integrated-vtysh-config\n"
 
 
 def test_single_line():
     root = ProteusSystem()
     root.hostname = "r1"
-    assert render_system(root) == "hostname r1\n"
+    assert render_system(root) == "!\nhostname r1\n"

@@ -1,3 +1,29 @@
+"""Renderers composing the generated proteus bindings into frr.conf
+text. Each render_* function returns one section (or "" when its root
+holds no config); callers concatenate them into a single integrated
+frr.conf.
+
+Recommended section order is dependency-first -- referenced objects
+before their consumers (FRR itself needs this in some cases, and it
+reads logically top-down either way):
+
+    system, vrfs, interfaces, bfd profiles,
+    prefix-/access-lists (render_filters),
+    as-path/community lists (render_bgp_filters),
+    route-maps, bgp process, router bgp instances, evpn global
+
+Every render_* function takes a ``heading=`` keyword. Its default
+"!" prefixes one bare '!' separator line, so adjacent sections never
+run together; a title renders a three-line '!' comment heading
+instead (which starts and ends with '!' itself, so it never doubles
+up with the default separator); None disables the prefix. Either way
+it is skipped when the section renders empty. heading() is the
+standalone builder for free-form composition, e.g. several
+separately titled prefix-list sections rendered from separate
+ProteusFilter roots.
+"""
+
+from frr_proteus.render._heading import heading
 from frr_proteus.render.bfd import render_bfd
 from frr_proteus.render.bgp import (
     render_bgp_instance,
@@ -12,6 +38,7 @@ from frr_proteus.render.system import render_system
 from frr_proteus.render.vrf import render_vrfs
 
 __all__ = [
+    "heading",
     "render_bfd",
     "render_bgp_filters",
     "render_bgp_instance",

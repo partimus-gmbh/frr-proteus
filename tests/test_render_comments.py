@@ -48,7 +48,7 @@ def test_instance_comment_before_router_bgp():
     annotate(instance, comment="edge router main instance")
     rendered = render_bgp_instance(instance)
     assert rendered.startswith(
-        "! edge router main instance\nrouter bgp 65001\n"
+        "!\n! edge router main instance\nrouter bgp 65001\n"
     )
 
 
@@ -82,7 +82,7 @@ def test_multiline_comment_one_bang_line_each_and_blank_lines_dropped():
 def test_whitespace_only_comment_renders_nothing():
     instance = _instance()
     annotate(instance, comment="   \n  ")
-    assert render_bgp_instance(instance).startswith("router bgp 65001\n")
+    assert render_bgp_instance(instance).startswith("!\nrouter bgp 65001\n")
 
 
 def test_af_and_network_comments():
@@ -169,6 +169,7 @@ def test_route_map_and_entry_comments():
     route_map.entry.append(entry)
     root.route_map.append(route_map)
     assert render_route_maps(root) == (
+        "!\n"
         "! ingress policy\n"
         "! allow all\n"
         "route-map RM-IN permit 10\n"
@@ -187,6 +188,7 @@ def test_prefix_list_and_entry_comments():
     prefix_list.entry.append(entry)
     root.prefix_lists.ipv4.prefix_list.append(prefix_list)
     assert render_filters(root) == (
+        "!\n"
         "! bogon filter\n"
         "! rfc1918\n"
         "ip prefix-list PL seq 5 deny 10.0.0.0/8 le 32\n"
@@ -206,17 +208,17 @@ def test_vrf_interface_and_system_comments():
     vrf = bindings.ProteusVrf.Vrf(name="tnt1", l3vni=15000001)
     annotate(vrf, comment="tenant one")
     vrfs.vrf.append(vrf)
-    assert render_vrfs(vrfs).startswith("! tenant one\nvrf tnt1\n")
+    assert render_vrfs(vrfs).startswith("!\n! tenant one\nvrf tnt1\n")
 
     interfaces = bindings.ProteusInterface()
     interface = bindings.ProteusInterface.Interface(name="lo")
     annotate(interface, comment="router loopback")
     interfaces.interface.append(interface)
     assert render_interfaces(interfaces).startswith(
-        "! router loopback\ninterface lo\n"
+        "!\n! router loopback\ninterface lo\n"
     )
 
     system = bindings.ProteusSystem()
     system.hostname = "leaf1"
     annotate(system, comment="host preamble")
-    assert render_system(system).startswith("! host preamble\nhostname leaf1\n")
+    assert render_system(system).startswith("!\n! host preamble\nhostname leaf1\n")

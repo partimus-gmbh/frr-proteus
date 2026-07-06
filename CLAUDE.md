@@ -401,7 +401,25 @@ same shape (one `.j2` template, thin Python glue module, thin
   `route_map.py` / `route_map.conf.j2` (`render_route_maps` -- every
   line replicates a vty_out in lib/routemap_cli.c's dispatchers;
   bgp_routemap.c only holds the DEFPY parsers, route-maps ARE
-  northbound-converted). All are re-exported from `render/__init__`.
+  northbound-converted). All are re-exported from `render/__init__`,
+  whose docstring states the recommended dependency-first section
+  order (referenced objects before consumers: system, vrfs,
+  interfaces, bfd, filters, bgp-filters, route-maps, bgp). Cosmetics:
+  the route-map/vrf/interface templates emit a lone `!` separator
+  line between sibling blocks, and every `render_*` function takes a
+  `heading=` kwarg -- default `"!"` prefixes one bare `!` separator
+  line so concatenated sections never run together, a title renders
+  a three-line `!` heading instead (`!` / `! title` / `!`, built by
+  `_heading.py`'s exported `heading()`; the block starts/ends with
+  `!` itself so it never doubles up with a preceding section), None
+  disables; always suppressed when the section renders empty. The
+  double-`!` trap that remains: standalone `heading(...)` followed
+  by a default-separator render call -- pass the title to the first
+  render call instead. Headings are free-form so one object type can
+  render as several titled sections from separate roots
+  (validate_tree accepts multiple roots of the same module, so e.g.
+  two ProteusFilter roots -- customer vs own prefix-lists -- validate
+  together and render separately).
   The `neighbor X ...` line vocabulary lives in
   `bgp_neighbor_macros.j2`, shared verbatim between peer-groups and
   real neighbors and (for the per-AF macro) between all address
