@@ -31,6 +31,7 @@ from frr_proteus.render import (
 )
 
 Instance: TypeAlias = ProteusBgp.Bgp.Instance
+RemoteAs: TypeAlias = ProteusBgp.Bgp.Instance.Neighbor.RemoteAs
 RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
 PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
 AsPathList: TypeAlias = ProteusBgpFilter.BgpFilters.AsPathAccessList
@@ -85,9 +86,8 @@ def export_map() -> RouteMap:
 
 
 def build_instance() -> Instance:
-    inst = Instance(
-        vrf="default", autonomous_system=LOCAL_AS, router_id=LOOPBACK
-    )
+    inst = Instance(vrf="default", router_id=LOOPBACK)
+    inst.autonomous_system.plain = LOCAL_AS
 
     # IXP route servers: shared policy on the peer-group, per-peer
     # remote-as. RS paths omit the RS's own ASN, hence no enforcement.
@@ -103,13 +103,14 @@ def build_instance() -> Instance:
     inst.peer_group.append(ixp)
     inst.neighbor.extend(
         Instance.Neighbor(
-            address=addr, remote_as=asn, peer_group="IXP-RS", description=desc
+            address=addr, remote_as=RemoteAs(plain=asn),
+            peer_group="IXP-RS", description=desc
         )
         for addr, asn, desc in IXP_PEERS
     )
 
     transit = Instance.Neighbor(
-        address="203.0.113.129", remote_as=TRANSIT_AS,
+        address="203.0.113.129", remote_as=RemoteAs(plain=TRANSIT_AS),
         description="transit uplink", password="transit-md5",
         ttl_security_hops=1,
     )
@@ -124,7 +125,7 @@ def build_instance() -> Instance:
     inst.neighbor.append(transit)
 
     core = Instance.Neighbor(
-        address="192.0.2.2", remote_as="internal",
+        address="192.0.2.2", remote_as=RemoteAs(type="internal"),
         description="core rr", update_source=LOOPBACK,
     )
     core.afi_safis.ipv4_unicast.activate = True

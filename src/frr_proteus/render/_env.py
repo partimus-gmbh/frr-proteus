@@ -25,6 +25,7 @@ env = jinja2.Environment(
 )
 
 env.globals.update(
+    asn_text=helpers.asn_text,
     rd_text=helpers.rd_text,
     community_texts=helpers.community_texts,
     large_community_texts=helpers.large_community_texts,

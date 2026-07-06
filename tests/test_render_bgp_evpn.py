@@ -27,7 +27,9 @@ EvpnAf: TypeAlias = Instance.AfiSafis.L2vpnEvpn
 
 
 def _new_instance(vrf: str = "default") -> Instance:
-    return Instance(vrf=vrf, autonomous_system=65000)
+    instance = Instance(vrf=vrf)
+    instance.autonomous_system.plain = 65000
+    return instance
 
 
 def _add_neighbor(instance: Instance, addr: str) -> Instance.Neighbor:
@@ -210,7 +212,7 @@ def test_advertise_ipv6_unicast():
 def test_neighbor_evpn_activate():
     instance = _new_instance()
     n = _add_neighbor(instance, "192.0.2.1")
-    n.remote_as = "internal"
+    n.remote_as.type = "internal"
     n.afi_safis.l2vpn_evpn.activate = True
 
     assert "  neighbor 192.0.2.1 activate\n" in render_bgp_instance(instance)
@@ -258,7 +260,7 @@ def test_neighbor_evpn_allowas_in_bare():
 def test_evpn_af_omitted_without_evpn_config():
     instance = _new_instance()
     n = _add_neighbor(instance, "192.0.2.1")
-    n.remote_as = "internal"
+    n.remote_as.type = "internal"
     # No EVPN config anywhere -- the AF block itself must not appear.
     assert "address-family l2vpn evpn" not in render_bgp_instance(instance)
 

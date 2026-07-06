@@ -111,7 +111,7 @@ def test_set_lines():
     s.comm_list_delete = "STRIP"
     s.large_comm_list_delete = "LSTRIP"
     s.as_path_exclude_access_list = "ASP"
-    s.aggregator.as_ = 65001
+    s.aggregator.plain = 65001
     s.aggregator.address = "192.0.2.1"
     s.extcommunity_rt.as2.append(
         type(s.extcommunity_rt).As2(global_admin=65001, local_admin=10)

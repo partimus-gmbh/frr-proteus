@@ -41,6 +41,9 @@ _env.globals.update(
     route_target_texts=helpers.route_target_texts,
     route_origin_text=helpers.route_origin_text,
     rd_text=helpers.rd_text,
+    asn_text=helpers.asn_text,
+    remote_as_text=helpers.remote_as_text,
+    confederation_peers_texts=helpers.confederation_peers_texts,
 )
 # As a Jinja *test* so templates can write
 # `selectattr('afi_safis.ipv4_unicast.filters', 'has_config')`.
@@ -97,7 +100,7 @@ def render_bgp_instance(instance, *, format: str = "frr") -> str:
     code -- keep that rule for anything new. Process-wide 'bgp ...'
     lines are separate: see render_bgp_process().
     """
-    if not instance.autonomous_system:
+    if helpers.asn_text(instance.autonomous_system) is None:
         raise ValueError("instance autonomous-system is not set")
     return _bgp_template.render(
         instance=instance,

@@ -3,15 +3,44 @@
 Kept deliberately thin: anything that's just "read this YANG field and
 print it" belongs in the template. The proteus schema (yang/custom/)
 made most of the old glue unnecessary -- no identityref prefixes to
-strip, no afi-safi list to scan, no remote-as-type enum to branch on
-(remote-as is one union leaf whose value is the CLI token). What's left
-is the one thing Jinja can't express: deciding whether a generated
-subtree contains any configuration at all.
+strip, no afi-safi list to scan. What's left is what Jinja can't
+express cleanly: deciding whether a generated subtree contains any
+configuration at all, and joining the structured multi-leaf values
+(route targets, communities, asdot ASNs) into their CLI tokens.
 """
 
 from __future__ import annotations
 
 import dataclasses
+
+
+def asn_text(node) -> str | None:
+    """CLI token of a structured AS number (the pt:as-number-notation
+    choice: a plain decimal leaf or an asdot container of two uint16
+    halves). Returns None when neither notation is set. Works on any
+    node carrying the grouping's fields (autonomous-system, local-as,
+    remote-as, confederation identifier, set aggregator)."""
+    if node.plain is not None:
+        return str(node.plain)
+    if node.asdot.high is not None:
+        return f"{node.asdot.high}.{node.asdot.low}"
+    return None
+
+
+def remote_as_text(remote_as) -> str | None:
+    """CLI token of a neighbor remote-as: the internal/external/auto
+    keyword, or the plain/asdot ASN. None when unset (a peer-group
+    member inheriting remote-as from the group)."""
+    return remote_as.type or asn_text(remote_as)
+
+
+def confederation_peers_texts(peers) -> list[str]:
+    """CLI tokens of the confederation peers set, plain-notation
+    members first, then asdot ones -- one 'bgp confederation peers'
+    line."""
+    return [str(asn) for asn in peers.plain] + [
+        f"{entry.high}.{entry.low}" for entry in peers.asdot
+    ]
 
 
 def has_config(node: object) -> bool:

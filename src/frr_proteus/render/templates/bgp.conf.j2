@@ -100,7 +100,7 @@ including no leading "!". #}
 {# as-notation only changes how later show output formats ASNs; the
    ASN token itself renders verbatim as configured (plain or asdot). #}
 {% set notation_clause = " as-notation " ~ instance.as_notation if instance.as_notation else "" %}
-router bgp {{ instance.autonomous_system }}{{ instance_clause }}{{ notation_clause }}
+router bgp {{ asn_text(instance.autonomous_system) }}{{ instance_clause }}{{ notation_clause }}
 {# Instance-level knobs, bgp_config_write()'s emission order. #}
 {% if instance.fast_external_failover is false %}
  no bgp fast-external-failover
@@ -213,11 +213,13 @@ router bgp {{ instance.autonomous_system }}{{ instance_clause }}{{ notation_clau
 {% if instance.disable_ebgp_connected_route_check %}
  bgp disable-ebgp-connected-route-check
 {% endif %}
-{% if instance.confederation.identifier is not none %}
- bgp confederation identifier {{ instance.confederation.identifier }}
+{% set confed_id = asn_text(instance.confederation.identifier) %}
+{% if confed_id %}
+ bgp confederation identifier {{ confed_id }}
 {% endif %}
-{% if instance.confederation.peers %}
- bgp confederation peers {{ instance.confederation.peers | join(' ') }}
+{% set confed_peers = confederation_peers_texts(instance.confederation.peers) %}
+{% if confed_peers %}
+ bgp confederation peers {{ confed_peers | join(' ') }}
 {% endif %}
 {# deterministic-med's default depends on the 'frr defaults' profile
    (on for datacenter), so both explicit forms render. #}
@@ -344,8 +346,9 @@ router bgp {{ instance.autonomous_system }}{{ instance_clause }}{{ notation_clau
    loops over bgp->group and bgp->peer. #}
 {% for group in instance.peer_group %}
  neighbor {{ group.name }} peer-group
-{% if group.remote_as is not none %}
- neighbor {{ group.name }} remote-as {{ group.remote_as }}
+{% set group_ra = remote_as_text(group.remote_as) %}
+{% if group_ra %}
+ neighbor {{ group.name }} remote-as {{ group_ra }}
 {% endif %}
 {{ nb.session_lines(group.name, group) -}}
 {% endfor %}
@@ -358,15 +361,17 @@ router bgp {{ instance.autonomous_system }}{{ instance_clause }}{{ notation_clau
 {% set if_v6only = " v6only" if neighbor.v6only else "" %}
 {% set if_tail = " peer-group " ~ neighbor.peer_group if neighbor.peer_group else "" %}
  neighbor {{ neighbor.address }} interface{{ if_v6only }}{{ if_tail }}
-{% if neighbor.remote_as is not none %}
- neighbor {{ neighbor.address }} remote-as {{ neighbor.remote_as }}
+{% set neighbor_ra = remote_as_text(neighbor.remote_as) %}
+{% if neighbor_ra %}
+ neighbor {{ neighbor.address }} remote-as {{ neighbor_ra }}
 {% endif %}
 {% else %}
 {% if neighbor.peer_group %}
  neighbor {{ neighbor.address }} peer-group {{ neighbor.peer_group }}
 {% endif %}
-{% if neighbor.remote_as is not none %}
- neighbor {{ neighbor.address }} remote-as {{ neighbor.remote_as }}
+{% set neighbor_ra = remote_as_text(neighbor.remote_as) %}
+{% if neighbor_ra %}
+ neighbor {{ neighbor.address }} remote-as {{ neighbor_ra }}
 {% endif %}
 {% endif %}
 {{ nb.session_lines(neighbor.address, neighbor) -}}

@@ -9,9 +9,10 @@ targets.
 Reproduction notes vs. the original running config:
   - AS numbers, addresses, names and passwords are anonymized. Like
     the original ('router bgp 64505.101 as-notation dot'), the ASNs
-    are written in dotted notation -- pt:as-number is a plain/asdot
-    union rendered verbatim -- with 'as-notation dot' set on every
-    instance (a display-only knob for later show output).
+    are written in dotted notation -- structured as two uint16
+    halves per pt:as-number-notation, rendered '<high>.<low>' --
+    with 'as-notation dot' set on every instance (a display-only
+    knob for later show output).
   - 'frr defaults', hostname/log/vtysh service lines, 'vrf ... vni'
     blocks and interface 'ipv6 nd ra-interval' are zebra/vtysh
     surface, but common enough in the real world that minimal proteus
@@ -55,10 +56,11 @@ LargeCommunityList: TypeAlias = (
     ProteusBgpFilter.BgpFilters.LargeCommunityList
 )
 
-# Dotted (asdot) notation, as in the original config: '64506.101' is
-# ASN 64506 * 65536 + 101. Rendered verbatim; 'as-notation dot' below
-# only tells FRR to format show output the same way.
-HOST_AS, SPINE_AS = "64506.101", {1: "64506.11", 2: "64506.12"}
+# Dotted (asdot) notation, as in the original config, structured as
+# (high, low) halves: 64506.101 is ASN 64506 * 65536 + 101. Rendered
+# '<high>.<low>'; 'as-notation dot' below only tells FRR to format
+# show output the same way.
+HOST_AS, SPINE_AS = (64506, 101), {1: (64506, 11), 2: (64506, 12)}
 RT_AS, LC_AS = 65099, 4210000000  # route-target admin / community admin
 
 # One loopback per reachability class: (role, address, LC local-data-2).
@@ -206,6 +208,11 @@ def build_policy_objects() -> tuple[ProteusFilter, ProteusBgpFilter, ProteusRout
     return filters, bgp_filters, rmaps
 
 
+def set_asdot(asn_node, halves: tuple[int, int]) -> None:
+    """Fill a pt:as-number-notation node's asdot case from (high, low)."""
+    asn_node.asdot.high, asn_node.asdot.low = halves
+
+
 def add_rts(rt_set, *values: int) -> None:
     """Append RT_AS:<value> route targets (2-byte-AS encoding)."""
     rt_set.as2.extend(
@@ -214,10 +221,8 @@ def add_rts(rt_set, *values: int) -> None:
 
 
 def build_default_instance() -> Instance:
-    inst = Instance(
-        vrf="default", autonomous_system=HOST_AS, as_notation="dot",
-        router_id=ROUTER_ID,
-    )
+    inst = Instance(vrf="default", as_notation="dot", router_id=ROUTER_ID)
+    set_asdot(inst.autonomous_system, HOST_AS)
     inst.default.ipv4_unicast = False
     inst.deterministic_med = False
     inst.graceful_restart.mode = "disable"
@@ -247,17 +252,21 @@ def build_default_instance() -> Instance:
         inst.peer_group.append(pg)
 
     for spine, overlay_addr, ifaces in SPINE_NEIGHBORS:
-        inst.neighbor.append(Instance.Neighbor(
-            address=overlay_addr, remote_as=SPINE_AS[spine],
-            peer_group="SPINES-OVERLAY", description=f"anon-spine-{spine}",
-        ))
+        overlay_peer = Instance.Neighbor(
+            address=overlay_addr, peer_group="SPINES-OVERLAY",
+            description=f"anon-spine-{spine}",
+        )
+        set_asdot(overlay_peer.remote_as, SPINE_AS[spine])
+        inst.neighbor.append(overlay_peer)
         for ifname in ifaces:
             speed = "100G" if ifname in UPLINKS_100G else "25G"
-            inst.neighbor.append(Instance.Neighbor(
+            underlay_peer = Instance.Neighbor(
                 address=ifname, interface_peer=True, v6only=True,
                 peer_group=f"SPINES-UNDERLAY-{speed}",
-                remote_as=SPINE_AS[spine], description=f"anon-spine-{spine}",
-            ))
+                description=f"anon-spine-{spine}",
+            )
+            set_asdot(underlay_peer.remote_as, SPINE_AS[spine])
+            inst.neighbor.append(underlay_peer)
 
     inst.afi_safis.ipv4_unicast.network.extend(
         Instance.AfiSafis.Ipv4Unicast.Network(prefix=f"{addr}/32")
@@ -278,10 +287,8 @@ def build_default_instance() -> Instance:
 
 
 def build_vrf_instance(vrf: str, l3vni: int) -> Instance:
-    inst = Instance(
-        vrf=vrf, autonomous_system=HOST_AS, as_notation="dot",
-        router_id=ROUTER_ID,
-    )
+    inst = Instance(vrf=vrf, as_notation="dot", router_id=ROUTER_ID)
+    set_asdot(inst.autonomous_system, HOST_AS)
     inst.deterministic_med = False
     evpn = inst.afi_safis.l2vpn_evpn
     add_rts(evpn.route_target_import, l3vni)

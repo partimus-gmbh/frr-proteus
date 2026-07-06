@@ -760,18 +760,17 @@ module proteus-route-map {
           }
 
           container aggregator {
-            must "as and address" {
+            must "(plain or asdot/high) and address" {
               error-message
                 "'set aggregator as' takes AS number and address
                  together";
             }
             description
               "'set aggregator as ASNUM A.B.C.D' (bgp_routemap.c).
-               Both leaves must be set together -- a single CLI line
-               (the 'must').";
-            leaf as {
-              type pt:as-number;
-            }
+               The ASN is the plain/asdot choice from
+               pt:as-number-notation; ASN and address must be set
+               together -- a single CLI line (the 'must').";
+            uses pt:as-number-notation;
             leaf address {
               type inet:ipv4-address-no-zone;
             }

@@ -27,11 +27,11 @@ Instance: TypeAlias = bindings.ProteusBgp.Bgp.Instance
 
 
 def _new_instance(
-    asn: int | str | None = 65001, vrf: str = "default"
+    asn: int | None = 65001, vrf: str = "default"
 ) -> Instance:
     instance = Instance(vrf=vrf)
     if asn is not None:
-        instance.autonomous_system = asn
+        instance.autonomous_system.plain = asn
     return instance
 
 
@@ -63,17 +63,27 @@ def test_router_id_rendered_when_set():
 
 
 @pytest.mark.parametrize(
-    "remote_as,expected",
+    "field,value,expected",
     [
-        ("external", "neighbor 192.0.2.1 remote-as external"),
-        ("internal", "neighbor 192.0.2.1 remote-as internal"),
-        (65099, "neighbor 192.0.2.1 remote-as 65099"),
+        ("type", "external", "neighbor 192.0.2.1 remote-as external"),
+        ("type", "internal", "neighbor 192.0.2.1 remote-as internal"),
+        ("plain", 65099, "neighbor 192.0.2.1 remote-as 65099"),
     ],
 )
-def test_neighbor_remote_as(remote_as, expected):
+def test_neighbor_remote_as(field, value, expected):
     instance = _new_instance()
-    _add_neighbor(instance, "192.0.2.1").remote_as = remote_as
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    setattr(neighbor.remote_as, field, value)
     assert expected in render_bgp_instance(instance)
+
+
+def test_neighbor_remote_as_asdot():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    neighbor.remote_as.asdot.high = 64506
+    neighbor.remote_as.asdot.low = 11
+    text = render_bgp_instance(instance)
+    assert " neighbor 192.0.2.1 remote-as 64506.11\n" in text
 
 
 def test_neighbor_without_remote_as_not_rendered():
@@ -124,16 +134,23 @@ def test_default_vrf_has_no_vrf_clause():
     assert text.startswith("router bgp 65001\n")
 
 
-def test_asdot_asn_rendered_verbatim():
+def test_asdot_asn_structured():
     instance = _new_instance(asn=None)
-    instance.autonomous_system = "64506.101"
+    instance.autonomous_system.asdot.high = 64506
+    instance.autonomous_system.asdot.low = 101
     text = render_bgp_instance(instance)
     assert text.startswith("router bgp 64506.101\n")
 
 
-def test_asdot_asn_validated():
-    with pytest.raises(Exception, match="0.0"):
-        _new_instance(asn="0.0")
+def test_asdot_asn_zero_rejected():
+    # '0.0' is ASN 0 -- blocked by the must on the asdot container.
+    instance = _new_instance(asn=None, vrf="default")
+    instance.autonomous_system.asdot.high = 0
+    instance.autonomous_system.asdot.low = 0
+    with pytest.raises(bindings.YangValidationError):
+        root = bindings.ProteusBgp()
+        root.bgp.instance.append(instance)
+        bindings.validate_tree(root)
 
 
 def test_as_notation_suffix_after_vrf_clause():
@@ -236,7 +253,7 @@ def test_session_lines_in_peer_global_order():
 def test_ebgp_multihop_255_renders_bare():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.ebgp_multihop = 255
     assert " neighbor 192.0.2.1 ebgp-multihop\n" in render_bgp_instance(
         instance
@@ -246,7 +263,7 @@ def test_ebgp_multihop_255_renders_bare():
 def test_ttl_security_and_timers():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.ttl_security_hops = 1
     neighbor.timers.keepalive = 10
     neighbor.timers.holdtime = 30
@@ -262,7 +279,7 @@ def test_interface_peer_v6only_with_peer_group_on_one_line():
     neighbor.interface_peer = True
     neighbor.v6only = True
     neighbor.peer_group = "UNDERLAY"
-    neighbor.remote_as = 65002
+    neighbor.remote_as.plain = 65002
     text = render_bgp_instance(instance)
     # peer-group rides on the interface line; remote-as gets its own.
     assert " neighbor swp1 interface v6only peer-group UNDERLAY\n" in text
@@ -274,7 +291,7 @@ def test_interface_peer_without_group():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "swp1")
     neighbor.interface_peer = True
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     text = render_bgp_instance(instance)
     assert " neighbor swp1 interface\n" in text
     assert " neighbor swp1 remote-as external\n" in text
@@ -286,7 +303,7 @@ def test_interface_peer_without_group():
 def test_af_activate_three_valued():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     assert "activate" not in render_bgp_instance(instance)
     neighbor.afi_safis.ipv4_unicast.activate = True
     assert "  neighbor 192.0.2.1 activate\n" in render_bgp_instance(instance)
@@ -312,7 +329,7 @@ def test_af_lines_render_for_peer_groups_too():
 def test_af_policy_lines_in_peer_af_order():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "internal"
+    neighbor.remote_as.type = "internal"
     af = neighbor.afi_safis.ipv4_unicast
     af.activate = True
     af.route_reflector_client = True
@@ -343,7 +360,7 @@ def test_af_policy_lines_in_peer_af_order():
 def test_send_community_negations():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     af = neighbor.afi_safis.ipv4_unicast
     af.send_community.large = False
     text = render_bgp_instance(instance)
@@ -358,7 +375,7 @@ def test_send_community_negations():
 def test_enforce_first_as_three_valued():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     assert "enforce-first-as" not in render_bgp_instance(instance)
     neighbor.enforce_first_as = False
     assert " no neighbor 192.0.2.1 enforce-first-as\n" in render_bgp_instance(
@@ -373,7 +390,7 @@ def test_enforce_first_as_three_valued():
 def test_attribute_unchanged_combined_line():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     af = neighbor.afi_safis.ipv4_unicast
     af.attribute_unchanged.next_hop = True
     text = render_bgp_instance(instance)
@@ -394,8 +411,8 @@ def test_attribute_unchanged_combined_line():
 def test_local_as_with_options():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
-    neighbor.local_as.as_ = 65100
+    neighbor.remote_as.type = "external"
+    neighbor.local_as.plain = 65100
     text = render_bgp_instance(instance)
     assert " neighbor 192.0.2.1 local-as 65100\n" in text
     neighbor.local_as.no_prepend = True
@@ -411,7 +428,7 @@ def test_local_as_with_options():
 def test_shutdown_plain_message_and_rtt():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.shutdown.enabled = True
     assert " neighbor 192.0.2.1 shutdown\n" in render_bgp_instance(instance)
     neighbor.shutdown.message = "maintenance window"
@@ -430,7 +447,7 @@ def test_shutdown_plain_message_and_rtt():
 def test_session_scalar_flags_and_values():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.solo = True
     neighbor.port = 1179
     neighbor.tcp_mss = 1360
@@ -455,7 +472,7 @@ def test_session_scalar_flags_and_values():
 def test_local_role_with_strict_mode():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.local_role.role = "rs-client"
     text = render_bgp_instance(instance)
     assert " neighbor 192.0.2.1 local-role rs-client\n" in text
@@ -467,7 +484,7 @@ def test_local_role_with_strict_mode():
 def test_capabilities_three_valued_and_negations():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     assert "capability" not in render_bgp_instance(instance)
     neighbor.capabilities.dynamic = True
     neighbor.capabilities.extended_nexthop = False
@@ -496,7 +513,7 @@ def test_capabilities_three_valued_and_negations():
 def test_path_attribute_lists_space_joined():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.path_attribute_discard = [17, 28]
     neighbor.path_attribute_treat_as_withdraw = [21]
     text = render_bgp_instance(instance)
@@ -507,7 +524,7 @@ def test_path_attribute_lists_space_joined():
 def test_per_neighbor_graceful_restart_modes():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.graceful_restart_mode = "helper"
     assert " neighbor 192.0.2.1 graceful-restart-helper\n" in (
         render_bgp_instance(instance)
@@ -525,7 +542,7 @@ def test_per_neighbor_graceful_restart_modes():
 def test_misc_session_flags():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.rpki_strict = True
     neighbor.sender_as_path_loop_detection = True
     neighbor.send_nexthop_characteristics = True
@@ -548,7 +565,7 @@ def test_misc_session_flags():
 def test_addpath_variants():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     af = neighbor.afi_safis.ipv4_unicast
     af.addpath.tx = "all-paths"
     assert "  neighbor 192.0.2.1 addpath-tx-all-paths\n" in (
@@ -573,7 +590,7 @@ def test_addpath_variants():
 def test_orf_and_route_server_client_and_nexthop_local():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     af = neighbor.afi_safis.ipv4_unicast
     af.orf_prefix_list = "both"
     af.route_server_client = True
@@ -587,7 +604,7 @@ def test_orf_and_route_server_client_and_nexthop_local():
 def test_accept_own_and_soo():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     af = neighbor.afi_safis.ipv4_unicast
     af.accept_own = True
     af.soo.as2.global_admin = 65001
@@ -600,7 +617,7 @@ def test_accept_own_and_soo():
 def test_neighbor_dampening_forms():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     af = neighbor.afi_safis.ipv4_unicast
     af.dampening.enabled = True
     assert "  neighbor 192.0.2.1 dampening\n" in render_bgp_instance(instance)
@@ -666,15 +683,18 @@ def test_three_valued_instance_knobs():
 def test_cluster_id_confederation_and_listen():
     instance = _new_instance()
     instance.cluster_id = "10.0.0.1"
-    instance.confederation.identifier = 64999
-    instance.confederation.peers = [65010, 65011]
+    instance.confederation.identifier.plain = 64999
+    instance.confederation.peers.plain = [65010, 65011]
+    instance.confederation.peers.asdot.append(
+        Instance.Confederation.Peers.Asdot(high=64506, low=12)
+    )
     instance.listen_limit = 100
     group = _new_peer_group(instance, "DYN")
     group.listen_range = ["192.0.2.0/24", "2001:db8::/48"]
     text = render_bgp_instance(instance)
     assert " bgp cluster-id 10.0.0.1\n" in text
     assert " bgp confederation identifier 64999\n" in text
-    assert " bgp confederation peers 65010 65011\n" in text
+    assert " bgp confederation peers 65010 65011 64506.12\n" in text
     assert " bgp listen limit 100\n" in text
     assert " bgp listen range 192.0.2.0/24 peer-group DYN\n" in text
     assert " bgp listen range 2001:db8::/48 peer-group DYN\n" in text
@@ -780,7 +800,7 @@ def test_instance_timers_and_defaults_block():
 def test_instance_shutdown_knobs_after_neighbors():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     instance.default.shutdown = True
     instance.shutdown = True
     instance.allow_martian_nexthop = True
@@ -925,7 +945,7 @@ def test_all_eight_af_headers():
 def test_neighbor_af_config_reaches_all_families():
     instance = _new_instance()
     neighbor = _add_neighbor(instance, "192.0.2.1")
-    neighbor.remote_as = "external"
+    neighbor.remote_as.type = "external"
     neighbor.afi_safis.ipv4_vpn.activate = True
     text = render_bgp_instance(instance)
     assert " !\n address-family ipv4 vpn\n" in text

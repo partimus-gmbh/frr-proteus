@@ -47,8 +47,10 @@ def _route_map_entry(rm_root, name="RM"):
 
 
 def _bgp_neighbor(bgp_root):
-    instance = Instance(vrf="default", autonomous_system=65001)
-    neighbor = Instance.Neighbor(address="192.0.2.1", remote_as="external")
+    instance = Instance(vrf="default")
+    instance.autonomous_system.plain = 65001
+    neighbor = Instance.Neighbor(address="192.0.2.1")
+    neighbor.remote_as.type = "external"
     instance.neighbor.append(neighbor)
     bgp_root.bgp.instance.append(instance)
     return neighbor
@@ -175,7 +177,8 @@ def test_rd_type6_mac_is_blocked():
     # is blocked with 'must false()' until FRR can parse it.
     roots = _all_roots()
     bgp_root = roots[0]
-    instance = Instance(vrf="default", autonomous_system=65001)
+    instance = Instance(vrf="default")
+    instance.autonomous_system.plain = 65001
     instance.afi_safis.l2vpn_evpn.rd.mac = "00:11:22:33:44:55"
     bgp_root.bgp.instance.append(instance)
     with pytest.raises(bindings.YangValidationError, match="type-6"):

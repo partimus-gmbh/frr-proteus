@@ -17,11 +17,12 @@ placement inside the AF block is free). FRR installs these commands
 with identical text in every family, so one macro serves all address
 families. #}
 {% macro session_lines(addr, n) %}
-{% if n.local_as.as_ is not none %}
+{% set la_asn = asn_text(n.local_as) %}
+{% if la_asn %}
 {% set la_np = " no-prepend" if n.local_as.no_prepend else "" %}
 {% set la_ra = " replace-as" if n.local_as.replace_as else "" %}
 {% set la_da = " dual-as" if n.local_as.dual_as else "" %}
- neighbor {{ addr }} local-as {{ n.local_as.as_ }}{{ la_np }}{{ la_ra }}{{ la_da }}
+ neighbor {{ addr }} local-as {{ la_asn }}{{ la_np }}{{ la_ra }}{{ la_da }}
 {% endif %}
 {% if n.description %}
  neighbor {{ addr }} description {{ n.description }}

@@ -79,8 +79,10 @@ module proteus-bgp {
      revision: no control-plane-protocol wrapper (root is
      /bgp/instance keyed by VRF); address families are nested
      containers under 'afi-safis', not an identityref-keyed list;
-     neighbor remote-as is one union leaf mirroring the single CLI
-     token.
+     neighbor remote-as is one node mirroring the single CLI token
+     (a choice between a structured plain/asdot ASN and the
+     relationship keywords), not FRR's remote-as-type + remote-as
+     pair.
 
      Semantics shared with the rest of the project: an unset leaf
      means 'not explicitly configured' and produces no config text --
@@ -118,42 +120,65 @@ module proteus-bgp {
        'router bgp' level). Source: bgp_config_write_peer_global()
        in bgpd/bgp_vty.c.";
 
-    leaf remote-as {
-      type union {
-        type pt:as-number;
-        type enumeration {
-          enum internal {
-            description
-              "iBGP: peer must be in the local AS.";
-          }
-          enum external {
-            description
-              "eBGP: peer must be outside the local AS.";
-          }
-          enum auto {
-            description
-              "Accept either; sort out the relationship from the
-               OPEN message.";
-          }
-        }
-      }
+    container remote-as {
       description
-        "'neighbor X remote-as <ASN|internal|external|auto>'. Not
+        "'neighbor X remote-as <ASN|internal|external|auto>': one CLI
+         token, three shapes -- a plain or asdot ASN (structured, see
+         pt:as-number-notation) or a relationship keyword. Not
          mandatory in YANG because a peer-group member may inherit it
          from the group -- but FRR rejects any other neighbor
          configuration until a neighbor has remote-as from somewhere.
          // This grouping is shared with peer-group, so the
          // conditional-mandatory rule lives as a 'must' on the
          // neighbor list itself (validate_tree-enforced).";
+      choice spec {
+        description
+          "Explicit ASN (either notation) or relationship keyword.
+           The plain/asdot cases mirror pt:as-number-notation; they
+           are spelled out here because YANG cannot extend a
+           grouping's choice with an extra case.";
+
+        case plain {
+          leaf plain {
+            type pt:as-number;
+            description
+              "Plain 32-bit decimal ASN.";
+          }
+        }
+        case asdot {
+          uses pt:asdot-as-number;
+        }
+        case type {
+          leaf type {
+            type enumeration {
+              enum internal {
+                description
+                  "iBGP: peer must be in the local AS.";
+              }
+              enum external {
+                description
+                  "eBGP: peer must be outside the local AS.";
+              }
+              enum auto {
+                description
+                  "Accept either; sort out the relationship from the
+                   OPEN message.";
+              }
+            }
+            description
+              "Relationship keyword instead of an explicit ASN.";
+          }
+        }
+      }
     }
 
     container local-as {
       description
         "'neighbor X local-as ASN [no-prepend] [replace-as]
-         [dual-as]': present a different AS to this peer.";
-      leaf as {
-        type pt:as-number;
-      }
+         [dual-as]': present a different AS to this peer. The ASN is
+         the plain/asdot choice pulled in from
+         pt:as-number-notation.";
+      uses pt:as-number-notation;
       leaf no-prepend {
         type boolean;
         default "false";
@@ -1826,6 +1851,13 @@ module proteus-bgp {
 
     list instance {
       key "vrf";
+      must "autonomous-system/plain or autonomous-system/asdot/high" {
+        error-message
+          "autonomous-system is mandatory: every 'router bgp' block
+           carries its ASN (an all-empty container counts as
+           unconfigured, so the requirement lives here on the
+           parent, not as a mandatory choice).";
+      }
       description
         "One 'router bgp ASN [<view|vrf> NAME]' block. FRR allows
          exactly one BGP instance per VRF, so the VRF name is the
@@ -1858,16 +1890,16 @@ module proteus-bgp {
           "Whether a named instance is a VRF or a view.";
       }
 
-      leaf autonomous-system {
-        type pt:as-number;
-        mandatory true;
+      container autonomous-system {
+        uses pt:as-number-notation;
         description
           "Local autonomous system number: the ASN token of
            'router bgp ASN' (router_bgp_cmd), in plain decimal or
-           asdot notation -- rendered verbatim as configured. FRR
-           parses either notation independent of the as-notation
-           leaf, which only selects the display notation of later
-           show output.";
+           structured asdot notation -- rendered exactly as
+           configured. FRR parses either notation independent of the
+           as-notation leaf, which only selects the display notation
+           of later show output. Required: the must on the instance
+           list.";
       }
 
       leaf as-notation {
@@ -2145,12 +2177,46 @@ module proteus-bgp {
       container confederation {
         description
           "'bgp confederation identifier ASN' and
-           'bgp confederation peers ASN...'.";
-        leaf identifier {
-          type pt:as-number;
+           'bgp confederation peers ASN...'. ASNs follow the
+           structured plain/asdot convention; the peers set keeps
+           one collection per notation like the route-target-set
+           grouping (plain values first, then asdot, on the one
+           'peers' line).";
+        container identifier {
+          uses pt:as-number-notation;
+          description
+            "'bgp confederation identifier ASN'.";
         }
-        leaf-list peers {
-          type pt:as-number;
+        container peers {
+          description
+            "'bgp confederation peers ASN...': the member ASNs.";
+          leaf-list plain {
+            type pt:as-number;
+            description
+              "Members given in plain decimal.";
+          }
+          list asdot {
+            key "high low";
+            description
+              "Members given in asdot notation, rendered
+               '<high>.<low>' (the halves are the keys, so
+               duplicates are structurally impossible).";
+            leaf high {
+              type uint16;
+              description
+                "Upper 16 bits of the ASN.";
+            }
+            leaf low {
+              type uint16;
+              description
+                "Lower 16 bits of the ASN.";
+            }
+            must "high != 0 or low != 0" {
+              error-message
+                "'0.0' is ASN 0, reserved (RFC 7607) and rejected
+                 by FRR.";
+            }
+          }
         }
       }
 
@@ -2566,8 +2632,10 @@ module proteus-bgp {
 
       list neighbor {
         key "address";
-        must "remote-as
-              or ../peer-group[name = current()/peer-group]/remote-as" {
+        must "remote-as/plain or remote-as/asdot/high or remote-as/type
+              or ../peer-group[name = current()/peer-group]/remote-as/plain
+              or ../peer-group[name = current()/peer-group]/remote-as/asdot/high
+              or ../peer-group[name = current()/peer-group]/remote-as/type" {
           error-message
             "a neighbor needs remote-as, directly or via its
              peer-group";
@@ -2575,8 +2643,10 @@ module proteus-bgp {
         description
           "One BGP peer: its session-level 'neighbor X ...' lines
            plus per-address-family blocks. remote-as must come from
-           the neighbor itself or its peer-group (the 'must' -- the
-           conditional-mandatory rule the shared remote-as leaf
+           the neighbor itself or its peer-group (the 'must',
+           spelled against remote-as's choice members since an
+           all-empty container always 'exists' -- the
+           conditional-mandatory rule the shared remote-as node
            cannot state).";
 
         leaf address {

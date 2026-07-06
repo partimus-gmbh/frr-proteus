@@ -79,10 +79,21 @@ same shape (one `.j2` template, thin Python glue module, thin
   carry no zebra config), and `proteus-system.yang` (host-level
   lines: `frr defaults`, `hostname`, `log syslog LEVEL`, `service
   integrated-vtysh-config` -- just enough that real-world examples
-  don't need a literal preamble)). ASNs (pt:as-number) are a UNION
-  of plain decimal and an asdot `H.L` pattern string (both halves
-  0..65535, no 0.0, per lib/asn.c asn_str2asn) -- accepted wherever
-  FRR takes an ASN token and rendered verbatim; the per-instance
+  don't need a literal preamble)). ASN-valued nodes are STRUCTURED
+  per the structured-values rule (a first asdot attempt as a
+  pattern-string union member was emphatically rejected by the
+  user): grouping `pt:as-number-notation` is a choice between a
+  plain-decimal leaf and an `asdot` container of two uint16 halves
+  (ASN = high*65536 + low; `0.0` blocked by a must; `0.<low>` is
+  asdot+), reused by instance autonomous-system (required via a
+  must on the instance list -- all-empty-container gotcha),
+  neighbor remote-as (choice extended with the
+  internal/external/auto keyword case), local-as, confederation
+  identifier, and route-map set aggregator; confederation peers
+  keeps one collection per notation (leaf-list plain + keyed list
+  asdot) like route-target-set. FRR parses both notations wherever
+  an ASN token appears (lib/asn.c asn_str2asn); the renderer joins
+  the halves with a dot (`asn_text` helper). The per-instance
   `as-notation <dot|dot+|plain>` leaf is display-only (it formats
   later show output, it does NOT constrain the configured value)
   and renders as a `router bgp` header-line suffix after the
@@ -164,9 +175,10 @@ same shape (one `.j2` template, thin Python glue module, thin
   the user explicitly prefers the nested shape. Structure departs
   from FRR where FRR's is baroque (no control-plane-protocol wrapper:
   root is `/bgp/instance`, keyed by `vrf` since FRR allows one BGP
-  instance per VRF; neighbor `remote-as` is one union leaf
-  `as-number | internal | external` mirroring the single CLI token,
-  not FRR's remote-as-type + remote-as pair). Descriptions cite the
+  instance per VRF; neighbor `remote-as` is one node mirroring the
+  single CLI token -- a choice between a structured plain/asdot ASN
+  and the internal/external/auto keywords -- not FRR's
+  remote-as-type + remote-as pair). Descriptions cite the
   bgp_vty.c/bgp_evpn_vty.c DEFUN/DEFPY behind every leaf -- keep
   doing that; don't add leaves whose CLI text isn't verified there.
   Codegen emits these as the `_generated/proteus/` package (root class

@@ -41,50 +41,96 @@ module proteus-types {
        large communities (RFC 8092), and a route-origin grouping pair
        distinct from route targets (RFC 4360 subtype 0x03 vs 0x02).
        ESI becomes a length-restricted yang:hex-string. Later the
-       same day: as-number becomes a union of plain decimal and
-       asdot '<high>.<low>' notation (lib/asn.c parses both
-       everywhere an ASN is accepted).";
+       same day: asdot AS numbers, structured per the
+       structured-values rule -- grouping as-number-notation, a
+       choice between the plain decimal number and an asdot
+       container of two uint16 halves (lib/asn.c parses both
+       notations everywhere an ASN is accepted).";
   }
   revision 2026-07-05 {
     description
       "Initial revision.";
   }
 
-  typedef as-number-asdot {
-    type string {
-      pattern '([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}'
-            + '|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])'
-            + '\.(0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}'
-            + '|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])'
-            + '|0\.([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}'
-            + '|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])';
+  typedef as-number {
+    type inet:as-number {
+      range "1..4294967295";
     }
     description
-      "AS number in FRR's asdot/asdot+ notation: '<high>.<low>' where
-       ASN = high * 65536 + low, both halves 0..65535 with no leading
-       zeros, '0.0' (ASN 0) forbidden -- exactly what
-       asn_str2asn_internal() in lib/asn.c accepts ('0.<low>' is the
-       asdot+ spelling of a 2-byte ASN). Rendered verbatim: FRR
-       parses either notation regardless of the instance's
-       as-notation setting, which only controls show-output
-       formatting.";
+      "BGP autonomous system number in plain decimal notation.
+       inet:as-number restricted to exclude 0: FRR rejects ASN 0
+       (reserved, RFC 7607). Dotted (asdot) values are STRUCTURED --
+       two uint16 halves, grouping as-number-notation below -- never
+       a pattern-checked string (structured-values rule).";
   }
 
-  typedef as-number {
-    type union {
-      type inet:as-number {
-        range "1..4294967295";
-      }
-      type as-number-asdot;
-    }
+  /*
+   * AS numbers with notation. FRR's ASN tokens accept plain decimal
+   * and asdot '<high>.<low>' everywhere (lib/asn.c asn_str2asn,
+   * independent of the display-only as-notation mode), so ASN-valued
+   * nodes are a choice between the plain number and the structured
+   * dotted form: two uint16 halves, ASN = high * 65536 + low
+   * ('0.<low>' is the asdot+ spelling of a 2-byte ASN; '0.0' is ASN
+   * 0 and forbidden, stated as a must). Like the route-target /
+   * route-distinguisher groupings, the parts are typed leaves, not a
+   * pattern string; the renderer joins them with a dot.
+   *
+   * The choice is deliberately NOT mandatory here: whether an ASN is
+   * required depends on the usage site (remote-as may be inherited
+   * from a peer-group), and an all-empty parent container counts as
+   * unconfigured anyway (mandatory choice inside is skipped) -- a
+   * site that requires the ASN needs a must on ITS parent, like the
+   * instance list's autonomous-system must in proteus-bgp.
+   */
+  grouping asdot-as-number {
     description
-      "BGP autonomous system number, in plain decimal (a number) or
-       asdot '<high>.<low>' notation (a string) -- both are accepted
-       by every FRR ASN token (lib/asn.c asn_str2asn) independent of
-       the configured as-notation display mode. The plain member is
-       inet:as-number restricted to exclude 0: FRR rejects ASN 0
-       (reserved, RFC 7607); the asdot pattern likewise excludes
-       '0.0'.";
+      "The dotted half-pair alone (container 'asdot'), reusable
+       inside choices that add further cases (e.g. remote-as's
+       internal/external/auto keywords).";
+
+    container asdot {
+      must "high != 0 or low != 0" {
+        error-message
+          "'0.0' is ASN 0, reserved (RFC 7607) and rejected by FRR.";
+      }
+      description
+        "AS number in asdot notation, rendered '<high>.<low>'.";
+      leaf high {
+        type uint16;
+        mandatory true;
+        description
+          "Upper 16 bits of the ASN.";
+      }
+      leaf low {
+        type uint16;
+        mandatory true;
+        description
+          "Lower 16 bits of the ASN.";
+      }
+    }
+  }
+
+  grouping as-number-notation {
+    description
+      "One AS number, written in plain decimal or asdot notation --
+       rendered exactly as configured (the as-notation display mode
+       formats show output only, never the config).";
+
+    choice notation {
+      description
+        "Which notation this ASN is written in.";
+
+      case plain {
+        leaf plain {
+          type as-number;
+          description
+            "Plain 32-bit decimal.";
+        }
+      }
+      case asdot {
+        uses asdot-as-number;
+      }
+    }
   }
 
   typedef object-name {

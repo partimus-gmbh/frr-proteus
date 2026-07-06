@@ -80,6 +80,17 @@ class Router:
         )
 
 
+def _neighbor(addr: str, remote_as: int | str) -> Instance.Neighbor:
+    """One neighbor; remote_as is a plain ASN (int) or one of the
+    internal/external/auto relationship keywords (str)."""
+    neighbor = Instance.Neighbor(address=addr)
+    if isinstance(remote_as, int):
+        neighbor.remote_as.plain = remote_as
+    else:
+        neighbor.remote_as.type = remote_as
+    return neighbor
+
+
 def build_router(
     *,
     local_as: int,
@@ -90,10 +101,11 @@ def build_router(
 ) -> Router:
     router = Router()
     instance = Instance(
-        vrf="default", autonomous_system=local_as, router_id=router_id
+        vrf="default", router_id=router_id
     )
+    instance.autonomous_system.plain = local_as
     instance.neighbor.append(
-        Instance.Neighbor(address=neighbor_addr, remote_as=neighbor_remote_as)
+        _neighbor(neighbor_addr, neighbor_remote_as)
     )
     instance.afi_safis.ipv4_unicast.network.append(
         Instance.AfiSafis.Ipv4Unicast.Network(prefix=network)

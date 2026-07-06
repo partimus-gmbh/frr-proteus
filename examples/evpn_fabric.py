@@ -40,6 +40,7 @@ from frr_proteus.render import (
 )
 
 Instance: TypeAlias = ProteusBgp.Bgp.Instance
+RemoteAs: TypeAlias = ProteusBgp.Bgp.Instance.PeerGroup.RemoteAs
 RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
 PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
 
@@ -111,15 +112,16 @@ def build_interfaces(device: Device) -> ProteusInterface:
 
 
 def build_default_instance(device: Device) -> Instance:
-    inst = Instance(
-        vrf="default", autonomous_system=device.asn, router_id=device.loopback
-    )
+    inst = Instance(vrf="default", router_id=device.loopback)
+    inst.autonomous_system.plain = device.asn
     inst.default.ipv4_unicast = False
     inst.bestpath.as_path_multipath_relax.enabled = True
 
     # Unnumbered eBGP underlay: remote-as external on the group, so
     # members carry nothing but their port.
-    underlay = Instance.PeerGroup(name="UNDERLAY", remote_as="external")
+    underlay = Instance.PeerGroup(
+        name="UNDERLAY", remote_as=RemoteAs(type="external")
+    )
     underlay.bfd.enabled = True
     underlay.bfd.profile = "fabric"
     u_af = underlay.afi_safis.ipv4_unicast
@@ -130,7 +132,7 @@ def build_default_instance(device: Device) -> Instance:
     # eBGP multihop EVPN overlay between loopbacks; spines relay the
     # routes, so the next hop (the originating VTEP) must survive.
     overlay = Instance.PeerGroup(
-        name="OVERLAY", remote_as="external",
+        name="OVERLAY", remote_as=RemoteAs(type="external"),
         ebgp_multihop=3, update_source=device.loopback,
     )
     overlay.afi_safis.l2vpn_evpn.activate = True
@@ -169,8 +171,8 @@ def build_default_instance(device: Device) -> Instance:
 
 
 def build_tenant_instance(device: Device, tenant: str, l3vni: int) -> Instance:
-    inst = Instance(vrf=f"vrf-{tenant}", autonomous_system=device.asn,
-                    router_id=device.loopback)
+    inst = Instance(vrf=f"vrf-{tenant}", router_id=device.loopback)
+    inst.autonomous_system.plain = device.asn
     evpn = inst.afi_safis.l2vpn_evpn
     for rt_set in (evpn.route_target_import, evpn.route_target_export):
         rt_set.as2.append(type(rt_set).As2(

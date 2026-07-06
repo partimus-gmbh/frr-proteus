@@ -26,7 +26,9 @@ GlobalEvpn: TypeAlias = bindings.ProteusBgpEvpnExperimental.Evpn
 
 
 def _new_instance(vrf: str = "default", asn: int = 65000) -> Instance:
-    return Instance(vrf=vrf, autonomous_system=asn)
+    instance = Instance(vrf=vrf)
+    instance.autonomous_system.plain = asn
+    return instance
 
 
 def _evi(name: str, *, underlay: str | None = None, l2vni: int | None = None):
@@ -118,7 +120,8 @@ def test_experimental_format_removes_legacy_syntax():
 def test_neighbor_lines_render_in_both_formats():
     instance = _new_instance()
     instance.afi_safis.l2vpn_evpn.auto_discover_vnis = True
-    n = Instance.Neighbor(address="10.30.30.30", remote_as="internal")
+    n = Instance.Neighbor(address="10.30.30.30")
+    n.remote_as.type = "internal"
     n.afi_safis.l2vpn_evpn.activate = True
     instance.neighbor.append(n)
 

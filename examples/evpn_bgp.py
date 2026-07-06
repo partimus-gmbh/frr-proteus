@@ -36,11 +36,11 @@ RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
 
 
 def build_default_instance(*, local_as: int, router_id: str) -> Instance:
-    instance = Instance(
-        vrf="default", autonomous_system=local_as, router_id=router_id
-    )
+    instance = Instance(vrf="default", router_id=router_id)
+    instance.autonomous_system.plain = local_as
 
-    neighbor = Instance.Neighbor(address="10.30.30.30", remote_as="internal")
+    neighbor = Instance.Neighbor(address="10.30.30.30")
+    neighbor.remote_as.type = "internal"
     neighbor.afi_safis.l2vpn_evpn.activate = True
     # Inbound policy on the EVPN session -- a leafref into
     # /route-maps, so validate_tree checks the map exists.
@@ -73,7 +73,8 @@ def build_default_instance(*, local_as: int, router_id: str) -> Instance:
 
 
 def build_vrf_instance_auto_rt(*, local_as: int, vrf: str) -> Instance:
-    instance = Instance(vrf=vrf, autonomous_system=local_as)
+    instance = Instance(vrf=vrf)
+    instance.autonomous_system.plain = local_as
 
     evpn = instance.afi_safis.l2vpn_evpn
     # Wildcard RTs (local administrator only) are import-only; the
@@ -85,7 +86,8 @@ def build_vrf_instance_auto_rt(*, local_as: int, vrf: str) -> Instance:
 
 
 def build_vrf_instance_type5(*, local_as: int, vrf: str) -> Instance:
-    instance = Instance(vrf=vrf, autonomous_system=local_as)
+    instance = Instance(vrf=vrf)
+    instance.autonomous_system.plain = local_as
 
     evpn = instance.afi_safis.l2vpn_evpn
     evpn.advertise_ipv4_unicast.enabled = True
