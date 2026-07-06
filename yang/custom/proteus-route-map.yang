@@ -622,51 +622,59 @@ module proteus-route-map {
                     "'-' prefix: subtract from the existing metric.";
                 }
               }
-              must "../value or ../variable" {
-                error-message
-                  "set-metric operation needs a value or a variable";
-              }
               description
                 "Unset renders like 'set' (a plain operand). Kept
                  without a YANG default: the bindings never apply
                  defaults, and unset-means-set keeps the common case
                  a single assignment.";
             }
-            leaf value {
-              type uint32;
-              must "not(../variable)" {
-                error-message
-                  "set metric takes a value or a variable, not both";
-              }
+
+            choice operand {
+              mandatory true;
               description
-                "Numeric operand (0-4294967295). The CLI's negative
-                 range is the subtract operation, not a negative
-                 metric -- MED is unsigned.";
-            }
-            leaf variable {
-              type enumeration {
-                enum rtt {
+                "What to set/adjust the metric with -- exactly one
+                 (mandatory choice; like every structured value, an
+                 all-empty container counts as unconfigured, so the
+                 choice only bites once something here is set).";
+
+              case value {
+                leaf value {
+                  type uint32;
                   description
-                    "The peer's round-trip time; the only variable
-                     FRR also accepts with add/subtract ('+rtt' /
-                     '-rtt').";
-                }
-                enum igp {
-                  description
-                    "The IGP metric of the next hop.";
-                }
-                enum aigp {
-                  description
-                    "The AIGP metric.";
+                    "Numeric operand (0-4294967295). The CLI's
+                     negative range is the subtract operation, not a
+                     negative metric -- MED is unsigned.";
                 }
               }
-              must ". = 'rtt' or not(../operation) or
-                    ../operation = 'set'" {
-                error-message
-                  "only the rtt variable can be added or subtracted";
+
+              case variable {
+                leaf variable {
+                  type enumeration {
+                    enum rtt {
+                      description
+                        "The peer's round-trip time; the only
+                         variable FRR also accepts with add/subtract
+                         ('+rtt' / '-rtt').";
+                    }
+                    enum igp {
+                      description
+                        "The IGP metric of the next hop.";
+                    }
+                    enum aigp {
+                      description
+                        "The AIGP metric.";
+                    }
+                  }
+                  must ". = 'rtt' or not(../operation) or
+                        ../operation = 'set'" {
+                    error-message
+                      "only the rtt variable can be added or
+                       subtracted";
+                  }
+                  description
+                    "Variable operand instead of a number.";
+                }
               }
-              description
-                "Variable operand instead of a number.";
             }
           }
           leaf min-metric {

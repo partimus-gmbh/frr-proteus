@@ -210,3 +210,12 @@ def test_set_metric_only_rtt_adjustable():
     entry.set.metric.variable = "igp"
     with pytest.raises(bindings.YangValidationError):
         bindings.validate_tree(root)
+
+
+def test_set_metric_operation_alone_needs_operand():
+    # The operand is a mandatory choice: once anything under metric is
+    # set the container exists, so a bare operation is rejected.
+    root, entry = _root_with_entry()
+    entry.set.metric.operation = "add"
+    with pytest.raises(bindings.YangValidationError):
+        bindings.validate_tree(root)

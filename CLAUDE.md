@@ -337,10 +337,10 @@ same shape (one `.j2` template, thin Python glue module, thin
   sign-carrying value (per the structured-values rule; a
   string-pattern union member was explicitly rejected by the user):
   `operation` (set/add/subtract, unset renders like set) is the
-  CLI's bare/`+`/`-` prefix, the operand is a real uint32 `value` or
-  the rtt/igp/aigp `variable` leaf; `must`s enforce value XOR
-  variable and that only rtt is add/subtractable
-  (route_value_compile in bgpd/bgp_routemap.c). Two output formats: `"frr"` (default) renders legacy
+  CLI's bare/`+`/`-` prefix, the operand is a mandatory CHOICE (not
+  must-guarded sibling leaves) between a real uint32 `value` and the
+  rtt/igp/aigp `variable`; the one remaining `must` says only rtt is
+  add/subtractable (route_value_compile in bgpd/bgp_routemap.c). Two output formats: `"frr"` (default) renders legacy
   syntax and *translates* the experimental typing where stock FRR has
   an equivalent (vxlan-underlay -> `advertise-all-vni` (direct
   equivalent per the user), vlan-based-evi with origination-l2vni ->
