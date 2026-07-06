@@ -1,0 +1,176 @@
+{# Shared 'neighbor X ...' line macros, used for real neighbors and
+peer-groups alike: in FRR a peer-group is configured with exactly the
+same commands, so both call sites pass the peer-group name or the
+neighbor address as `addr` and the entity itself as `n`.
+
+session_lines: session-level lines at 'router bgp' level, in
+bgp_config_write_peer_global()'s emission order (bgpd/bgp_vty.c). The
+remote-as / peer-group / interface header lines are NOT here -- their
+shape differs between neighbors and peer-groups, so bgp.conf.j2 renders
+them at the call site.
+
+af_lines: per-address-family lines inside an 'address-family' block, in
+bgp_config_write_peer_af()'s + bgp_config_write_filter()'s order. FRR
+installs these commands with identical text in every family, so one
+macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
+{% macro session_lines(addr, n) %}
+{% if n.description %}
+ neighbor {{ addr }} description {{ n.description }}
+{% endif %}
+{% if n.bfd.enabled %}
+ neighbor {{ addr }} bfd
+{% endif %}
+{% if n.bfd.check_control_plane_failure %}
+ neighbor {{ addr }} bfd check-control-plane-failure
+{% endif %}
+{% if n.bfd.profile %}
+ neighbor {{ addr }} bfd profile {{ n.bfd.profile }}
+{% endif %}
+{% if n.password %}
+ neighbor {{ addr }} password {{ n.password }}
+{% endif %}
+{% if n.source_interface %}
+ neighbor {{ addr }} interface {{ n.source_interface }}
+{% endif %}
+{% if n.passive %}
+ neighbor {{ addr }} passive
+{% endif %}
+{# 255 is MAXTTL; FRR writes it back as the bare 'ebgp-multihop'. #}
+{% if n.ebgp_multihop == 255 %}
+ neighbor {{ addr }} ebgp-multihop
+{% elif n.ebgp_multihop %}
+ neighbor {{ addr }} ebgp-multihop {{ n.ebgp_multihop }}
+{% endif %}
+{% if n.ttl_security_hops %}
+ neighbor {{ addr }} ttl-security hops {{ n.ttl_security_hops }}
+{% endif %}
+{# Three-valued: unset inherits the instance-level setting, the
+   explicit forms render as written. #}
+{% if n.enforce_first_as is true %}
+ neighbor {{ addr }} enforce-first-as
+{% elif n.enforce_first_as is false %}
+ no neighbor {{ addr }} enforce-first-as
+{% endif %}
+{% if n.update_source %}
+ neighbor {{ addr }} update-source {{ n.update_source }}
+{% endif %}
+{% if n.advertisement_interval is not none %}
+ neighbor {{ addr }} advertisement-interval {{ n.advertisement_interval }}
+{% endif %}
+{% if n.timers.keepalive is not none %}
+ neighbor {{ addr }} timers {{ n.timers.keepalive }} {{ n.timers.holdtime }}
+{% endif %}
+{% if n.timers.connect %}
+ neighbor {{ addr }} timers connect {{ n.timers.connect }}
+{% endif %}
+{% endmacro %}
+{% macro af_lines(addr, af) %}
+{# activate is three-valued: unset follows the per-AF default
+   activation, so only explicit true/false render. #}
+{% if af.activate is true %}
+  neighbor {{ addr }} activate
+{% elif af.activate is false %}
+  no neighbor {{ addr }} activate
+{% endif %}
+{% if af.route_reflector_client %}
+  neighbor {{ addr }} route-reflector-client
+{% endif %}
+{% if af.next_hop_self.force %}
+  neighbor {{ addr }} next-hop-self force
+{% endif %}
+{% if af.next_hop_self.enabled %}
+  neighbor {{ addr }} next-hop-self
+{% endif %}
+{% if af.remove_private_as %}
+{% set rpa_suffix = {"basic": "", "all": " all", "replace-as": " replace-AS", "all-replace-as": " all replace-AS"}[af.remove_private_as] %}
+  neighbor {{ addr }} remove-private-AS{{ rpa_suffix }}
+{% endif %}
+{% if af.as_override %}
+  neighbor {{ addr }} as-override
+{% endif %}
+{# FRR sends every community flavor by default and only writes the
+   negations; extended-rpki is the exception (off by default). #}
+{% if af.send_community.standard is false and af.send_community.extended is false and af.send_community.large is false %}
+  no neighbor {{ addr }} send-community all
+{% else %}
+{% if af.send_community.standard is false %}
+  no neighbor {{ addr }} send-community
+{% endif %}
+{% if af.send_community.extended is false %}
+  no neighbor {{ addr }} send-community extended
+{% endif %}
+{% if af.send_community.large is false %}
+  no neighbor {{ addr }} send-community large
+{% endif %}
+{% if af.send_community.extended_rpki %}
+  neighbor {{ addr }} send-community extended rpki
+{% endif %}
+{% endif %}
+{% if af.default_originate.enabled %}
+{% set do_rmap = " route-map " ~ af.default_originate.route_map if af.default_originate.route_map else "" %}
+  neighbor {{ addr }} default-originate{{ do_rmap }}
+{% endif %}
+{% if af.soft_reconfiguration_inbound %}
+  neighbor {{ addr }} soft-reconfiguration inbound
+{% endif %}
+{% if af.maximum_prefix.count %}
+{% set mp = af.maximum_prefix %}
+{% set mp_threshold = " " ~ mp.threshold if mp.threshold else "" %}
+{% set mp_warning = " warning-only" if mp.warning_only else "" %}
+{% set mp_restart = " restart " ~ mp.restart_interval if mp.restart_interval else "" %}
+{% set mp_force = " force" if mp.force else "" %}
+  neighbor {{ addr }} maximum-prefix {{ mp.count }}{{ mp_threshold }}{{ mp_warning }}{{ mp_restart }}{{ mp_force }}
+{% endif %}
+{% if af.maximum_prefix_out %}
+  neighbor {{ addr }} maximum-prefix-out {{ af.maximum_prefix_out }}
+{% endif %}
+{% if af.allowas_in.enabled %}
+{% set ai = af.allowas_in %}
+{% set ai_rmap = " route-map " ~ ai.route_map if ai.route_map else "" %}
+{% set ai_arg = " origin" if ai.origin else (" " ~ ai.count if ai.count is not none else "") %}
+  neighbor {{ addr }} allowas-in{{ ai_rmap }}{{ ai_arg }}
+{% endif %}
+{% if af.weight is not none %}
+  neighbor {{ addr }} weight {{ af.weight }}
+{% endif %}
+{# Per-neighbor filters, in bgp_config_write_filter()'s order:
+   distribute-list, prefix-list, route-map, unsuppress-map,
+   advertise-map, filter-list (bgpd/bgp_vty.c). #}
+{% set f = af.filters %}
+{% if f.distribute_list_in %}
+  neighbor {{ addr }} distribute-list {{ f.distribute_list_in }} in
+{% endif %}
+{% if f.distribute_list_out %}
+  neighbor {{ addr }} distribute-list {{ f.distribute_list_out }} out
+{% endif %}
+{% if f.prefix_list_in %}
+  neighbor {{ addr }} prefix-list {{ f.prefix_list_in }} in
+{% endif %}
+{% if f.prefix_list_out %}
+  neighbor {{ addr }} prefix-list {{ f.prefix_list_out }} out
+{% endif %}
+{% if f.route_map_in %}
+  neighbor {{ addr }} route-map {{ f.route_map_in }} in
+{% endif %}
+{% if f.route_map_out %}
+  neighbor {{ addr }} route-map {{ f.route_map_out }} out
+{% endif %}
+{% if f.unsuppress_map %}
+  neighbor {{ addr }} unsuppress-map {{ f.unsuppress_map }}
+{% endif %}
+{% if f.conditional_advertisement.advertise_map %}
+  neighbor {{ addr }} advertise-map {{ f.conditional_advertisement.advertise_map }} {{ f.conditional_advertisement.condition }}-map {{ f.conditional_advertisement.condition_map }}
+{% endif %}
+{% if f.filter_list_in %}
+  neighbor {{ addr }} filter-list {{ f.filter_list_in }} in
+{% endif %}
+{% if f.filter_list_out %}
+  neighbor {{ addr }} filter-list {{ f.filter_list_out }} out
+{% endif %}
+{% if af.attribute_unchanged.as_path or af.attribute_unchanged.next_hop or af.attribute_unchanged.med %}
+{% set au_as_path = " as-path" if af.attribute_unchanged.as_path else "" %}
+{% set au_next_hop = " next-hop" if af.attribute_unchanged.next_hop else "" %}
+{% set au_med = " med" if af.attribute_unchanged.med else "" %}
+  neighbor {{ addr }} attribute-unchanged{{ au_as_path }}{{ au_next_hop }}{{ au_med }}
+{% endif %}
+{% endmacro %}

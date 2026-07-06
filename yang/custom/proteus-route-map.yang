@@ -596,38 +596,78 @@ module proteus-route-map {
                (bgp_routemap.c).";
           }
 
-          leaf metric {
-            type union {
-              type int64 {
-                range "-4294967295..4294967295";
+          container metric {
+            description
+              "'set metric <(-4294967295-4294967295)|rtt|+rtt|-rtt|
+               igp|aigp>' (lib/routemap_cli.c; the semantics live in
+               route_value_compile in bgpd/bgp_routemap.c: a bare
+               operand sets the metric, a '+'/'-' prefix adds to /
+               subtracts from the existing one). Structured instead
+               of a sign-carrying value: 'operation' is the prefix,
+               the operand is either a real uint32 'value' or one of
+               the rtt/igp/aigp 'variable's. Unconfigured when
+               empty.";
+            leaf operation {
+              type enumeration {
+                enum set {
+                  description
+                    "Bare operand: set the metric.";
+                }
+                enum add {
+                  description
+                    "'+' prefix: add to the existing metric.";
+                }
+                enum subtract {
+                  description
+                    "'-' prefix: subtract from the existing metric.";
+                }
               }
+              must "../value or ../variable" {
+                error-message
+                  "set-metric operation needs a value or a variable";
+              }
+              description
+                "Unset renders like 'set' (a plain operand). Kept
+                 without a YANG default: the bindings never apply
+                 defaults, and unset-means-set keeps the common case
+                 a single assignment.";
+            }
+            leaf value {
+              type uint32;
+              must "not(../variable)" {
+                error-message
+                  "set metric takes a value or a variable, not both";
+              }
+              description
+                "Numeric operand (0-4294967295). The CLI's negative
+                 range is the subtract operation, not a negative
+                 metric -- MED is unsigned.";
+            }
+            leaf variable {
               type enumeration {
                 enum rtt {
                   description
-                    "Set metric to the round-trip time.";
-                }
-                enum "+rtt" {
-                  description
-                    "Add the round-trip time to the metric.";
-                }
-                enum "-rtt" {
-                  description
-                    "Subtract the round-trip time from the metric.";
+                    "The peer's round-trip time; the only variable
+                     FRR also accepts with add/subtract ('+rtt' /
+                     '-rtt').";
                 }
                 enum igp {
                   description
-                    "Set MED to the IGP metric of the next hop.";
+                    "The IGP metric of the next hop.";
                 }
                 enum aigp {
                   description
-                    "Set MED to the AIGP metric.";
+                    "The AIGP metric.";
                 }
               }
+              must ". = 'rtt' or not(../operation) or
+                    ../operation = 'set'" {
+                error-message
+                  "only the rtt variable can be added or subtracted";
+              }
+              description
+                "Variable operand instead of a number.";
             }
-            description
-              "'set metric <(-4294967295-4294967295)|rtt|+rtt|-rtt|
-               igp|aigp>'; a leading +/- adds/subtracts from the
-               existing metric (lib/routemap_cli.c).";
           }
           leaf min-metric {
             type uint32;

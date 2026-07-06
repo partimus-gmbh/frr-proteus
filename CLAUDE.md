@@ -305,11 +305,42 @@ same shape (one `.j2` template, thin Python glue module, thin
   line replicates a vty_out in lib/routemap_cli.c's dispatchers;
   bgp_routemap.c only holds the DEFPY parsers, route-maps ARE
   northbound-converted). All are re-exported from `render/__init__`.
-  `bgp.conf.j2` also renders the neighbor reference lines (per-AF
-  distribute-list/prefix-list/route-map/unsuppress-map/advertise-map/
-  filter-list from bgp_config_write_filter, session-level bfd [profile]
-  and `neighbor X interface`); `has_config` is registered as a Jinja
-  *test* there for `selectattr(..., 'has_config')`. Two output formats: `"frr"` (default) renders legacy
+  The `neighbor X ...` line vocabulary lives in
+  `bgp_neighbor_macros.j2`, shared verbatim between peer-groups and
+  real neighbors and (for the per-AF macro) between all address
+  families, mirroring how FRR installs the same commands everywhere:
+  `session_lines` covers description/bfd [profile]/password/
+  `neighbor X interface IFNAME`/passive/ebgp-multihop (255 renders the
+  bare form)/ttl-security/enforce-first-as/update-source/
+  advertisement-interval/timers [connect] in
+  bgp_config_write_peer_global's order; `af_lines` covers [no]
+  activate/route-reflector-client/next-hop-self [force]/
+  remove-private-AS variants/as-override/send-community negations/
+  default-originate/soft-reconfiguration inbound/maximum-prefix[-out]/
+  allowas-in/weight/the filter references (distribute-list/prefix-list/
+  route-map/unsuppress-map/advertise-map/filter-list from
+  bgp_config_write_filter)/attribute-unchanged in
+  bgp_config_write_peer_af's order. `bgp.conf.j2` itself renders the
+  header lines whose shape differs (peer-group declarations before
+  neighbors matching bgp_config_write's loop order; `neighbor IFNAME
+  interface [v6only] [peer-group PG|remote-as R]` for unnumbered
+  interface peers; separate peer-group-membership/remote-as lines
+  otherwise) plus the instance-level knobs ([no] bgp default
+  <family>, [no] deterministic-med, graceful-restart[-disable],
+  bestpath as-path multipath-relax [as-set], bestpath
+  compare-routerid). Three-valued leaves (activate,
+  default.ipv4-unicast, deterministic-med, enforce-first-as,
+  send-community) render nothing when unset and the explicit
+  positive/negative form otherwise. `has_config` is registered as a
+  Jinja *test* there for `selectattr(..., 'has_config')`.
+  route-map `set metric` is a STRUCTURED container, not a
+  sign-carrying value (per the structured-values rule; a
+  string-pattern union member was explicitly rejected by the user):
+  `operation` (set/add/subtract, unset renders like set) is the
+  CLI's bare/`+`/`-` prefix, the operand is a real uint32 `value` or
+  the rtt/igp/aigp `variable` leaf; `must`s enforce value XOR
+  variable and that only rtt is add/subtractable
+  (route_value_compile in bgpd/bgp_routemap.c). Two output formats: `"frr"` (default) renders legacy
   syntax and *translates* the experimental typing where stock FRR has
   an equivalent (vxlan-underlay -> `advertise-all-vni` (direct
   equivalent per the user), vlan-based-evi with origination-l2vni ->
@@ -338,6 +369,33 @@ same shape (one `.j2` template, thin Python glue module, thin
   type-5 advertisement) and a route-map on the EVPN neighbor. Writes one
   combined `out/evpn_frr.conf`, not per-instance files -- see the
   frr.conf note above.
+- `examples/evpn_dual_speed_host.py` -- anonymized reproduction of a
+  real Proxmox-style EVPN compute host: dual-speed (100G/25G)
+  unnumbered eBGP underlay whose per-loopback large communities steer
+  link-speed preference (four route-maps generated from one loopback
+  table: call + on-match next, set metric +100, set weight,
+  match/set large-community), eBGP multihop overlay peer-group with
+  password/update-source, L2 VNIs + three tenant-VRF instances. The
+  original's `as-notation dot` is not modeled (plain 4-byte ASNs
+  instead); its zebra/vtysh lines (frr defaults/hostname/log/`vrf ...
+  vni`/interface `ipv6 nd ra-interval`) ride along as a literal
+  PREAMBLE constant, explicitly marked out-of-scope.
+- `examples/internet_peering.py` -- medium-sized internet edge: IXP
+  route-server peer-group (maximum-prefix restart, no
+  enforce-first-as), transit neighbor (password, ttl-security,
+  maximum-prefix threshold warning-only, remove-private-AS all), iBGP
+  core session (next-hop-self, update-source), bogon/own-prefix
+  filtering and community tagging via shared route-maps, private-ASN
+  as-path leak guard.
+- `examples/evpn_fabric.py` -- the multi-device showcase: a whole
+  leaf-spine pod (2 spines + 3 leaves, 2 tenants) generated from one
+  topology table, both ends of every link/session derived from the
+  same rule. All-eBGP: unnumbered underlay peer-group (remote-as
+  external on the group, BFD profile, loopbacks-only export
+  route-map), eBGP multihop EVPN overlay (spines set
+  attribute-unchanged next-hop), leaves carry L2 VNIs + per-tenant
+  VRF instances with type-5. One `out/fabric/<name>_frr.conf` per
+  device.
 - `tests/test_render_*.py` -- renderer unit tests (bgp, bgp_evpn,
   evpn_experimental, filters, bgp_filters, bfd, interfaces, route_map);
   `tests/test_validate_object_refs.py` pins the cross-module leafref
@@ -402,5 +460,8 @@ python3 -m venv .venv
 # everyday dev
 PYTHONPATH=src .venv/bin/python examples/basic_bgp.py
 PYTHONPATH=src .venv/bin/python examples/evpn_bgp.py
+PYTHONPATH=src .venv/bin/python examples/evpn_dual_speed_host.py
+PYTHONPATH=src .venv/bin/python examples/internet_peering.py
+PYTHONPATH=src .venv/bin/python examples/evpn_fabric.py
 .venv/bin/pytest tests/
 ```

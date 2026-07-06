@@ -102,7 +102,8 @@ def test_set_lines():
     s = entry.set
     s.ip_next_hop = "peer-address"
     s.local_preference = 0
-    s.metric = "+rtt"
+    s.metric.operation = "add"
+    s.metric.variable = "rtt"
     s.community.member.append(
         type(s.community).Member(global_admin=65001, local_admin=999)
     )
@@ -179,3 +180,33 @@ def test_multiple_entries_each_get_a_block():
     rm.entry.append(RouteMap.Entry(sequence=20, action="deny"))
     text = render_route_maps(root)
     assert "route-map RM permit 10\nexit\nroute-map RM deny 20\nexit\n" == text
+
+
+def test_set_metric_operations():
+    # The CLI's bare/'+'/'-' prefix is the structured 'operation' leaf
+    # (route_value_compile in bgpd/bgp_routemap.c: bare sets, '+' adds
+    # to / '-' subtracts from the existing metric); the operand is a
+    # real uint32, never a sign-carrying value.
+    root, entry = _root_with_entry()
+    entry.set.metric.value = 100
+    assert " set metric 100\n" in render_route_maps(root)
+    entry.set.metric.operation = "add"
+    assert " set metric +100\n" in render_route_maps(root)
+    entry.set.metric.operation = "subtract"
+    assert " set metric -100\n" in render_route_maps(root)
+
+
+def test_set_metric_value_and_variable_mutually_exclusive():
+    root, entry = _root_with_entry()
+    entry.set.metric.value = 100
+    entry.set.metric.variable = "igp"
+    with pytest.raises(bindings.YangValidationError):
+        bindings.validate_tree(root)
+
+
+def test_set_metric_only_rtt_adjustable():
+    root, entry = _root_with_entry()
+    entry.set.metric.operation = "add"
+    entry.set.metric.variable = "igp"
+    with pytest.raises(bindings.YangValidationError):
+        bindings.validate_tree(root)

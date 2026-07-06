@@ -197,8 +197,8 @@ def evpn_af_needed(instance, format: str) -> bool:
     """
     evpn = instance.afi_safis.l2vpn_evpn
     if any(
-        has_config(neighbor.afi_safis.l2vpn_evpn)
-        for neighbor in instance.neighbor
+        has_config(entity.afi_safis.l2vpn_evpn)
+        for entity in [*instance.peer_group, *instance.neighbor]
     ):
         return True
     if format == "experimental":

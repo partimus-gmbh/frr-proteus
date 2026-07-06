@@ -145,8 +145,13 @@ route-map {{ rm.name }} {{ e.action }} {{ e.sequence }}
 {% if s.l3vpn_next_hop_encapsulation %}
  set l3vpn next-hop encapsulation {{ s.l3vpn_next_hop_encapsulation }}
 {% endif %}
-{% if s.metric is not none %}
- set metric {{ s.metric }}
+{# Structured metric: operation (unset = set) supplies the CLI's
+   bare/'+'/'-' prefix, the operand is the uint32 value or the
+   rtt/igp/aigp variable. #}
+{% if s.metric.value is not none or s.metric.variable %}
+{% set metric_sign = {"add": "+", "subtract": "-"}.get(s.metric.operation, "") %}
+{% set metric_operand = s.metric.value if s.metric.value is not none else s.metric.variable %}
+ set metric {{ metric_sign }}{{ metric_operand }}
 {% endif %}
 {% if s.min_metric is not none %}
  set min-metric {{ s.min_metric }}

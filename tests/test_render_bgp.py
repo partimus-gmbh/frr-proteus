@@ -120,3 +120,243 @@ def test_vrf_clause():
 def test_default_vrf_has_no_vrf_clause():
     text = render_bgp_instance(_new_instance(vrf="default"))
     assert text.startswith("router bgp 65001\n")
+
+
+# --- instance-level knobs (bgp_config_write in bgpd/bgp_vty.c) ---
+
+
+def test_no_bgp_default_ipv4_unicast_only_negative_form():
+    instance = _new_instance()
+    instance.default.ipv4_unicast = False
+    assert " no bgp default ipv4-unicast\n" in render_bgp_instance(instance)
+    # True is FRR's default and is never written back.
+    instance.default.ipv4_unicast = True
+    assert "bgp default ipv4-unicast" not in render_bgp_instance(instance)
+
+
+def test_bgp_default_other_families_positive_form():
+    instance = _new_instance()
+    instance.default.ipv6_unicast = True
+    assert " bgp default ipv6-unicast\n" in render_bgp_instance(instance)
+
+
+def test_deterministic_med_three_valued():
+    instance = _new_instance()
+    assert "deterministic-med" not in render_bgp_instance(instance)
+    instance.deterministic_med = True
+    assert " bgp deterministic-med\n" in render_bgp_instance(instance)
+    instance.deterministic_med = False
+    assert " no bgp deterministic-med\n" in render_bgp_instance(instance)
+
+
+def test_graceful_restart_modes():
+    instance = _new_instance()
+    instance.graceful_restart.mode = "disable"
+    assert " bgp graceful-restart-disable\n" in render_bgp_instance(instance)
+    instance.graceful_restart.mode = "restarter"
+    assert " bgp graceful-restart\n" in render_bgp_instance(instance)
+
+
+def test_bestpath_multipath_relax_and_as_set():
+    instance = _new_instance()
+    instance.bestpath.as_path_multipath_relax.enabled = True
+    text = render_bgp_instance(instance)
+    assert " bgp bestpath as-path multipath-relax\n" in text
+    instance.bestpath.as_path_multipath_relax.as_set = True
+    text = render_bgp_instance(instance)
+    assert " bgp bestpath as-path multipath-relax as-set\n" in text
+
+
+# --- peer-groups and session-level neighbor lines
+#     (bgp_config_write_peer_global in bgpd/bgp_vty.c) ---
+
+
+def _new_peer_group(instance: Instance, name: str) -> Instance.PeerGroup:
+    group = Instance.PeerGroup(name=name)
+    instance.peer_group.append(group)
+    return group
+
+
+def test_peer_group_declaration_before_neighbors():
+    instance = _new_instance()
+    _new_peer_group(instance, "SPINES")
+    _add_neighbor(instance, "192.0.2.1").peer_group = "SPINES"
+    text = render_bgp_instance(instance)
+    declaration = text.index(" neighbor SPINES peer-group\n")
+    membership = text.index(" neighbor 192.0.2.1 peer-group SPINES\n")
+    assert declaration < membership
+
+
+def test_session_lines_in_peer_global_order():
+    instance = _new_instance()
+    group = _new_peer_group(instance, "PEERS")
+    group.description = "ix peers"
+    group.bfd.enabled = True
+    group.password = "s3cret"
+    group.ebgp_multihop = 3
+    group.update_source = "192.0.2.99"
+    text = render_bgp_instance(instance)
+    lines = [
+        " neighbor PEERS peer-group\n",
+        " neighbor PEERS description ix peers\n",
+        " neighbor PEERS bfd\n",
+        " neighbor PEERS password s3cret\n",
+        " neighbor PEERS ebgp-multihop 3\n",
+        " neighbor PEERS update-source 192.0.2.99\n",
+    ]
+    positions = [text.index(line) for line in lines]
+    assert positions == sorted(positions)
+
+
+def test_ebgp_multihop_255_renders_bare():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    neighbor.remote_as = "external"
+    neighbor.ebgp_multihop = 255
+    assert " neighbor 192.0.2.1 ebgp-multihop\n" in render_bgp_instance(
+        instance
+    )
+
+
+def test_ttl_security_and_timers():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    neighbor.remote_as = "external"
+    neighbor.ttl_security_hops = 1
+    neighbor.timers.keepalive = 10
+    neighbor.timers.holdtime = 30
+    text = render_bgp_instance(instance)
+    assert " neighbor 192.0.2.1 ttl-security hops 1\n" in text
+    assert " neighbor 192.0.2.1 timers 10 30\n" in text
+
+
+def test_interface_peer_v6only_with_peer_group_on_one_line():
+    instance = _new_instance()
+    _new_peer_group(instance, "UNDERLAY")
+    neighbor = _add_neighbor(instance, "swp1")
+    neighbor.interface_peer = True
+    neighbor.v6only = True
+    neighbor.peer_group = "UNDERLAY"
+    neighbor.remote_as = 65002
+    text = render_bgp_instance(instance)
+    # peer-group rides on the interface line; remote-as gets its own.
+    assert " neighbor swp1 interface v6only peer-group UNDERLAY\n" in text
+    assert " neighbor swp1 remote-as 65002\n" in text
+    assert " neighbor swp1 peer-group UNDERLAY\n" not in text
+
+
+def test_interface_peer_without_group():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "swp1")
+    neighbor.interface_peer = True
+    neighbor.remote_as = "external"
+    text = render_bgp_instance(instance)
+    assert " neighbor swp1 interface\n" in text
+    assert " neighbor swp1 remote-as external\n" in text
+
+
+# --- per-AF neighbor lines (bgp_config_write_peer_af) ---
+
+
+def test_af_activate_three_valued():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    neighbor.remote_as = "external"
+    assert "activate" not in render_bgp_instance(instance)
+    neighbor.afi_safis.ipv4_unicast.activate = True
+    assert "  neighbor 192.0.2.1 activate\n" in render_bgp_instance(instance)
+    neighbor.afi_safis.ipv4_unicast.activate = False
+    assert "  no neighbor 192.0.2.1 activate\n" in render_bgp_instance(
+        instance
+    )
+
+
+def test_af_lines_render_for_peer_groups_too():
+    instance = _new_instance()
+    group = _new_peer_group(instance, "PEERS")
+    af = group.afi_safis.ipv4_unicast
+    af.activate = True
+    af.soft_reconfiguration_inbound = True
+    af.filters.route_map_in = None  # leafref left unset on purpose
+    text = render_bgp_instance(instance)
+    assert " !\n address-family ipv4 unicast\n" in text
+    assert "  neighbor PEERS activate\n" in text
+    assert "  neighbor PEERS soft-reconfiguration inbound\n" in text
+
+
+def test_af_policy_lines_in_peer_af_order():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    neighbor.remote_as = "internal"
+    af = neighbor.afi_safis.ipv4_unicast
+    af.activate = True
+    af.route_reflector_client = True
+    af.next_hop_self.enabled = True
+    af.remove_private_as = "all-replace-as"
+    af.soft_reconfiguration_inbound = True
+    af.maximum_prefix.count = 1000
+    af.maximum_prefix.restart_interval = 30
+    af.allowas_in.enabled = True
+    af.allowas_in.count = 2
+    af.weight = 100
+    af.filters.route_map_in = None
+    text = render_bgp_instance(instance)
+    lines = [
+        "  neighbor 192.0.2.1 activate\n",
+        "  neighbor 192.0.2.1 route-reflector-client\n",
+        "  neighbor 192.0.2.1 next-hop-self\n",
+        "  neighbor 192.0.2.1 remove-private-AS all replace-AS\n",
+        "  neighbor 192.0.2.1 soft-reconfiguration inbound\n",
+        "  neighbor 192.0.2.1 maximum-prefix 1000 restart 30\n",
+        "  neighbor 192.0.2.1 allowas-in 2\n",
+        "  neighbor 192.0.2.1 weight 100\n",
+    ]
+    positions = [text.index(line) for line in lines]
+    assert positions == sorted(positions)
+
+
+def test_send_community_negations():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    neighbor.remote_as = "external"
+    af = neighbor.afi_safis.ipv4_unicast
+    af.send_community.large = False
+    text = render_bgp_instance(instance)
+    assert "  no neighbor 192.0.2.1 send-community large\n" in text
+    af.send_community.standard = False
+    af.send_community.extended = False
+    text = render_bgp_instance(instance)
+    assert "  no neighbor 192.0.2.1 send-community all\n" in text
+    assert "send-community large\n  " not in text
+
+
+def test_enforce_first_as_three_valued():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    neighbor.remote_as = "external"
+    assert "enforce-first-as" not in render_bgp_instance(instance)
+    neighbor.enforce_first_as = False
+    assert " no neighbor 192.0.2.1 enforce-first-as\n" in render_bgp_instance(
+        instance
+    )
+    neighbor.enforce_first_as = True
+    assert " neighbor 192.0.2.1 enforce-first-as\n" in render_bgp_instance(
+        instance
+    )
+
+
+def test_attribute_unchanged_combined_line():
+    instance = _new_instance()
+    neighbor = _add_neighbor(instance, "192.0.2.1")
+    neighbor.remote_as = "external"
+    af = neighbor.afi_safis.ipv4_unicast
+    af.attribute_unchanged.next_hop = True
+    text = render_bgp_instance(instance)
+    assert "  neighbor 192.0.2.1 attribute-unchanged next-hop\n" in text
+    af.attribute_unchanged.as_path = True
+    af.attribute_unchanged.med = True
+    text = render_bgp_instance(instance)
+    assert (
+        "  neighbor 192.0.2.1 attribute-unchanged as-path next-hop med\n"
+        in text
+    )

@@ -4,82 +4,108 @@ Traverses one `instance` entry of the proteus-bgp.yang bindings
 (/bgp/instance, yang/custom/proteus-bgp.yang) directly, mirroring the
 structure and content of bgpd/bgp_vty.c's bgp_config_write() /
 bgp_config_write_family(). The custom schema maps almost 1:1 onto the
-CLI, so the only helper needed is evpn_configured() (subtree-emptiness
-check, render/helpers.py).
+CLI; the shared 'neighbor X ...' line vocabulary lives in
+bgp_neighbor_macros.j2 (one macro call per peer-group / neighbor, FRR
+order: peer-groups first, then neighbors).
 
 Note the standalone " !" line before a non-empty address-family block:
 that mirrors bgp_vty.c's `vty_frame(vty, " !\n address-family ...")`,
 which FRR only flushes once the block has real content -- so an
 address-family with no networks/config produces no output at all,
 including no leading "!". #}
+{% import "bgp_neighbor_macros.j2" as nb %}
 {% set vrf_clause = " vrf " ~ instance.vrf if instance.vrf and instance.vrf != "default" else "" %}
 router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
 {% if instance.router_id %}
  bgp router-id {{ instance.router_id }}
 {% endif %}
+{# 'bgp default ipv4-unicast' is the only per-AF activation default
+   that is on by default; FRR writes its negation and every other
+   family's positive form (bgp_config_write's FOREACH_AFI_SAFI). #}
+{% if instance.default.ipv4_unicast is false %}
+ no bgp default ipv4-unicast
+{% endif %}
+{% for token, enabled in [("ipv4-multicast", instance.default.ipv4_multicast),
+                          ("ipv4-labeled-unicast", instance.default.ipv4_labeled_unicast),
+                          ("ipv4-vpn", instance.default.ipv4_vpn),
+                          ("ipv6-unicast", instance.default.ipv6_unicast),
+                          ("ipv6-multicast", instance.default.ipv6_multicast),
+                          ("ipv6-labeled-unicast", instance.default.ipv6_labeled_unicast),
+                          ("ipv6-vpn", instance.default.ipv6_vpn),
+                          ("l2vpn-evpn", instance.default.l2vpn_evpn)] %}
+{% if enabled %}
+ bgp default {{ token }}
+{% endif %}
+{% endfor %}
+{# deterministic-med's default depends on the 'frr defaults' profile
+   (on for datacenter), so both explicit forms render. #}
+{% if instance.deterministic_med is true %}
+ bgp deterministic-med
+{% elif instance.deterministic_med is false %}
+ no bgp deterministic-med
+{% endif %}
+{% if instance.graceful_restart.mode == "restarter" %}
+ bgp graceful-restart
+{% elif instance.graceful_restart.mode == "disable" %}
+ bgp graceful-restart-disable
+{% endif %}
+{% if instance.bestpath.as_path_multipath_relax.enabled %}
+{% set mpr_as_set = " as-set" if instance.bestpath.as_path_multipath_relax.as_set else "" %}
+ bgp bestpath as-path multipath-relax{{ mpr_as_set }}
+{% endif %}
+{% if instance.bestpath.compare_routerid %}
+ bgp bestpath compare-routerid
+{% endif %}
+{# Peer-groups before neighbors, matching bgp_config_write()'s two
+   loops over bgp->group and bgp->peer. #}
+{% for group in instance.peer_group %}
+ neighbor {{ group.name }} peer-group
+{% if group.remote_as is not none %}
+ neighbor {{ group.name }} remote-as {{ group.remote_as }}
+{% endif %}
+{{ nb.session_lines(group.name, group) -}}
+{% endfor %}
 {% for neighbor in instance.neighbor %}
+{# Header lines, bgp_config_write_peer_global()'s shape: unnumbered
+   interface peers carry v6only plus either their peer-group or their
+   remote-as on the 'neighbor IFNAME interface' line itself; everyone
+   else gets separate peer-group / remote-as lines. #}
+{% if neighbor.interface_peer %}
+{% set if_v6only = " v6only" if neighbor.v6only else "" %}
+{% set if_tail = " peer-group " ~ neighbor.peer_group if neighbor.peer_group else "" %}
+ neighbor {{ neighbor.address }} interface{{ if_v6only }}{{ if_tail }}
 {% if neighbor.remote_as is not none %}
  neighbor {{ neighbor.address }} remote-as {{ neighbor.remote_as }}
 {% endif %}
-{% if neighbor.source_interface %}
- neighbor {{ neighbor.address }} interface {{ neighbor.source_interface }}
+{% else %}
+{% if neighbor.peer_group %}
+ neighbor {{ neighbor.address }} peer-group {{ neighbor.peer_group }}
 {% endif %}
-{% if neighbor.bfd.enabled %}
- neighbor {{ neighbor.address }} bfd
+{% if neighbor.remote_as is not none %}
+ neighbor {{ neighbor.address }} remote-as {{ neighbor.remote_as }}
 {% endif %}
-{% if neighbor.bfd.check_control_plane_failure %}
- neighbor {{ neighbor.address }} bfd check-control-plane-failure
 {% endif %}
-{% if neighbor.bfd.profile %}
- neighbor {{ neighbor.address }} bfd profile {{ neighbor.bfd.profile }}
-{% endif %}
+{{ nb.session_lines(neighbor.address, neighbor) -}}
 {% endfor %}
 {% for af_cli, af_field in [("ipv4 unicast", "ipv4_unicast"), ("ipv6 unicast", "ipv6_unicast")] %}
 {% set af = instance.afi_safis[af_field] %}
-{% set filter_neighbors = instance.neighbor
-     | selectattr('afi_safis.' ~ af_field ~ '.filters', 'has_config')
+{% set af_groups = instance.peer_group
+     | selectattr('afi_safis.' ~ af_field, 'has_config')
      | list %}
-{% if af.network or filter_neighbors %}
+{% set af_neighbors = instance.neighbor
+     | selectattr('afi_safis.' ~ af_field, 'has_config')
+     | list %}
+{% if af.network or af_groups or af_neighbors %}
  !
  address-family {{ af_cli }}
 {% for net in af.network %}
   network {{ net.prefix }}
 {% endfor %}
-{# Per-neighbor filter lines, in bgp_config_write_filter()'s order:
-   distribute-list, prefix-list, route-map, unsuppress-map,
-   advertise-map, filter-list (bgpd/bgp_vty.c). #}
-{% for neighbor in filter_neighbors %}
-{% set f = neighbor.afi_safis[af_field].filters %}
-{% if f.distribute_list_in %}
-  neighbor {{ neighbor.address }} distribute-list {{ f.distribute_list_in }} in
-{% endif %}
-{% if f.distribute_list_out %}
-  neighbor {{ neighbor.address }} distribute-list {{ f.distribute_list_out }} out
-{% endif %}
-{% if f.prefix_list_in %}
-  neighbor {{ neighbor.address }} prefix-list {{ f.prefix_list_in }} in
-{% endif %}
-{% if f.prefix_list_out %}
-  neighbor {{ neighbor.address }} prefix-list {{ f.prefix_list_out }} out
-{% endif %}
-{% if f.route_map_in %}
-  neighbor {{ neighbor.address }} route-map {{ f.route_map_in }} in
-{% endif %}
-{% if f.route_map_out %}
-  neighbor {{ neighbor.address }} route-map {{ f.route_map_out }} out
-{% endif %}
-{% if f.unsuppress_map %}
-  neighbor {{ neighbor.address }} unsuppress-map {{ f.unsuppress_map }}
-{% endif %}
-{% if f.conditional_advertisement.advertise_map %}
-  neighbor {{ neighbor.address }} advertise-map {{ f.conditional_advertisement.advertise_map }} {{ f.conditional_advertisement.condition }}-map {{ f.conditional_advertisement.condition_map }}
-{% endif %}
-{% if f.filter_list_in %}
-  neighbor {{ neighbor.address }} filter-list {{ f.filter_list_in }} in
-{% endif %}
-{% if f.filter_list_out %}
-  neighbor {{ neighbor.address }} filter-list {{ f.filter_list_out }} out
-{% endif %}
+{% for group in af_groups %}
+{{ nb.af_lines(group.name, group.afi_safis[af_field]) -}}
+{% endfor %}
+{% for neighbor in af_neighbors %}
+{{ nb.af_lines(neighbor.address, neighbor.afi_safis[af_field]) -}}
 {% endfor %}
  exit-address-family
 {% endif %}
