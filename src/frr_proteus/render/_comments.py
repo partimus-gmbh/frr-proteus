@@ -124,6 +124,15 @@ class NodeProxy:
     def __contains__(self, name: str) -> bool:
         return hasattr(self._obj, name)
 
+    def __iter__(self):
+        # Without this, iter() falls back to the legacy __getitem__
+        # protocol (integer indexes -> getattr TypeError). A dataclass
+        # node isn't iterable, so its proxy must not be either -- the
+        # bgp template's `af.network is not iterable` check (vpn AFs'
+        # container-of-lists vs. the plain list elsewhere) relies on
+        # iter() raising TypeError here.
+        raise TypeError(f"{type(self._obj).__name__} node is not iterable")
+
     def __bool__(self) -> bool:
         return bool(self._obj)
 

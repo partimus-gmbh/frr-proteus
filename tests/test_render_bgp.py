@@ -982,24 +982,55 @@ def test_vpn_label_export_auto_and_ipv6_nexthop():
 
 def test_vpn_af_static_network_statements():
     instance = _new_instance()
-    af4 = instance.afi_safis.ipv4_vpn
-    net4 = Instance.AfiSafis.Ipv4Vpn.Network(prefix="10.0.0.0/24")
-    net4.rd.as2.administrator = 65001
-    net4.rd.as2.assigned_number = 1
-    net4.label = 100
-    net4.route_map = "VPN-NET"
-    af4.network.append(net4)
-    af6 = instance.afi_safis.ipv6_vpn
-    net6 = Instance.AfiSafis.Ipv6Vpn.Network(prefix="2001:db8::/48")
-    net6.rd.ipv4.administrator = "192.0.2.1"
-    net6.rd.ipv4.assigned_number = 2
-    net6.label = 200
-    af6.network.append(net6)
+    net4 = instance.afi_safis.ipv4_vpn.network
+    net4.as2.append(
+        Instance.AfiSafis.Ipv4Vpn.Network.As2(
+            prefix="10.0.0.0/24",
+            administrator=65001,
+            assigned_number=1,
+            label=100,
+            route_map="VPN-NET",
+        )
+    )
+    net4.raw.append(
+        Instance.AfiSafis.Ipv4Vpn.Network.Raw(
+            prefix="10.1.0.0/24", rd="65001:2", label=101
+        )
+    )
+    net6 = instance.afi_safis.ipv6_vpn.network
+    net6.ipv4.append(
+        Instance.AfiSafis.Ipv6Vpn.Network.Ipv4(
+            prefix="2001:db8::/48",
+            administrator="192.0.2.1",
+            assigned_number=2,
+            label=200,
+        )
+    )
     text = render_bgp_instance(instance)
     assert " address-family ipv4 vpn\n" in text
     assert "  network 10.0.0.0/24 rd 65001:1 label 100 route-map VPN-NET\n" in text
+    assert "  network 10.1.0.0/24 rd 65001:2 label 101\n" in text
     assert " address-family ipv6 vpn\n" in text
     assert "  network 2001:db8::/48 rd 192.0.2.1:2 label 200\n" in text
+
+
+def test_vpn_af_same_prefix_under_two_rds():
+    # FRR keys VPN statics by (rd, prefix): the same prefix under two
+    # different RDs is legal and both lines must render.
+    instance = _new_instance()
+    net4 = instance.afi_safis.ipv4_vpn.network
+    for assigned, label in ((1, 100), (2, 200)):
+        net4.as2.append(
+            Instance.AfiSafis.Ipv4Vpn.Network.As2(
+                prefix="10.0.0.0/24",
+                administrator=65001,
+                assigned_number=assigned,
+                label=label,
+            )
+        )
+    text = render_bgp_instance(instance)
+    assert "  network 10.0.0.0/24 rd 65001:1 label 100\n" in text
+    assert "  network 10.0.0.0/24 rd 65001:2 label 200\n" in text
 
 
 def test_retain_route_target_negative_only():

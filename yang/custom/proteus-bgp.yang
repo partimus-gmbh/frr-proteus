@@ -1641,62 +1641,176 @@ module proteus-bgp {
     }
   }
 
+  /*
+   * MPLS-VPN static 'network' statements
+   * ('network <prefix> rd ASN:NN_OR_IP-ADDRESS:NN <tag|label>
+   * (0-1048575) [route-map RMAP_NAME]', vpnv4_network_cmd /
+   * vpnv6_network_cmd in bgp_mplsvpn.c; written back by
+   * bgp_config_write_network_vpn in bgp_route.c as
+   * 'network P rd RD label N [route-map R]' -- 'tag' is an
+   * input-side alias for 'label').
+   *
+   * FRR keys these statics by (rd, prefix): the same prefix may
+   * recur under different RDs, so both must be in the YANG key.
+   * YANG keys must be leaves, and the RD is structured -- so, same
+   * answer as pt:route-target-set: one list per RD encoding with
+   * the RD components themselves as key leaves (plus the raw
+   * escape-hatch list, whose verbatim RD string is the key).
+   * The blocked type-6 MAC encoding is omitted entirely: FRR can't
+   * parse it, and unlike pt:route-distinguisher's must-false()
+   * member a key leaf can't be blocked without also blocking the
+   * list.
+   */
   grouping af-network-vpn-ipv4 {
-    list network {
-      key "prefix";
-      must "rd/as2/administrator or rd/ipv4/administrator "
-         + "or rd/as4/administrator or rd/mac or rd/raw" {
-        error-message
-          "a VPN 'network' statement requires an rd (mandatory token
-           of vpnv4_network_cmd / vpnv6_network_cmd)";
-      }
+    container network {
       description
-        "MPLS-VPN static 'network' statement
-         ('network A.B.C.D/M rd ASN:NN_OR_IP-ADDRESS:NN <tag|label>
-         (0-1048575) [route-map RMAP_NAME]', vpnv4_network_cmd in
-         bgp_mplsvpn.c; written back by bgp_config_write_network_vpn
-         in bgp_route.c as 'network P rd RD label N [route-map R]' --
-         'tag' is an input-side alias for 'label').
-         // FRR keys these statics by (rd, prefix), so the same
-         // prefix may legally recur under different RDs; keying by
-         // prefix alone (YANG keys must be leaves, the rd is a
-         // container) forgoes that corner.";
-      leaf prefix {
-        type inet:ipv4-prefix;
+        "MPLS-VPN static 'network' statements, IPv4 form
+         (vpnv4_network_cmd), grouped by RD encoding -- see the
+         comment above the grouping.";
+      list as2 {
+        key "prefix administrator assigned-number";
+        description
+          "Entries whose rd is type 0 ('<2-byte-AS>:<NN>').";
+        leaf prefix {
+          type inet:ipv4-prefix;
+        }
+        uses vpn-network-rd-as2;
+        uses vpn-network-attributes;
       }
-      uses network-vpn-options;
+      list ipv4 {
+        key "prefix administrator assigned-number";
+        description
+          "Entries whose rd is type 1 ('<A.B.C.D>:<NN>').";
+        leaf prefix {
+          type inet:ipv4-prefix;
+        }
+        uses vpn-network-rd-ipv4;
+        uses vpn-network-attributes;
+      }
+      list as4 {
+        key "prefix administrator assigned-number";
+        description
+          "Entries whose rd is type 2 ('<4-byte-AS>:<NN>',
+           RFC 5668-style).";
+        leaf prefix {
+          type inet:ipv4-prefix;
+        }
+        uses vpn-network-rd-as4;
+        uses vpn-network-attributes;
+      }
+      list raw {
+        key "prefix rd";
+        description
+          "Fallback: entries whose rd text is emitted verbatim, for
+           values outside every structured encoding.";
+        leaf prefix {
+          type inet:ipv4-prefix;
+        }
+        leaf rd {
+          type string;
+          description
+            "The rd text, verbatim.";
+        }
+        uses vpn-network-attributes;
+      }
     }
   }
 
   grouping af-network-vpn-ipv6 {
-    list network {
-      key "prefix";
-      must "rd/as2/administrator or rd/ipv4/administrator "
-         + "or rd/as4/administrator or rd/mac or rd/raw" {
-        error-message
-          "a VPN 'network' statement requires an rd (mandatory token
-           of vpnv4_network_cmd / vpnv6_network_cmd)";
-      }
+    container network {
       description
-        "MPLS-VPN static 'network' statement, IPv6 form
-         ('network X:X::X:X/M rd ... <tag|label> (0-1048575)
-         [route-map RMAP_NAME]', vpnv6_network_cmd) -- see
-         af-network-vpn-ipv4.";
-      leaf prefix {
-        type inet:ipv6-prefix;
+        "MPLS-VPN static 'network' statements, IPv6 form
+         (vpnv6_network_cmd), grouped by RD encoding -- see the
+         comment above af-network-vpn-ipv4.";
+      list as2 {
+        key "prefix administrator assigned-number";
+        description
+          "Entries whose rd is type 0 ('<2-byte-AS>:<NN>').";
+        leaf prefix {
+          type inet:ipv6-prefix;
+        }
+        uses vpn-network-rd-as2;
+        uses vpn-network-attributes;
       }
-      uses network-vpn-options;
+      list ipv4 {
+        key "prefix administrator assigned-number";
+        description
+          "Entries whose rd is type 1 ('<A.B.C.D>:<NN>').";
+        leaf prefix {
+          type inet:ipv6-prefix;
+        }
+        uses vpn-network-rd-ipv4;
+        uses vpn-network-attributes;
+      }
+      list as4 {
+        key "prefix administrator assigned-number";
+        description
+          "Entries whose rd is type 2 ('<4-byte-AS>:<NN>',
+           RFC 5668-style).";
+        leaf prefix {
+          type inet:ipv6-prefix;
+        }
+        uses vpn-network-rd-as4;
+        uses vpn-network-attributes;
+      }
+      list raw {
+        key "prefix rd";
+        description
+          "Fallback: entries whose rd text is emitted verbatim, for
+           values outside every structured encoding.";
+        leaf prefix {
+          type inet:ipv6-prefix;
+        }
+        leaf rd {
+          type string;
+          description
+            "The rd text, verbatim.";
+        }
+        uses vpn-network-attributes;
+      }
     }
   }
 
-  grouping network-vpn-options {
-    container rd {
+  grouping vpn-network-rd-as2 {
+    leaf administrator {
+      type uint16;
       description
-        "'rd ASN:NN_OR_IP-ADDRESS:NN'. Required (the 'must' on the
-         network entry -- 'mandatory' can't express it because an
-         all-empty container counts as unconfigured).";
-      uses pt:route-distinguisher;
+        "RD administrator subfield: 2-byte AS number.";
     }
+    leaf assigned-number {
+      type uint32;
+      description
+        "RD 4-byte assigned number subfield.";
+    }
+  }
+
+  grouping vpn-network-rd-ipv4 {
+    leaf administrator {
+      type inet:ipv4-address-no-zone;
+      description
+        "RD administrator subfield: IPv4 address.";
+    }
+    leaf assigned-number {
+      type uint16;
+      description
+        "RD 2-byte assigned number subfield.";
+    }
+  }
+
+  grouping vpn-network-rd-as4 {
+    leaf administrator {
+      type uint32;
+      description
+        "RD administrator subfield: 4-byte AS number.";
+    }
+    leaf assigned-number {
+      type uint16;
+      description
+        "RD 2-byte assigned number subfield.";
+    }
+  }
+
+  grouping vpn-network-attributes {
     leaf label {
       type uint32 {
         range "0..1048575";

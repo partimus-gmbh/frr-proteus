@@ -110,18 +110,26 @@ def test_vpn_route_map_import_conflicts_with_import_vrf_route_map():
         bindings.validate_tree(*roots)
 
 
-def test_vpn_network_requires_rd():
+def test_vpn_network_keyed_by_rd_and_prefix():
+    # (rd, prefix) is the key, mirroring FRR's static-route storage:
+    # the same prefix under two RDs is valid, a duplicate pair is not.
     roots = _all_roots()
     bgp_root = roots[0]
     _bgp_neighbor(bgp_root)
-    af4 = bgp_root.instance[0].afi_safis.ipv4_vpn
-    net = Instance.AfiSafis.Ipv4Vpn.Network(prefix="10.0.0.0/24", label=100)
-    af4.network.append(net)
-    with pytest.raises(bindings.YangValidationError, match="requires an rd"):
-        bindings.validate_tree(*roots)
-    net.rd.as2.administrator = 65001
-    net.rd.as2.assigned_number = 1
+    As2 = Instance.AfiSafis.Ipv4Vpn.Network.As2
+    net = bgp_root.instance[0].afi_safis.ipv4_vpn.network
+    net.as2.append(
+        As2(prefix="10.0.0.0/24", administrator=65001, assigned_number=1, label=100)
+    )
+    net.as2.append(
+        As2(prefix="10.0.0.0/24", administrator=65001, assigned_number=2, label=200)
+    )
     bindings.validate_tree(*roots)
+    net.as2.append(
+        As2(prefix="10.0.0.0/24", administrator=65001, assigned_number=2, label=300)
+    )
+    with pytest.raises(bindings.YangValidationError, match="unique|duplicate"):
+        bindings.validate_tree(*roots)
 
 
 def test_route_map_bgp_filter_refs():

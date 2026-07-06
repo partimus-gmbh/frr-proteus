@@ -36,18 +36,30 @@ including no leading "!". #}
 {% set dp_acl = " " ~ dp.access_list if dp.access_list else "" %}
   distance {{ dp.distance }} {{ dp.prefix }}{{ dp_acl }}
 {% endfor %}
-{% for net in (af.network if af.network is defined else []) %}
-{% if net.rd is defined %}
+{# The vpn AFs' 'network' node is a container of per-RD-encoding
+   lists (rd is part of FRR's key); everywhere else it's a plain
+   list -- 'is iterable' tells them apart. #}
+{% if af.network is defined and af.network is not iterable %}
 {# MPLS-VPN static form (bgp_config_write_network_vpn in
-   bgp_route.c): rd + label mandatory, no backdoor/label-index. #}
+   bgp_route.c): rd + label mandatory, no backdoor/label-index. All
+   three structured encodings render '<administrator>:<NN>'; raw
+   entries carry the rd text verbatim. #}
+{% for rd_list in [af.network.as2, af.network.as4, af.network.ipv4] %}
+{% for net in rd_list %}
 {% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
-  network {{ net.prefix }} rd {{ rd_text(net.rd) }} label {{ net.label }}{{ net_rmap }}
-{% else %}
+  network {{ net.prefix }} rd {{ net.administrator }}:{{ net.assigned_number }} label {{ net.label }}{{ net_rmap }}
+{% endfor %}
+{% endfor %}
+{% for net in af.network.raw %}
+{% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
+  network {{ net.prefix }} rd {{ net.rd }} label {{ net.label }}{{ net_rmap }}
+{% endfor %}
+{% endif %}
+{% for net in (af.network if af.network is defined and af.network is iterable else []) %}
 {% set net_label = " label-index " ~ net.label_index if net.label_index is not none else "" %}
 {% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
 {% set net_backdoor = " backdoor" if net.backdoor is defined and net.backdoor else "" %}
   network {{ net.prefix }}{{ net_label }}{{ net_rmap }}{{ net_backdoor }}
-{% endif %}
 {% endfor %}
 {% for agg in (af.aggregate_address if af.aggregate_address is defined else []) %}
 {% set agg_as_set = " as-set" if agg.as_set else "" %}
