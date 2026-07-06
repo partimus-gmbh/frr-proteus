@@ -95,10 +95,10 @@ def test_af_and_network_comments():
     annotate(network, comment="customer prefix")
     af.network.append(network)
     rendered = render_bgp_instance(instance)
-    # The AF container comment lands above the ' !' separator that
-    # precedes the address-family header (node comments fire when the
-    # template fetches the node, before the header line completes).
-    assert " ! v4 table\n !\n address-family ipv4 unicast\n" in rendered
+    # Bare '!' separator lines never receive a pending comment, so
+    # the AF container comment passes the ' !' preceding the header
+    # and lands directly above 'address-family'.
+    assert " !\n ! v4 table\n address-family ipv4 unicast\n" in rendered
     assert "  ! customer prefix\n  network 203.0.113.0/24\n" in rendered
 
 
@@ -157,6 +157,29 @@ def test_leaf_list_entry_comment():
     rendered = render_bgp_instance(instance)
     assert (
         " ! dc-west member\n bgp confederation peers 65201\n" in rendered
+    )
+
+
+def test_entry_comment_lands_below_seq_separator():
+    # The '!' separator between seq entry blocks never receives a
+    # pending comment: an annotated entry's comment renders between
+    # the separator and its own 'route-map ...' line, not above the
+    # separator (the loop.last lookahead records it one line early).
+    root = bindings.ProteusRouteMap()
+    route_map = bindings.ProteusRouteMap.RouteMap(name="RM")
+    first = bindings.ProteusRouteMap.RouteMap.Entry(sequence=10, action="permit")
+    second = bindings.ProteusRouteMap.RouteMap.Entry(sequence=20, action="permit")
+    annotate(second, comment="second entry")
+    route_map.entry.extend([first, second])
+    root.route_map.append(route_map)
+    assert render_route_maps(root) == (
+        "!\n"
+        "route-map RM permit 10\n"
+        "exit\n"
+        "!\n"
+        "! second entry\n"
+        "route-map RM permit 20\n"
+        "exit\n"
     )
 
 

@@ -369,7 +369,14 @@ same shape (one `.j2` template, thin Python glue module, thin
   line by line; a node's comment is recorded when the template
   fetches the node (wrap time -- so container comments land above
   literal block-header lines), a leaf's on attribute access, and
-  pending comments flush above the next completed output line.
+  pending comments flush above the next completed output line --
+  EXCEPT bare `!` separator lines, which never receive a pending
+  comment (they pass through; the comment lands on the next real
+  config line). That exception exists because `loop.last`-driven
+  template separators make Jinja fetch the following list entry one
+  line early, recording its comment just before the `!` -- without
+  the rule an annotated route-map entry's comment would float above
+  the separator, detached from its `route-map ...` line.
   Precision limits (scope always right, exact line may not be):
   Jinja macros buffer their whole output, so comments recorded
   inside one macro call (session_lines/af_lines/filters macros)
@@ -406,16 +413,19 @@ same shape (one `.j2` template, thin Python glue module, thin
   order (referenced objects before consumers: system, vrfs,
   interfaces, bfd, filters, bgp-filters, route-maps, bgp). Cosmetics:
   the route-map/vrf/interface templates emit a lone `!` separator
-  line between sibling blocks, and every `render_*` function takes a
-  `heading=` kwarg -- default `"!"` prefixes one bare `!` separator
-  line so concatenated sections never run together, a title renders
-  a three-line `!` heading instead (`!` / `! title` / `!`, built by
-  `_heading.py`'s exported `heading()`; the block starts/ends with
-  `!` itself so it never doubles up with a preceding section), None
-  disables; always suppressed when the section renders empty. The
-  double-`!` trap that remains: standalone `heading(...)` followed
-  by a default-separator render call -- pass the title to the first
-  render call instead. Headings are free-form so one object type can
+  line between sibling blocks (route-maps: between every seq entry
+  block), and every `render_*` function takes a `heading=` kwarg --
+  default `"!"` prefixes one bare `!` separator line so concatenated
+  sections never run together, a title renders a three-line `!`
+  heading instead (`!` / `! title` / `!`), None disables; always
+  suppressed when the section renders empty. The standalone
+  `heading()` builder emits only the opening separator + title lines
+  (no closing `!`): the following section's default leading separator
+  completes the block, so `heading("bgp") + render_bgp_instance(...)`
+  composes without doubled `!` lines and without any dedup logic
+  (`_heading.py` is three lines of prefix selection). No template
+  emits a TRAILING `!` -- separators are leading-only; keep that rule
+  for new templates. Headings are free-form so one object type can
   render as several titled sections from separate roots
   (validate_tree accepts multiple roots of the same module, so e.g.
   two ProteusFilter roots -- customer vs own prefix-lists -- validate

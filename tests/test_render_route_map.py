@@ -175,13 +175,20 @@ def test_match_evpn_rd_structured():
 
 
 def test_multiple_entries_each_get_a_block():
-    # Entries of ONE route-map stay contiguous; the '!' separator only
-    # goes between different route-maps.
+    # A '!' separator goes between every seq entry block, same as
+    # between different route-maps.
     root, _ = _root_with_entry()
     rm = root.route_map[0]
     rm.entry.append(RouteMap.Entry(sequence=20, action="deny"))
     text = render_route_maps(root)
-    assert "!\nroute-map RM permit 10\nexit\nroute-map RM deny 20\nexit\n" == text
+    assert (
+        "!\n"
+        "route-map RM permit 10\n"
+        "exit\n"
+        "!\n"
+        "route-map RM deny 20\n"
+        "exit\n"
+    ) == text
 
 
 def test_separator_between_route_maps():

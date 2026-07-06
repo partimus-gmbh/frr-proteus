@@ -13,40 +13,47 @@ apart with '!' comment lines. Every render_* function takes a
       ! route-maps
       !
 
-  Since the block itself starts and ends with '!', swapping the
-  default separator for it never doubles up separator lines;
-- ``None``: nothing at all (e.g. for the very first section of a
-  file, or callers doing their own separation).
+- ``None``: nothing at all (e.g. for callers doing their own
+  separation).
 
 Either way the prefix is skipped when the section renders empty.
-Titles are free-form, so one object type can be split into several
-titled sections (e.g. multiple prefix-list sections rendered from
-separate ProteusFilter roots); heading() is the standalone builder.
+
+The standalone heading() builder deliberately emits only the OPENING
+separator and title lines -- the closing '!' comes from whatever
+renders next (its default leading separator) -- so free-form
+composition like ``heading("bgp") + render_bgp_instance(...)``
+produces exactly the three-line block with no doubled '!' and no
+deduplication anywhere. Titles are free-form, so one object type can
+be split into several titled sections (e.g. multiple prefix-list
+sections rendered from separate ProteusFilter roots).
 """
 
 from __future__ import annotations
 
 
 def heading(title: str) -> str:
-    """Return a three-line '!' comment heading for `title`.
+    """Return the opening '!' separator plus '! <line>' comment
+    line(s) for `title` (one per non-empty title line).
 
-    Multi-line titles get one '! ' comment line per non-empty line,
-    still framed by the bare '!' pair.
+    No closing '!' -- concatenate a render_* call with the default
+    ``heading="!"`` after it and the section's leading separator
+    completes the three-line block.
     """
     lines = [line.strip() for line in title.splitlines()]
     body = "".join(f"! {line}\n" for line in lines if line)
     if not body:
         raise ValueError("heading title is empty")
-    return f"!\n{body}!\n"
+    return f"!\n{body}"
 
 
 def with_heading(title: str | None, body: str) -> str:
     """Prefix `body` per the ``heading`` contract above: "!" (the
     render_* default) prefixes one bare separator line, any other
-    title a heading() block. No-op when `title` is None or `body` is
-    empty (an empty section gets no separator/heading)."""
+    title the full three-line heading block. No-op when `title` is
+    None or `body` is empty (an empty section gets no separator or
+    heading)."""
     if title is None or not body:
         return body
     if title == "!":
         return "!\n" + body
-    return heading(title) + body
+    return heading(title) + "!\n" + body

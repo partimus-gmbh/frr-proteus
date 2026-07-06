@@ -278,6 +278,9 @@ route-map {{ rm.name }} {{ e.action }} {{ e.sequence }}
  on-match {{ 'next' if e.on_match == 'next' else 'goto ' ~ e.on_match }}
 {% endif %}
 exit
+{% if not loop.last %}
+!
+{% endif %}
 {% endfor %}
 {% if not loop.last %}
 !

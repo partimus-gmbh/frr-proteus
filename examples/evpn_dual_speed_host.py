@@ -40,6 +40,7 @@ from frr_proteus._generated.proteus import (
     validate_tree,
 )
 from frr_proteus.render import (
+    heading,
     render_bgp_filters,
     render_bgp_instance,
     render_filters,
@@ -312,12 +313,12 @@ def main() -> None:
     text = (
         render_system(system)
         + render_vrfs(vrfs, heading="vrfs")
-        + render_interfaces(interfaces)
+        + render_interfaces(interfaces, heading="interfaces")
         + render_filters(filters, heading="prefix-lists")
         + render_bgp_filters(bgp_filters, heading="large-community lists")
         + render_route_maps(rmaps, heading="route-maps")
-        + render_bgp_instance(bgp.instance[0], heading="bgp")
-        + "".join(render_bgp_instance(i) for i in bgp.instance[1:])
+        + heading("bgp")
+        + "".join(render_bgp_instance(i) for i in bgp.instance)
     )
     out = pathlib.Path(__file__).resolve().parent.parent / "out"
     out.mkdir(exist_ok=True)

@@ -18,9 +18,12 @@ run together; a title renders a three-line '!' comment heading
 instead (which starts and ends with '!' itself, so it never doubles
 up with the default separator); None disables the prefix. Either way
 it is skipped when the section renders empty. heading() is the
-standalone builder for free-form composition, e.g. several
+standalone builder for free-form composition (e.g. several
 separately titled prefix-list sections rendered from separate
-ProteusFilter roots.
+ProteusFilter roots); it emits only the opening separator + title
+lines -- the following section's default leading separator completes
+the block, so ``heading("bgp") + render_bgp_instance(...)`` never
+doubles a '!' line.
 """
 
 from frr_proteus.render._heading import heading

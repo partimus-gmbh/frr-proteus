@@ -10,18 +10,21 @@ import pytest
 from frr_proteus.render import heading
 
 
-def test_three_line_heading():
-    assert heading("route-maps") == "!\n! route-maps\n!\n"
+def test_opening_separator_and_title():
+    # No closing '!' -- the next section's default leading separator
+    # completes the three-line block, so standalone heading() never
+    # doubles up with it.
+    assert heading("route-maps") == "!\n! route-maps\n"
 
 
 def test_multi_line_title():
     assert heading("customer prefix lists\nmaintained by netops") == (
-        "!\n! customer prefix lists\n! maintained by netops\n!\n"
+        "!\n! customer prefix lists\n! maintained by netops\n"
     )
 
 
 def test_blank_title_lines_skipped():
-    assert heading("title\n\n") == "!\n! title\n!\n"
+    assert heading("title\n\n") == "!\n! title\n"
 
 
 def test_empty_title_rejected():

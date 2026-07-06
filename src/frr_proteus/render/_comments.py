@@ -213,7 +213,15 @@ def render_with_comments(template: jinja2.Template, **context: Any) -> str:
     """Render `template` like ``template.render(**context)`` but with
     every dataclass in `context` wrapped for comment tracking, flushing
     queued comments as indentation-matched ``! ...`` lines above the
-    output line being produced when they fired."""
+    output line being produced when they fired.
+
+    Exception: bare ``!`` separator lines never receive a pending
+    comment -- they pass through and the comment flushes above the
+    next real config line instead. (Template separators emitted via
+    ``loop.last`` make Jinja fetch the following list entry one line
+    early, so that entry's comment is recorded just before the
+    separator; without this rule it would render above the ``!``,
+    detached from its config line.)"""
     rec = Recorder()
     wrapped = {key: wrap(value, rec) for key, value in context.items()}
     out: list[str] = []
@@ -222,8 +230,11 @@ def render_with_comments(template: jinja2.Template, **context: Any) -> str:
         for piece in chunk.splitlines(keepends=True):
             line += piece
             if line.endswith("\n"):
-                indent = line[: len(line) - len(line.lstrip())].rstrip("\n")
-                out.extend(f"{indent}! {c}\n" for c in rec.take())
+                if line.strip() != "!":
+                    indent = line[: len(line) - len(line.lstrip())].rstrip(
+                        "\n"
+                    )
+                    out.extend(f"{indent}! {c}\n" for c in rec.take())
                 out.append(line)
                 line = ""
     if line:
