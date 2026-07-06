@@ -10,6 +10,7 @@ only -- the legacy numbered form is excluded from the schema.
 from __future__ import annotations
 
 from frr_proteus.render import helpers
+from frr_proteus.render._comments import render_with_comments
 from frr_proteus.render._env import env
 
 _template = env.get_template("bgp_filters.conf.j2")
@@ -58,4 +59,4 @@ def render_bgp_filters(root) -> str:
             raise ValueError(
                 f"community alias {alias.name!r} has no community value"
             )
-    return _template.render(bgp_filters=root)
+    return render_with_comments(_template, bgp_filters=root)

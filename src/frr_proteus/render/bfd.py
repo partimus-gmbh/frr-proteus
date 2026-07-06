@@ -9,6 +9,7 @@ and divides by 1000 on write).
 
 from __future__ import annotations
 
+from frr_proteus.render._comments import render_with_comments
 from frr_proteus.render._env import env
 
 _template = env.get_template("bfd.conf.j2")
@@ -22,4 +23,4 @@ def render_bfd(root) -> str:
     """
     if not root.profile:
         return ""
-    return _template.render(bfd=root)
+    return render_with_comments(_template, bfd=root)

@@ -95,8 +95,69 @@ def test_af_and_network_comments():
     annotate(network, comment="customer prefix")
     af.network.append(network)
     rendered = render_bgp_instance(instance)
-    assert " ! v4 table\n address-family ipv4 unicast\n" in rendered
+    # The AF container comment lands above the ' !' separator that
+    # precedes the address-family header (node comments fire when the
+    # template fetches the node, before the header line completes).
+    assert " ! v4 table\n !\n address-family ipv4 unicast\n" in rendered
     assert "  ! customer prefix\n  network 203.0.113.0/24\n" in rendered
+
+
+def test_leaf_comment_on_neighbor_password():
+    # A comment on an arbitrary LEAF -- impossible under the old
+    # per-anchor template hooks; the proxy layer renders it wherever
+    # the leaf's line is produced.
+    instance = _instance()
+    neighbor = ProteusBgp.Instance.Neighbor(address="192.0.2.1")
+    neighbor.remote_as.plain = 65010
+    neighbor.password = "s3cret"
+    annotate(neighbor, "password", comment="rotate quarterly")
+    instance.neighbor.append(neighbor)
+    rendered = render_bgp_instance(instance)
+    assert (
+        " ! rotate quarterly\n neighbor 192.0.2.1 password s3cret\n"
+        in rendered
+    )
+
+
+def test_leaf_comment_in_neighbor_af():
+    instance = _instance()
+    neighbor = ProteusBgp.Instance.Neighbor(address="192.0.2.1")
+    neighbor.remote_as.plain = 65010
+    neighbor.afi_safis.ipv4_unicast.activate = True
+    annotate(neighbor.afi_safis.ipv4_unicast, "activate", comment="v4 on")
+    instance.neighbor.append(neighbor)
+    rendered = render_bgp_instance(instance)
+    assert "  ! v4 on\n  neighbor 192.0.2.1 activate\n" in rendered
+
+
+def test_container_comment_groups_with_neighbor_session_lines():
+    # Comments recorded inside one Jinja macro call all attach to that
+    # call's first output line (macros buffer their output), so a
+    # comment on the timers container is guaranteed to sit within the
+    # right neighbor's session-line group, not necessarily on the
+    # timers line itself. Pin the scope-level guarantee.
+    instance = _instance()
+    neighbor = ProteusBgp.Instance.Neighbor(address="192.0.2.1")
+    neighbor.remote_as.plain = 65010
+    neighbor.timers.keepalive = 10
+    neighbor.timers.holdtime = 30
+    annotate(neighbor.timers, comment="fast timers")
+    instance.neighbor.append(neighbor)
+    rendered = render_bgp_instance(instance)
+    lines = rendered.splitlines()
+    comment_at = lines.index(" ! fast timers")
+    assert lines[comment_at + 1] == " neighbor 192.0.2.1 timers 10 30"
+
+
+def test_leaf_list_entry_comment():
+    instance = _instance()
+    instance.confederation.identifier.plain = 65100
+    instance.confederation.peers.plain.append(65201)
+    annotate(instance.confederation.peers, "plain", 0, comment="dc-west member")
+    rendered = render_bgp_instance(instance)
+    assert (
+        " ! dc-west member\n bgp confederation peers 65201\n" in rendered
+    )
 
 
 def test_route_map_and_entry_comments():

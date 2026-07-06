@@ -11,6 +11,7 @@ parsers, not the write path. BGP-clause values FRR stores verbatim
 
 from __future__ import annotations
 
+from frr_proteus.render._comments import render_with_comments
 from frr_proteus.render._env import env
 
 _template = env.get_template("route_map.conf.j2")
@@ -30,4 +31,4 @@ def render_route_maps(root) -> str:
                     f"route-map {rm.name!r} entry {entry.sequence}: "
                     "action (permit|deny) is not set"
                 )
-    return _template.render(route_maps=root)
+    return render_with_comments(_template, route_maps=root)

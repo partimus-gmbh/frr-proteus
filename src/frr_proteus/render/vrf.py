@@ -8,6 +8,7 @@ is deliberately minimal -- see proteus-vrf.yang.
 
 from __future__ import annotations
 
+from frr_proteus.render._comments import render_with_comments
 from frr_proteus.render._env import env
 
 _template = env.get_template("vrf.conf.j2")
@@ -20,4 +21,4 @@ def render_vrfs(root) -> str:
     """
     if not root.vrf:
         return ""
-    return _template.render(vrfs=root)
+    return render_with_comments(_template, vrfs=root)

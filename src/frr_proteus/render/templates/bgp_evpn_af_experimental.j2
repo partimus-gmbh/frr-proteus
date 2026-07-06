@@ -7,9 +7,6 @@ this format's output even if set on the object. Per-neighbor lines and
 route-targets are shared syntax and render in both formats. #}
 {% import "evpn_macros.j2" as evpn_macros %}
  !
-{% for c in comment_lines(evpn) %}
- ! {{ c }}
-{% endfor %}
  address-family l2vpn evpn
 {% include "bgp_evpn_neighbors.j2" %}
 {% if evpn.vxlan_underlay %}
@@ -27,9 +24,6 @@ route-targets are shared syntax and render in both formats. #}
 {% endif %}
 {{ evpn_macros.vrf_route_targets(evpn, "  ") -}}
 {% for evi in evpn.vlan_based_evi %}
-{% for c in comment_lines(evi) %}
-  ! {{ c }}
-{% endfor %}
 {{ evpn_macros.vlan_based_evi(evi, "  ") }}
 {% endfor %}
  exit-address-family

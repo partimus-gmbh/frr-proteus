@@ -4,17 +4,11 @@ container, passed in as `evpn`). The caller (render_evpn_global)
 guarantees the container has content; in the "frr" output format this
 block has no stock equivalent and is not rendered at all. #}
 {% import "evpn_macros.j2" as evpn_macros %}
-{% for c in comment_lines(evpn) %}
-! {{ c }}
-{% endfor %}
 evpn
 {% if evpn.default_underlay_vrf %}
  default-underlay-vrf {{ evpn.default_underlay_vrf }}
 {% endif %}
 {% for evi in evpn.vlan_based_evi %}
-{% for c in comment_lines(evi) %}
- ! {{ c }}
-{% endfor %}
 {{ evpn_macros.vlan_based_evi(evi, " ") }}
 {% endfor %}
 exit

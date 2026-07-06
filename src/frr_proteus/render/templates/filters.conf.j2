@@ -5,16 +5,10 @@
    'ip'/'ipv6'. 'seq' is always emitted. #}
 {% macro prefix_list_lines(kw, lists) %}
 {% for pl in lists %}
-{% for c in comment_lines(pl) %}
-! {{ c }}
-{% endfor %}
 {% if pl.description %}
 {{ kw }}prefix-list {{ pl.name }} description {{ pl.description }}
 {% endif %}
 {% for e in pl.entry %}
-{% for c in comment_lines(e) %}
-! {{ c }}
-{% endfor %}
 {% if e.any %}
 {{ kw }}prefix-list {{ pl.name }} seq {{ e.sequence }} {{ e.action }} any
 {% else %}
@@ -27,16 +21,10 @@
 {% endmacro %}
 {% macro access_list_lines(kw, lists) %}
 {% for acl in lists %}
-{% for c in comment_lines(acl) %}
-! {{ c }}
-{% endfor %}
 {% if acl.remark %}
 {{ kw }}access-list {{ acl.name }} remark {{ acl.remark }}
 {% endif %}
 {% for e in acl.entry %}
-{% for c in comment_lines(e) %}
-! {{ c }}
-{% endfor %}
 {% if e.any %}
 {{ kw }}access-list {{ acl.name }} seq {{ e.sequence }} {{ e.action }} any
 {% else %}
@@ -51,16 +39,10 @@
 {{ access_list_lines('', filters.access_lists.ipv4.access_list) -}}
 {{ access_list_lines('ipv6 ', filters.access_lists.ipv6.access_list) -}}
 {% for acl in filters.access_lists.mac.access_list %}
-{% for c in comment_lines(acl) %}
-! {{ c }}
-{% endfor %}
 {% if acl.remark %}
 mac access-list {{ acl.name }} remark {{ acl.remark }}
 {% endif %}
 {% for e in acl.entry %}
-{% for c in comment_lines(e) %}
-! {{ c }}
-{% endfor %}
 mac access-list {{ acl.name }} seq {{ e.sequence }} {{ e.action }} {{ 'any' if e.any else e.mac }}
 {% endfor %}
 {% endfor %}

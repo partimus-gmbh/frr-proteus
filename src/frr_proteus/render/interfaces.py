@@ -8,6 +8,7 @@ target for interface references (see proteus-interface.yang).
 
 from __future__ import annotations
 
+from frr_proteus.render._comments import render_with_comments
 from frr_proteus.render._env import env
 
 _template = env.get_template("interfaces.conf.j2")
@@ -20,4 +21,4 @@ def render_interfaces(root) -> str:
     """
     if not root.interface:
         return ""
-    return _template.render(interfaces=root)
+    return render_with_comments(_template, interfaces=root)

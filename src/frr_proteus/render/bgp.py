@@ -26,6 +26,7 @@ import pathlib
 import jinja2
 
 from frr_proteus.render import helpers
+from frr_proteus.render._comments import render_with_comments
 
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
 
@@ -44,7 +45,6 @@ _env.globals.update(
     asn_text=helpers.asn_text,
     remote_as_text=helpers.remote_as_text,
     confederation_peers_texts=helpers.confederation_peers_texts,
-    comment_lines=helpers.comment_lines,
 )
 # As a Jinja *test* so templates can write
 # `selectattr('afi_safis.ipv4_unicast.filters', 'has_config')`.
@@ -103,7 +103,8 @@ def render_bgp_instance(instance, *, format: str = "frr") -> str:
     """
     if helpers.asn_text(instance.autonomous_system) is None:
         raise ValueError("instance autonomous-system is not set")
-    return _bgp_template.render(
+    return render_with_comments(
+        _bgp_template,
         instance=instance,
         format=format,
         evpn_af_template=_evpn_af_template(format),
@@ -121,7 +122,7 @@ def render_bgp_process(process) -> str:
     """
     if not helpers.has_config(process):
         return ""
-    return _bgp_process_template.render(process=process)
+    return render_with_comments(_bgp_process_template, process=process)
 
 
 def render_evpn_global(evpn, *, format: str = "frr") -> str:
@@ -137,4 +138,4 @@ def render_evpn_global(evpn, *, format: str = "frr") -> str:
     _evpn_af_template(format)  # validate the format name
     if format != "experimental" or not helpers.has_config(evpn):
         return ""
-    return _evpn_global_template.render(evpn=evpn)
+    return render_with_comments(_evpn_global_template, evpn=evpn)

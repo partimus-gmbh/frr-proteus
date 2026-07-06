@@ -355,21 +355,35 @@ same shape (one `.j2` template, thin Python glue module, thin
   RFC 7952 `comment` annotations render as FRR comments: FRR only has
   whole-line comments whose first non-whitespace char is `!` or `#`
   (lib/command.c cmd_make_strvec, vtysh/vtysh.c vtysh_read_file --
-  verified; there are NO inline comments), so `comment_lines(node[,
-  member[, index]])` in helpers.py splits the annotation into
-  stripped non-empty lines and every template emits them as
-  indentation-matched `! ...` lines immediately before the annotated
-  element's first config line (`{% for c in comment_lines(x) %}`
-  anchors on: instance/router-bgp header, peer-groups, neighbors,
-  address-family blocks (incl. both EVPN formats), network/
-  aggregate/redistribute entries, EVPN vni/network/evi blocks, the
-  evpn global block, route-maps + entries, prefix-/access-lists +
-  entries, bgp-filter lists + entries + aliases, bfd profiles,
-  interfaces, vrfs, the system preamble, /process). Empty or
-  whitespace-only comments render NOTHING. Leaf-level (member)
-  comments are carried by the model/serde but only the listed
-  object-level anchors are rendered today -- extend per anchor, not
-  with a post-processing pass.
+  verified; there are NO inline comments), so every comment renders
+  as indentation-matched `! ...` lines (one per non-empty comment
+  line; whitespace-only comments render NOTHING) immediately before
+  the annotated element's config line. This is AUTOMATIC for any
+  annotated node/leaf/leaf-list entry -- the templates contain ZERO
+  comment hooks (the earlier ~25 hand-placed `comment_lines()`
+  anchors were removed; do NOT add per-anchor hooks back).
+  `_comments.py` does it from the outside: `render_with_comments(
+  template, **ctx)` (which every `render_*` glue function calls
+  instead of `template.render`) wraps the bindings tree in tracking
+  proxies (NodeProxy/ListProxy) and consumes `template.generate()`
+  line by line; a node's comment is recorded when the template
+  fetches the node (wrap time -- so container comments land above
+  literal block-header lines), a leaf's on attribute access, and
+  pending comments flush above the next completed output line.
+  Precision limits (scope always right, exact line may not be):
+  Jinja macros buffer their whole output, so comments recorded
+  inside one macro call (session_lines/af_lines/filters macros)
+  attach to that call's first output line; converting the macros to
+  `{% include %}` would make placement exact if that ever annoys.
+  Gotchas: subtree-scanning helpers (has_config,
+  _has_config_except, evpn_af_needed) must `unwrap()` their
+  argument first (`dataclasses.fields()` on a proxy raises; scans
+  through proxies also queue false comments) -- keep that rule for
+  any new scanning helper; value helpers (asn_text, rd_text, ...)
+  deliberately receive proxies so leaf comments place correctly;
+  helpers.py imports unwrap from _comments, so _comments must not
+  import helpers (its comment splitting is inlined, same rules as
+  helpers.comment_lines, which stays as the public one-node API).
   `bgp.py` wires up the Jinja `Environment` and exposes
   `render_bgp_instance(instance, format=...)` (takes one instance list
   entry; the vrf clause comes from its `vrf` key) plus

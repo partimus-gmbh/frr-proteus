@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import dataclasses
 
+from frr_proteus.render._comments import unwrap
+
 
 def asn_text(node) -> str | None:
     """CLI token of a structured AS number (the pt:as-number-notation
@@ -73,7 +75,13 @@ def has_config(node: object) -> bool:
     Mirrors the bindings' semantics: an unset leaf is None, an empty
     list/leaf-list is unset, and a container "exists" only if some
     descendant leaf is set (YANG non-presence container existence).
+
+    Sweeps the RAW subtree: templates render through comment-tracking
+    proxies (_comments.py) and a scan through the proxies would both
+    fail `dataclasses.fields()` and queue false comments, so unwrap
+    first -- same for every other subtree-scanning helper here.
     """
+    node = unwrap(node)
     for field in dataclasses.fields(node):  # type: ignore[arg-type]
         value = getattr(node, field.name)
         if dataclasses.is_dataclass(value) and not isinstance(value, type):
@@ -233,6 +241,7 @@ _FRR_UNRENDERABLE_EVPN_FIELDS = frozenset(
 
 
 def _has_config_except(node: object, exclude: frozenset[str]) -> bool:
+    node = unwrap(node)
     for field in dataclasses.fields(node):  # type: ignore[arg-type]
         if field.name in exclude:
             continue
@@ -259,6 +268,7 @@ def evpn_af_needed(instance, format: str) -> bool:
     origination-l2vni) -- an instance holding only untranslatable
     experimental config must not produce an empty AF block there.
     """
+    instance = unwrap(instance)
     evpn = instance.afi_safis.l2vpn_evpn
     if any(
         has_config(entity.afi_safis.l2vpn_evpn)

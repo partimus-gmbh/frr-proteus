@@ -35,18 +35,12 @@ including no leading "!". #}
   distance {{ dp.distance }} {{ dp.prefix }}{{ dp_acl }}
 {% endfor %}
 {% for net in (af.network if af.network is defined else []) %}
-{% for c in comment_lines(net) %}
-  ! {{ c }}
-{% endfor %}
 {% set net_label = " label-index " ~ net.label_index if net.label_index is not none else "" %}
 {% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
 {% set net_backdoor = " backdoor" if net.backdoor is defined and net.backdoor else "" %}
   network {{ net.prefix }}{{ net_label }}{{ net_rmap }}{{ net_backdoor }}
 {% endfor %}
 {% for agg in (af.aggregate_address if af.aggregate_address is defined else []) %}
-{% for c in comment_lines(agg) %}
-  ! {{ c }}
-{% endfor %}
 {% set agg_as_set = " as-set" if agg.as_set else "" %}
 {% set agg_summary = " summary-only" if agg.summary_only else "" %}
 {% set agg_rmap = " route-map " ~ agg.route_map if agg.route_map else "" %}
@@ -56,9 +50,6 @@ including no leading "!". #}
   aggregate-address {{ agg.prefix }}{{ agg_as_set }}{{ agg_summary }}{{ agg_rmap }}{{ agg_origin }}{{ agg_med }}{{ agg_suppress }}
 {% endfor %}
 {% for red in (af.redistribute if af.redistribute is defined else []) %}
-{% for c in comment_lines(red) %}
-  ! {{ c }}
-{% endfor %}
 {% set red_inst = " " ~ red.instance if red.instance else "" %}
 {% set red_metric = " metric " ~ red.metric if red.metric is not none else "" %}
 {% set red_rmap = " route-map " ~ red.route_map if red.route_map else "" %}
@@ -109,9 +100,6 @@ including no leading "!". #}
 {# as-notation only changes how later show output formats ASNs; the
    ASN token itself renders verbatim as configured (plain or asdot). #}
 {% set notation_clause = " as-notation " ~ instance.as_notation if instance.as_notation else "" %}
-{% for c in comment_lines(instance) %}
-! {{ c }}
-{% endfor %}
 router bgp {{ asn_text(instance.autonomous_system) }}{{ instance_clause }}{{ notation_clause }}
 {# Instance-level knobs, bgp_config_write()'s emission order. #}
 {% if instance.fast_external_failover is false %}
@@ -357,9 +345,6 @@ router bgp {{ asn_text(instance.autonomous_system) }}{{ instance_clause }}{{ not
 {# Peer-groups before neighbors, matching bgp_config_write()'s two
    loops over bgp->group and bgp->peer. #}
 {% for group in instance.peer_group %}
-{% for c in comment_lines(group) %}
- ! {{ c }}
-{% endfor %}
  neighbor {{ group.name }} peer-group
 {% set group_ra = remote_as_text(group.remote_as) %}
 {% if group_ra %}
@@ -368,9 +353,6 @@ router bgp {{ asn_text(instance.autonomous_system) }}{{ instance_clause }}{{ not
 {{ nb.session_lines(group.name, group) -}}
 {% endfor %}
 {% for neighbor in instance.neighbor %}
-{% for c in comment_lines(neighbor) %}
- ! {{ c }}
-{% endfor %}
 {# Header lines, bgp_config_write_peer_global()'s shape: unnumbered
    interface peers carry v6only plus either their peer-group or their
    remote-as on the 'neighbor IFNAME interface' line itself; everyone
@@ -435,9 +417,6 @@ router bgp {{ asn_text(instance.autonomous_system) }}{{ instance_clause }}{{ not
      | list %}
 {% if af is has_config or af_groups or af_neighbors %}
  !
-{% for c in comment_lines(af) %}
- ! {{ c }}
-{% endfor %}
  address-family {{ af_cli }}
 {{ af_head_lines(af) -}}
 {% for group in af_groups %}

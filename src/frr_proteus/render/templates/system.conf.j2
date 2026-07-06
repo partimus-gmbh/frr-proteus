@@ -3,9 +3,6 @@
    hostname, then log targets, then vtysh's service line.
    integrated-vtysh-config is three-valued: unset renders nothing,
    otherwise the explicit positive/negative form. #}
-{% for c in comment_lines(system) %}
-! {{ c }}
-{% endfor %}
 {% if system.frr_defaults %}
 frr defaults {{ system.frr_defaults }}
 {% endif %}

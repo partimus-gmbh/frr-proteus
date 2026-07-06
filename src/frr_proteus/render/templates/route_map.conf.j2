@@ -7,13 +7,7 @@
    writes is just a comment and skipped per the project's fidelity
    rules). Values FRR stores verbatim render verbatim. #}
 {% for rm in route_maps.route_map %}
-{% for c in comment_lines(rm) %}
-! {{ c }}
-{% endfor %}
 {% for e in rm.entry %}
-{% for c in comment_lines(e) %}
-! {{ c }}
-{% endfor %}
 route-map {{ rm.name }} {{ e.action }} {{ e.sequence }}
 {% if e.description %}
  description {{ e.description }}

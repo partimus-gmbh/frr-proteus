@@ -11,55 +11,28 @@
    extcommunity_texts helpers; raw fallback entries pass through
    verbatim. #}
 {% for asp in bgp_filters.as_path_access_list %}
-{% for c in comment_lines(asp) %}
-! {{ c }}
-{% endfor %}
 {% for e in asp.entry %}
-{% for c in comment_lines(e) %}
-! {{ c }}
-{% endfor %}
 bgp as-path access-list {{ asp.name }} seq {{ e.sequence }} {{ e.action }} {{ e.regex }}
 {% endfor %}
 {% endfor %}
 {% for cl in bgp_filters.community_list %}
-{% for c in comment_lines(cl) %}
-! {{ c }}
-{% endfor %}
 {% for e in cl.entry %}
-{% for c in comment_lines(e) %}
-! {{ c }}
-{% endfor %}
 {% set value = e.regex if cl.type == 'expanded' else community_texts(e.communities) | join(' ') %}
 bgp community-list {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
 {% endfor %}
 {% endfor %}
 {% for cl in bgp_filters.large_community_list %}
-{% for c in comment_lines(cl) %}
-! {{ c }}
-{% endfor %}
 {% for e in cl.entry %}
-{% for c in comment_lines(e) %}
-! {{ c }}
-{% endfor %}
 {% set value = e.regex if cl.type == 'expanded' else large_community_texts(e.large_communities) | join(' ') %}
 bgp large-community-list {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
 {% endfor %}
 {% endfor %}
 {% for cl in bgp_filters.extcommunity_list %}
-{% for c in comment_lines(cl) %}
-! {{ c }}
-{% endfor %}
 {% for e in cl.entry %}
-{% for c in comment_lines(e) %}
-! {{ c }}
-{% endfor %}
 {% set value = e.regex if cl.type == 'expanded' else extcommunity_texts(e.extcommunities) | join(' ') %}
 bgp extcommunity-list {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
 {% endfor %}
 {% endfor %}
 {% for alias in bgp_filters.community_alias %}
-{% for c in comment_lines(alias) %}
-! {{ c }}
-{% endfor %}
 bgp community alias {{ community_value_text(alias.community) }} {{ alias.name }}
 {% endfor %}

@@ -10,6 +10,7 @@ The model is deliberately minimal -- see proteus-system.yang.
 from __future__ import annotations
 
 from frr_proteus.render import helpers
+from frr_proteus.render._comments import render_with_comments
 from frr_proteus.render._env import env
 
 _template = env.get_template("system.conf.j2")
@@ -22,4 +23,4 @@ def render_system(root) -> str:
     """
     if not helpers.has_config(root):
         return ""
-    return _template.render(system=root)
+    return render_with_comments(_template, system=root)

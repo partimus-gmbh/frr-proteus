@@ -8,6 +8,7 @@ IPv4 access-lists are written without a leading 'ip' keyword.
 
 from __future__ import annotations
 
+from frr_proteus.render._comments import render_with_comments
 from frr_proteus.render._env import env
 
 _template = env.get_template("filters.conf.j2")
@@ -17,4 +18,4 @@ def render_filters(root) -> str:
     """Render all prefix-lists and access-lists of a generated
     ProteusFilter root. Returns "" when nothing is configured.
     """
-    return _template.render(filters=root)
+    return render_with_comments(_template, filters=root)
