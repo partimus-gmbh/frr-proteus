@@ -1,0 +1,11 @@
+{# One 'vrf NAME' block per declared VRF.
+   Text: lib/vrf.c lib_vrf_cli_write / lib_vrf_cli_write_end; the vni
+   line is zebra/zebra_cli.c lib_vrf_zebra_l3vni_id_cli_write. #}
+{% for vrf in vrfs.vrf %}
+vrf {{ vrf.name }}
+{% if vrf.l3vni is not none %}
+{% set pro = " prefix-routes-only" if vrf.prefix_routes_only else "" %}
+ vni {{ vrf.l3vni }}{{ pro }}
+{% endif %}
+exit-vrf
+{% endfor %}

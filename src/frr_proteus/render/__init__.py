@@ -8,6 +8,8 @@ from frr_proteus.render.bgp_filters import render_bgp_filters
 from frr_proteus.render.filters import render_filters
 from frr_proteus.render.interfaces import render_interfaces
 from frr_proteus.render.route_map import render_route_maps
+from frr_proteus.render.system import render_system
+from frr_proteus.render.vrf import render_vrfs
 
 __all__ = [
     "render_bfd",
@@ -18,4 +20,6 @@ __all__ = [
     "render_filters",
     "render_interfaces",
     "render_route_maps",
+    "render_system",
+    "render_vrfs",
 ]

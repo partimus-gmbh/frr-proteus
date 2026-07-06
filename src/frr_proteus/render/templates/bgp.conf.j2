@@ -97,7 +97,10 @@ including no leading "!". #}
 {% endfor %}
 {% endmacro %}
 {% set instance_clause = " view " ~ instance.vrf if instance.instance_type == "view" else (" vrf " ~ instance.vrf if instance.vrf and instance.vrf != "default" else "") %}
-router bgp {{ instance.autonomous_system }}{{ instance_clause }}
+{# as-notation only changes how later show output formats ASNs; the
+   ASN token itself renders verbatim as configured (plain or asdot). #}
+{% set notation_clause = " as-notation " ~ instance.as_notation if instance.as_notation else "" %}
+router bgp {{ instance.autonomous_system }}{{ instance_clause }}{{ notation_clause }}
 {# Instance-level knobs, bgp_config_write()'s emission order. #}
 {% if instance.fast_external_failover is false %}
  no bgp fast-external-failover

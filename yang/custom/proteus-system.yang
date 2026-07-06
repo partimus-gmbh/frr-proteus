@@ -1,0 +1,109 @@
+module proteus-system {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/system";
+  prefix proteus-system;
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "Minimal system/host-level lines of an frr.conf: the handful of
+     global statements every real-world config starts with. This is
+     vtysh/libfrr surface, not bgpd's, and frr-proteus is BGP-only --
+     only the lines needed so real-world examples don't have to ride
+     along as literal preamble text are modeled; the rest of the host
+     vocabulary (domainname, banners, passwords, the other 'service'
+     and 'log' targets, ...) is deliberately out of scope.
+
+     CLI text:
+
+       frr defaults <traditional|datacenter>   (lib/command.c
+         vty_write_config: 'frr defaults %s', profiles from
+         lib/defaults.c frr_defaults_profiles)
+       hostname NAME                           (lib/command.c
+         config_write_host / hostname_cmd)
+       log syslog [LEVEL]                      (lib/log_cli.c
+         config_log_syslog_cmd / logging_syslog_cli_write; the bare
+         form means the default level, so this model always names
+         the level -- unset-renders-nothing already covers 'not
+         configured')
+       service integrated-vtysh-config         (vtysh/vtysh.c
+         vtysh_integrated_config_cmd, written by
+         vtysh/vtysh_config.c)";
+
+  revision 2026-07-06 {
+    description
+      "Initial revision.";
+  }
+
+  container system {
+    description
+      "Global host-level config lines, rendered before any protocol
+       or object blocks.";
+
+    leaf frr-defaults {
+      type enumeration {
+        enum traditional {
+          description
+            "Retain behaviors FRR's predecessors shipped with.";
+        }
+        enum datacenter {
+          description
+            "Faster timers, datacenter-appropriate defaults.";
+        }
+      }
+      description
+        "'frr defaults <profile>' (lib/lib_vty.c frr_defaults_cmd
+         'frr defaults PROFILE...'; the two profiles come from
+         lib/defaults.c frr_defaults_profiles).";
+    }
+
+    leaf hostname {
+      type string {
+        length "1..255";
+      }
+      description
+        "'hostname NAME' (lib/command.c hostname_cmd /
+         config_write_host).";
+    }
+
+    container log {
+      description
+        "Logging targets. Only syslog is modeled.";
+
+      leaf syslog {
+        type enumeration {
+          enum emergencies;
+          enum alerts;
+          enum critical;
+          enum errors;
+          enum warnings;
+          enum notifications;
+          enum informational;
+          enum debugging;
+        }
+        description
+          "'log syslog <level>' (lib/log_cli.c config_log_syslog_cmd /
+           logging_syslog_cli_write; the level tokens are that
+           DEFPY's own list).";
+      }
+    }
+
+    container service {
+      description
+        "'service ...' lines. Only integrated-vtysh-config is
+         modeled.";
+
+      leaf integrated-vtysh-config {
+        type boolean;
+        description
+          "'service integrated-vtysh-config' when true, the explicit
+           'no service integrated-vtysh-config' when false (vtysh.c
+           vtysh_integrated_config_cmd; vtysh_config.c writes
+           whichever side differs from the build default). Unset
+           renders nothing.";
+      }
+    }
+  }
+}

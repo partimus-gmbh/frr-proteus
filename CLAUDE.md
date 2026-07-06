@@ -69,7 +69,24 @@ same shape (one `.j2` template, thin Python glue module, thin
   `proteus-bfd.yang` (BFD profiles, intervals in MILLISECONDS
   matching the CLI where FRR's own YANG stores µs; authentication
   excluded pending a key-chain model), `proteus-interface.yang`
-  (minimal name+description, mainly a leafref target)). Covers the
+  (minimal name+description, mainly a leafref target, plus the one
+  zebra knob real unnumbered-underlay configs need: `ipv6 nd
+  ra-interval` sec/msec as an explicit choice), `proteus-vrf.yang`
+  (minimal `vrf NAME` blocks with the L3VNI mapping `vni N
+  [prefix-routes-only]`; the BGP instance list deliberately stays
+  keyed by a plain vrf string, NOT a leafref here -- 'default' is a
+  valid instance key but never a vrf block, and kernel VRFs may
+  carry no zebra config), and `proteus-system.yang` (host-level
+  lines: `frr defaults`, `hostname`, `log syslog LEVEL`, `service
+  integrated-vtysh-config` -- just enough that real-world examples
+  don't need a literal preamble)). ASNs (pt:as-number) are a UNION
+  of plain decimal and an asdot `H.L` pattern string (both halves
+  0..65535, no 0.0, per lib/asn.c asn_str2asn) -- accepted wherever
+  FRR takes an ASN token and rendered verbatim; the per-instance
+  `as-notation <dot|dot+|plain>` leaf is display-only (it formats
+  later show output, it does NOT constrain the configured value)
+  and renders as a `router bgp` header-line suffix after the
+  view/vrf clause. Covers the
   full config surface bgpd's own
   config-write path emits (bgp_config_write* in bgp_vty.c/bgp_route.c/
   bgp_damp.c/bgp_bfd.c, bgp_config_write_evpn_info in bgp_evpn_vty.c,
@@ -300,7 +317,10 @@ same shape (one `.j2` template, thin Python glue module, thin
   access-lists are UNPREFIXED `access-list ...` per lib/filter_cli.c),
   `bgp_filters.py` (`render_bgp_filters`, as-path/community lists +
   aliases, with a type-vs-value backstop check), `bfd.py`
-  (`render_bfd`), `interfaces.py` (`render_interfaces`), and
+  (`render_bfd`), `interfaces.py` (`render_interfaces`), `vrf.py`
+  (`render_vrfs`, `vrf NAME`/`vni N`/`exit-vrf` blocks per lib/vrf.c
+  + zebra/zebra_cli.c), `system.py` (`render_system`, the host-level
+  frr defaults/hostname/log syslog/service lines), and
   `route_map.py` / `route_map.conf.j2` (`render_route_maps` -- every
   line replicates a vty_out in lib/routemap_cli.c's dispatchers;
   bgp_routemap.c only holds the DEFPY parsers, route-maps ARE
@@ -397,11 +417,12 @@ same shape (one `.j2` template, thin Python glue module, thin
   link-speed preference (four route-maps generated from one loopback
   table: call + on-match next, set metric +100, set weight,
   match/set large-community), eBGP multihop overlay peer-group with
-  password/update-source, L2 VNIs + three tenant-VRF instances. The
-  original's `as-notation dot` is not modeled (plain 4-byte ASNs
-  instead); its zebra/vtysh lines (frr defaults/hostname/log/`vrf ...
-  vni`/interface `ipv6 nd ra-interval`) ride along as a literal
-  PREAMBLE constant, explicitly marked out-of-scope.
+  password/update-source, L2 VNIs + three tenant-VRF instances.
+  Fully structured, no literal preamble text: dotted (asdot) ASNs
+  with `as-notation dot` on every instance like the original, and
+  the zebra/vtysh lines (frr defaults/hostname/log/`vrf ... vni`/
+  interface `ipv6 nd ra-interval`) built from proteus-system /
+  proteus-vrf / proteus-interface objects.
 - `examples/internet_peering.py` -- medium-sized internet edge: IXP
   route-server peer-group (maximum-prefix restart, no
   enforce-first-as), transit neighbor (password, ttl-security,
@@ -419,7 +440,8 @@ same shape (one `.j2` template, thin Python glue module, thin
   VRF instances with type-5. One `out/fabric/<name>_frr.conf` per
   device.
 - `tests/test_render_*.py` -- renderer unit tests (bgp, bgp_evpn,
-  evpn_experimental, filters, bgp_filters, bfd, interfaces, route_map);
+  evpn_experimental, filters, bgp_filters, bfd, interfaces, vrf,
+  system, route_map);
   `tests/test_validate_object_refs.py` pins the cross-module leafref
   checks (incl. family precision of the split filters/distance
   groupings). All use `pytest.importorskip` on the generated bindings
@@ -446,7 +468,8 @@ These are SCHEMA exclusions (deliberate, listed in
 proteus-bgp.yang's module description), not renderer gaps: SRv6, the
 detailed vpn_policy leaking block (only export/import vpn +
 import vrf are modeled), encap/flowspec/unreachability/link-state
-AFs, RPKI cache config, BMP, VNC, `as-notation dot`. Also:
+AFs, RPKI cache config, BMP, VNC. (`as-notation dot` and asdot AS
+values are modeled since 2026-07-06.) Also:
 
 - Zebra-side Ethernet Segment (EVPN multihoming) config -- `evpn mh
   es-id` etc. -- is genuinely out of scope, not just unimplemented. It's

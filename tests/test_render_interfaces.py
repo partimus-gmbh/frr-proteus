@@ -36,3 +36,33 @@ def test_interface_blocks():
         "interface swp2\n"
         "exit\n"
     )
+
+
+def test_ipv6_nd_ra_interval_seconds():
+    root = ProteusInterface()
+    intf = Interface(name="swp1")
+    intf.ipv6_nd.ra_interval = 5
+    root.interfaces.interface.append(intf)
+    assert render_interfaces(root) == (
+        "interface swp1\n"
+        " ipv6 nd ra-interval 5\n"
+        "exit\n"
+    )
+
+
+def test_ipv6_nd_ra_interval_msec():
+    root = ProteusInterface()
+    intf = Interface(name="swp1")
+    intf.ipv6_nd.ra_interval_msec = 500
+    root.interfaces.interface.append(intf)
+    assert " ipv6 nd ra-interval msec 500\n" in render_interfaces(root)
+
+
+def test_ipv6_nd_ra_interval_choice_exclusive():
+    root = ProteusInterface()
+    intf = Interface(name="swp1")
+    intf.ipv6_nd.ra_interval = 5
+    intf.ipv6_nd.ra_interval_msec = 500
+    root.interfaces.interface.append(intf)
+    with pytest.raises(bindings.YangValidationError):
+        bindings.validate_tree(root)

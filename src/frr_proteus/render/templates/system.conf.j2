@@ -1,0 +1,19 @@
+{# Global host-level lines, in FRR's own write order: 'frr defaults'
+   first (lib/command.c vty_write_config), then config_write_host's
+   hostname, then log targets, then vtysh's service line.
+   integrated-vtysh-config is three-valued: unset renders nothing,
+   otherwise the explicit positive/negative form. #}
+{% if system.frr_defaults %}
+frr defaults {{ system.frr_defaults }}
+{% endif %}
+{% if system.hostname %}
+hostname {{ system.hostname }}
+{% endif %}
+{% if system.log.syslog %}
+log syslog {{ system.log.syslog }}
+{% endif %}
+{% if system.service.integrated_vtysh_config is true %}
+service integrated-vtysh-config
+{% elif system.service.integrated_vtysh_config is false %}
+no service integrated-vtysh-config
+{% endif %}

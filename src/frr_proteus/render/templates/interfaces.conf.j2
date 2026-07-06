@@ -1,10 +1,18 @@
 {# One 'interface NAME' block per declared interface.
    Text: lib/if.c cli_show_interface / cli_show_interface_desc /
-   cli_show_interface_end. #}
+   cli_show_interface_end; the ra-interval line is zebra_cli.c
+   ipv6_nd_ra_interval_cmd (sec and msec forms are a YANG choice, at
+   most one renders). #}
 {% for interface in interfaces.interface %}
 interface {{ interface.name }}
 {% if interface.description %}
  description {{ interface.description }}
+{% endif %}
+{% if interface.ipv6_nd.ra_interval is not none %}
+ ipv6 nd ra-interval {{ interface.ipv6_nd.ra_interval }}
+{% endif %}
+{% if interface.ipv6_nd.ra_interval_msec is not none %}
+ ipv6 nd ra-interval msec {{ interface.ipv6_nd.ra_interval_msec }}
 {% endif %}
 exit
 {% endfor %}

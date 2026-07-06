@@ -7,14 +7,16 @@ default instance and three tenant VRFs holding their L3VNI route
 targets.
 
 Reproduction notes vs. the original running config:
-  - AS numbers, addresses, names and passwords are anonymized. The
-    original used dotted AS notation ('router bgp 64505.101 as-notation
-    dot'); as-notation is not modeled, so plain-notation 4-byte ASNs
-    are used instead.
+  - AS numbers, addresses, names and passwords are anonymized. Like
+    the original ('router bgp 64505.101 as-notation dot'), the ASNs
+    are written in dotted notation -- pt:as-number is a plain/asdot
+    union rendered verbatim -- with 'as-notation dot' set on every
+    instance (a display-only knob for later show output).
   - 'frr defaults', hostname/log/vtysh service lines, 'vrf ... vni'
     blocks and interface 'ipv6 nd ra-interval' are zebra/vtysh
-    surface, outside this project's BGP-only scope -- they ride along
-    as the literal PREAMBLE below.
+    surface, but common enough in the real world that minimal proteus
+    modules model exactly these lines (proteus-system, proteus-vrf,
+    and the ipv6-nd knob on proteus-interface).
 
 Run with the generated bindings on the path:
     PYTHONPATH=src python3 examples/evpn_dual_speed_host.py
@@ -30,14 +32,20 @@ from frr_proteus._generated.proteus import (
     ProteusBgp,
     ProteusBgpFilter,
     ProteusFilter,
+    ProteusInterface,
     ProteusRouteMap,
+    ProteusSystem,
+    ProteusVrf,
     validate_tree,
 )
 from frr_proteus.render import (
     render_bgp_filters,
     render_bgp_instance,
     render_filters,
+    render_interfaces,
     render_route_maps,
+    render_system,
+    render_vrfs,
 )
 
 Instance: TypeAlias = ProteusBgp.Bgp.Instance
@@ -47,7 +55,10 @@ LargeCommunityList: TypeAlias = (
     ProteusBgpFilter.BgpFilters.LargeCommunityList
 )
 
-HOST_AS, SPINE_AS = 4210001101, {1: 4210000011, 2: 4210000012}
+# Dotted (asdot) notation, as in the original config: '64506.101' is
+# ASN 64506 * 65536 + 101. Rendered verbatim; 'as-notation dot' below
+# only tells FRR to format show output the same way.
+HOST_AS, SPINE_AS = "64506.101", {1: "64506.11", 2: "64506.12"}
 RT_AS, LC_AS = 65099, 4210000000  # route-target admin / community admin
 
 # One loopback per reachability class: (role, address, LC local-data-2).
@@ -73,16 +84,30 @@ VRFS = {"tnt_25G01": 15000001, "tnt_100G01": 15000002, "tnt_25GP01": 15000003}
 L2_VNIS = [15000004, 15000005, 15000006, 16001101, 16001102, 16001103]
 DEFAULT_INSTANCE_RT = 16001100
 
-PREAMBLE = f"""\
-frr defaults datacenter
-hostname vtep-host-01
-log syslog informational
-service integrated-vtysh-config
-!
-{"".join(f"vrf {vrf}\n vni {vni}\nexit-vrf\n!\n" for vrf, vni in VRFS.items())}\
-{"".join(f"interface {ifname}\n ipv6 nd ra-interval 5\nexit\n!\n"
-         for _, _, ifaces in SPINE_NEIGHBORS for ifname in ifaces)}\
-"""
+
+def build_host_objects() -> tuple[ProteusSystem, ProteusVrf, ProteusInterface]:
+    """The zebra/vtysh-side lines that used to ride along as a literal
+    preamble: global host settings, the VRF-to-L3VNI mappings, and the
+    RA interval on every underlay port (RAs are how unnumbered eBGP
+    learns the peer's link-local next hop)."""
+    system = ProteusSystem()
+    system.system.frr_defaults = "datacenter"
+    system.system.hostname = "vtep-host-01"
+    system.system.log.syslog = "informational"
+    system.system.service.integrated_vtysh_config = True
+
+    vrfs = ProteusVrf()
+    vrfs.vrfs.vrf.extend(
+        ProteusVrf.Vrfs.Vrf(name=vrf, l3vni=vni) for vrf, vni in VRFS.items()
+    )
+
+    interfaces = ProteusInterface()
+    for _, _, ifaces in SPINE_NEIGHBORS:
+        for ifname in ifaces:
+            intf = ProteusInterface.Interfaces.Interface(name=ifname)
+            intf.ipv6_nd.ra_interval = 5
+            interfaces.interfaces.interface.append(intf)
+    return system, vrfs, interfaces
 
 
 def rm_entry(seq, action="permit", desc=None, **clauses) -> RouteMap.Entry:
@@ -189,7 +214,10 @@ def add_rts(rt_set, *values: int) -> None:
 
 
 def build_default_instance() -> Instance:
-    inst = Instance(vrf="default", autonomous_system=HOST_AS, router_id=ROUTER_ID)
+    inst = Instance(
+        vrf="default", autonomous_system=HOST_AS, as_notation="dot",
+        router_id=ROUTER_ID,
+    )
     inst.default.ipv4_unicast = False
     inst.deterministic_med = False
     inst.graceful_restart.mode = "disable"
@@ -250,7 +278,10 @@ def build_default_instance() -> Instance:
 
 
 def build_vrf_instance(vrf: str, l3vni: int) -> Instance:
-    inst = Instance(vrf=vrf, autonomous_system=HOST_AS, router_id=ROUTER_ID)
+    inst = Instance(
+        vrf=vrf, autonomous_system=HOST_AS, as_notation="dot",
+        router_id=ROUTER_ID,
+    )
     inst.deterministic_med = False
     evpn = inst.afi_safis.l2vpn_evpn
     add_rts(evpn.route_target_import, l3vni)
@@ -259,16 +290,19 @@ def build_vrf_instance(vrf: str, l3vni: int) -> Instance:
 
 
 def main() -> None:
+    system, vrfs, interfaces = build_host_objects()
     filters, bgp_filters, rmaps = build_policy_objects()
     bgp = ProteusBgp()
     bgp.bgp.instance.append(build_default_instance())
     bgp.bgp.instance.extend(
         build_vrf_instance(vrf, vni) for vrf, vni in VRFS.items()
     )
-    validate_tree(bgp, rmaps, filters, bgp_filters)
+    validate_tree(bgp, rmaps, filters, bgp_filters, system, vrfs, interfaces)
 
     text = (
-        PREAMBLE
+        render_system(system)
+        + render_vrfs(vrfs)
+        + render_interfaces(interfaces)
         + render_filters(filters)
         + render_route_maps(rmaps)
         + "".join(render_bgp_instance(i) for i in bgp.bgp.instance)

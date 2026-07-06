@@ -26,7 +26,9 @@ else:
 Instance: TypeAlias = bindings.ProteusBgp.Bgp.Instance
 
 
-def _new_instance(asn: int | None = 65001, vrf: str = "default") -> Instance:
+def _new_instance(
+    asn: int | str | None = 65001, vrf: str = "default"
+) -> Instance:
     instance = Instance(vrf=vrf)
     if asn is not None:
         instance.autonomous_system = asn
@@ -120,6 +122,29 @@ def test_vrf_clause():
 def test_default_vrf_has_no_vrf_clause():
     text = render_bgp_instance(_new_instance(vrf="default"))
     assert text.startswith("router bgp 65001\n")
+
+
+def test_asdot_asn_rendered_verbatim():
+    instance = _new_instance(asn=None)
+    instance.autonomous_system = "64506.101"
+    text = render_bgp_instance(instance)
+    assert text.startswith("router bgp 64506.101\n")
+
+
+def test_asdot_asn_validated():
+    with pytest.raises(Exception, match="0.0"):
+        _new_instance(asn="0.0")
+
+
+def test_as_notation_suffix_after_vrf_clause():
+    instance = _new_instance(vrf="RED")
+    instance.as_notation = "dot"
+    text = render_bgp_instance(instance)
+    assert text.startswith("router bgp 65001 vrf RED as-notation dot\n")
+
+
+def test_as_notation_omitted_when_unset():
+    assert "as-notation" not in render_bgp_instance(_new_instance())
 
 
 # --- instance-level knobs (bgp_config_write in bgpd/bgp_vty.c) ---

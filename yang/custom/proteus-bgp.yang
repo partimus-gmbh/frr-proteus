@@ -68,8 +68,10 @@ module proteus-bgp {
      - RPKI cache configuration (bgp_rpki.c), BMP (bgp_bmp.c), VNC,
        SNMP notifications, conditional 'bgp snmp traps' -- separate
        subsystems with their own config-write hooks.
-     - 'bgp asnotation' / asdot AS rendering (plain-decimal only) and
-       the hidden 'view' semantics beyond declaring the type.
+     - The hidden 'view' semantics beyond declaring the type. (asdot
+       AS values and the per-instance 'as-notation' display mode ARE
+       modeled: pt:as-number is a plain-decimal/asdot union, and the
+       instance carries an as-notation leaf.)
      - dynamic (listen-range) peers hold no config of their own; the
        listen ranges live under the peer-group they bind to.
 
@@ -1861,8 +1863,39 @@ module proteus-bgp {
         mandatory true;
         description
           "Local autonomous system number: the ASN token of
-           'router bgp ASN' (router_bgp_cmd). Plain decimal only;
-           'as-notation dot' rendering is not modeled.";
+           'router bgp ASN' (router_bgp_cmd), in plain decimal or
+           asdot notation -- rendered verbatim as configured. FRR
+           parses either notation independent of the as-notation
+           leaf, which only selects the display notation of later
+           show output.";
+      }
+
+      leaf as-notation {
+        type enumeration {
+          enum plain {
+            description
+              "Always plain 32-bit decimal.";
+          }
+          enum dot {
+            description
+              "asdot: '<high>.<low>' for ASNs above 65535, plain
+               decimal below (RFC 5396 asdot).";
+          }
+          enum dot+ {
+            description
+              "asdot+: '<high>.<low>' for every ASN, including
+               '0.<low>' for 2-byte ASNs.";
+          }
+        }
+        description
+          "'router bgp ASN ... as-notation <dot|dot+|plain>'
+           (router_bgp_cmd; written as a header-line suffix after the
+           view/vrf clause by bgp_config_write, asn_mode2str in
+           lib/asn.c). Display-only: it selects the notation FRR uses
+           for ASNs in show output and does not constrain how the
+           autonomous-system value itself is written here. Only
+           emitted when explicitly configured (BGP_CONFIG_ASNOTATION),
+           matching the unset-renders-nothing convention.";
       }
 
       leaf router-id {

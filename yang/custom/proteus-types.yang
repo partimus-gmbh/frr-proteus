@@ -40,22 +40,51 @@ module proteus-types {
        case), communities (RFC 1997 + well-known set + raw fallback),
        large communities (RFC 8092), and a route-origin grouping pair
        distinct from route targets (RFC 4360 subtype 0x03 vs 0x02).
-       ESI becomes a length-restricted yang:hex-string.";
+       ESI becomes a length-restricted yang:hex-string. Later the
+       same day: as-number becomes a union of plain decimal and
+       asdot '<high>.<low>' notation (lib/asn.c parses both
+       everywhere an ASN is accepted).";
   }
   revision 2026-07-05 {
     description
       "Initial revision.";
   }
 
-  typedef as-number {
-    type inet:as-number {
-      range "1..4294967295";
+  typedef as-number-asdot {
+    type string {
+      pattern '([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}'
+            + '|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])'
+            + '\.(0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}'
+            + '|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])'
+            + '|0\.([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}'
+            + '|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])';
     }
     description
-      "BGP autonomous system number. inet:as-number restricted to
-       exclude 0: FRR rejects ASN 0 (reserved, RFC 7607). Only plain
-       decimal notation is modeled; FRR's asdot notation is out of
-       scope.";
+      "AS number in FRR's asdot/asdot+ notation: '<high>.<low>' where
+       ASN = high * 65536 + low, both halves 0..65535 with no leading
+       zeros, '0.0' (ASN 0) forbidden -- exactly what
+       asn_str2asn_internal() in lib/asn.c accepts ('0.<low>' is the
+       asdot+ spelling of a 2-byte ASN). Rendered verbatim: FRR
+       parses either notation regardless of the instance's
+       as-notation setting, which only controls show-output
+       formatting.";
+  }
+
+  typedef as-number {
+    type union {
+      type inet:as-number {
+        range "1..4294967295";
+      }
+      type as-number-asdot;
+    }
+    description
+      "BGP autonomous system number, in plain decimal (a number) or
+       asdot '<high>.<low>' notation (a string) -- both are accepted
+       by every FRR ASN token (lib/asn.c asn_str2asn) independent of
+       the configured as-notation display mode. The plain member is
+       inet:as-number restricted to exclude 0: FRR rejects ASN 0
+       (reserved, RFC 7607); the asdot pattern likewise excludes
+       '0.0'.";
   }
 
   typedef object-name {

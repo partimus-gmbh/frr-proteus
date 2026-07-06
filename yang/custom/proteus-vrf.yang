@@ -1,0 +1,88 @@
+module proteus-vrf {
+  yang-version 1.1;
+  namespace "https://github.com/robinchrist/frr-proteus/yang/custom/vrf";
+  prefix proteus-vrf;
+
+  import proteus-types {
+    prefix pt;
+  }
+
+  organization
+    "frr-proteus";
+  contact
+    "https://github.com/robinchrist/frr-proteus";
+  description
+    "Minimal VRF objects: the 'vrf NAME' config blocks. VRFs are
+     zebra's surface, not bgpd's, and frr-proteus is BGP-only -- the
+     full per-VRF zebra vocabulary (static routes, ip protocol
+     route-maps, table ranges, ...) is deliberately out of scope.
+     This module exists to model the one VRF line real-world EVPN
+     configs need, the VRF-to-L3VNI mapping, so it doesn't have to
+     ride along as literal preamble text.
+
+     CLI text (lib/vrf.c lib_vrf_cli_write / lib_vrf_cli_write_end,
+     zebra/zebra_cli.c vni_mapping_cmd /
+     lib_vrf_zebra_l3vni_id_cli_write):
+
+       vrf NAME
+        vni VNI [prefix-routes-only]
+       exit-vrf
+
+     Note the BGP instance list in proteus-bgp stays keyed by a plain
+     vrf string rather than a leafref into this list: 'default' is a
+     valid instance key but never a 'vrf NAME' block, and BGP
+     instances routinely target kernel VRFs that carry no zebra vrf
+     config at all.";
+
+  revision 2026-07-06 {
+    description
+      "Initial revision.";
+  }
+
+  container vrfs {
+    description
+      "All declared VRF config blocks.";
+
+    list vrf {
+      key "name";
+      description
+        "One 'vrf NAME' block (lib/vrf.c vrf_cmd). The default VRF
+         is never written as a block (lib_vrf_cli_write skips
+         VRF_DEFAULT_NAME) and must not be declared here.";
+
+      leaf name {
+        type string {
+          length "1..36";
+        }
+        must ". != 'default'" {
+          error-message
+            "The default VRF is not a 'vrf NAME' block; only named
+             VRFs are declared here.";
+        }
+        description
+          "VRF name. 36 is FRR's VRF_NAMSIZ bound (lib/vrf.h).";
+      }
+
+      leaf l3vni {
+        type pt:vni;
+        description
+          "'vni VNI' inside the vrf block: the L3VNI mapped to this
+           tenant VRF (zebra/zebra_cli.c vni_mapping_cmd,
+           lib_vrf_zebra_l3vni_id_cli_write).";
+      }
+
+      leaf prefix-routes-only {
+        type boolean;
+        must "../l3vni" {
+          error-message
+            "prefix-routes-only is a suffix of the 'vni' line and
+             needs l3vni set.";
+        }
+        description
+          "'vni VNI prefix-routes-only' when true: only leak prefix
+           routes into the VRF, no MAC/IP host routes (same DEFPY as
+           the vni line; rendered as its suffix).";
+      }
+    }
+  }
+}

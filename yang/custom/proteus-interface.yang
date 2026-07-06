@@ -24,8 +24,24 @@ module proteus-interface {
        exit
 
      The optional 'interface NAME vrf VRF' form is only emitted with
-     the netns VRF backend and is not modeled.";
+     the netns VRF backend and is not modeled.
 
+     One zebra interface knob is modeled beyond name/description:
+     'ipv6 nd ra-interval', which real-world BGP-unnumbered underlay
+     configs set on every fabric port (RAs are how unnumbered eBGP
+     learns the peer's link-local next hop):
+
+       interface NAME
+        ipv6 nd ra-interval <SECS|msec MSECS>
+       exit
+
+     (zebra/zebra_cli.c ipv6_nd_ra_interval_cmd /
+     lib_interface_zebra_ipv6_router_advertisements_max_rtr_adv_interval_cli_write).";
+
+  revision 2026-07-06 {
+    description
+      "Add the ipv6-nd ra-interval knob.";
+  }
   revision 2026-07-05 {
     description
       "Initial revision.";
@@ -57,6 +73,44 @@ module proteus-interface {
         description
           "'description LINE' inside the interface block
            (lib/if.c interface_desc_cmd / cli_show_interface_desc).";
+      }
+
+      container ipv6-nd {
+        description
+          "IPv6 neighbor-discovery / router-advertisement settings.
+           Only ra-interval is modeled (see the module
+           description).";
+
+        choice ra-interval-units {
+          description
+            "'ipv6 nd ra-interval <(1-1800)|msec (70-1800000)>'
+             (zebra/zebra_cli.c ipv6_nd_ra_interval_cmd): one
+             interval, in whole seconds or in milliseconds. The
+             cli_write emits the msec form exactly when the stored
+             interval isn't a whole second, so the two cases
+             round-trip.";
+
+          case seconds {
+            leaf ra-interval {
+              type uint16 {
+                range "1..1800";
+              }
+              units "seconds";
+              description
+                "'ipv6 nd ra-interval (1-1800)'.";
+            }
+          }
+          case milliseconds {
+            leaf ra-interval-msec {
+              type uint32 {
+                range "70..1800000";
+              }
+              units "milliseconds";
+              description
+                "'ipv6 nd ra-interval msec (70-1800000)'.";
+            }
+          }
+        }
       }
     }
   }
