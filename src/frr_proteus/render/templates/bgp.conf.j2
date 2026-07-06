@@ -8,16 +8,144 @@ CLI; the shared 'neighbor X ...' line vocabulary lives in
 bgp_neighbor_macros.j2 (one macro call per peer-group / neighbor, FRR
 order: peer-groups first, then neighbors).
 
+Three-valued booleans (leaves without a YANG default whose FRR default
+depends on the compile profile or is simply 'on') render nothing when
+unset and the explicit positive/negative form otherwise; leaves
+documented as 'only the negative form is written' render only on
+false.
+
 Note the standalone " !" line before a non-empty address-family block:
 that mirrors bgp_vty.c's `vty_frame(vty, " !\n address-family ...")`,
 which FRR only flushes once the block has real content -- so an
 address-family with no networks/config produces no output at all,
 including no leading "!". #}
 {% import "bgp_neighbor_macros.j2" as nb %}
-{% set vrf_clause = " vrf " ~ instance.vrf if instance.vrf and instance.vrf != "default" else "" %}
-router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
+{# Instance-level per-AF block body, shared by all eight non-EVPN
+   families in bgp_config_write_family()'s emission order: distance,
+   network, aggregate-address, redistribute, nexthop prefer-global,
+   dampening, (neighbors, appended by the caller), maximum-paths,
+   table-map, vpn leaking. Families lack some groupings (e.g. vpn has
+   no network/redistribute), hence the 'is defined' guards. #}
+{% macro af_head_lines(af) %}
+{% if af.distance.ebgp is not none %}
+  distance bgp {{ af.distance.ebgp }} {{ af.distance.ibgp }} {{ af.distance.local }}
+{% endif %}
+{% for dp in af.distance.prefix %}
+{% set dp_acl = " " ~ dp.access_list if dp.access_list else "" %}
+  distance {{ dp.distance }} {{ dp.prefix }}{{ dp_acl }}
+{% endfor %}
+{% for net in (af.network if af.network is defined else []) %}
+{% set net_label = " label-index " ~ net.label_index if net.label_index is not none else "" %}
+{% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
+{% set net_backdoor = " backdoor" if net.backdoor is defined and net.backdoor else "" %}
+  network {{ net.prefix }}{{ net_label }}{{ net_rmap }}{{ net_backdoor }}
+{% endfor %}
+{% for agg in (af.aggregate_address if af.aggregate_address is defined else []) %}
+{% set agg_as_set = " as-set" if agg.as_set else "" %}
+{% set agg_summary = " summary-only" if agg.summary_only else "" %}
+{% set agg_rmap = " route-map " ~ agg.route_map if agg.route_map else "" %}
+{% set agg_origin = " origin " ~ agg.origin if agg.origin else "" %}
+{% set agg_med = " matching-MED-only" if agg.matching_med_only else "" %}
+{% set agg_suppress = " suppress-map " ~ agg.suppress_map if agg.suppress_map else "" %}
+  aggregate-address {{ agg.prefix }}{{ agg_as_set }}{{ agg_summary }}{{ agg_rmap }}{{ agg_origin }}{{ agg_med }}{{ agg_suppress }}
+{% endfor %}
+{% for red in (af.redistribute if af.redistribute is defined else []) %}
+{% set red_inst = " " ~ red.instance if red.instance else "" %}
+{% set red_metric = " metric " ~ red.metric if red.metric is not none else "" %}
+{% set red_rmap = " route-map " ~ red.route_map if red.route_map else "" %}
+  redistribute {{ red.protocol }}{{ red_inst }}{{ red_metric }}{{ red_rmap }}
+{% endfor %}
+{% if af.nexthop_prefer_global is defined %}
+{% if af.nexthop_prefer_global is true %}
+  nexthop prefer-global
+{% elif af.nexthop_prefer_global is false %}
+  no nexthop prefer-global
+{% endif %}
+{% endif %}
+{# AF-level dampening: bare, half-life only, or all four numbers
+   (bgp_config_write_damp in bgp_damp.c). #}
+{% if af.dampening.enabled %}
+{% if af.dampening.reuse_threshold is not none %}
+{% set damp_args = " " ~ af.dampening.half_life ~ " " ~ af.dampening.reuse_threshold ~ " " ~ af.dampening.suppress_threshold ~ " " ~ af.dampening.max_suppress_time %}
+{% elif af.dampening.half_life is not none %}
+{% set damp_args = " " ~ af.dampening.half_life %}
+{% else %}
+{% set damp_args = "" %}
+{% endif %}
+  bgp dampening{{ damp_args }}
+{% endif %}
+{% endmacro %}
+{% macro af_tail_lines(af) %}
+{% if af.maximum_paths.ebgp is not none %}
+  maximum-paths {{ af.maximum_paths.ebgp }}
+{% endif %}
+{% if af.maximum_paths.ibgp is not none %}
+{% set mpi_ecl = " equal-cluster-length" if af.maximum_paths.ibgp_equal_cluster_length else "" %}
+  maximum-paths ibgp {{ af.maximum_paths.ibgp }}{{ mpi_ecl }}
+{% endif %}
+{% if af.table_map %}
+  table-map {{ af.table_map }}
+{% endif %}
+{% if af.export_vpn is defined and af.export_vpn %}
+  export vpn
+{% endif %}
+{% if af.import_vpn is defined and af.import_vpn %}
+  import vpn
+{% endif %}
+{% for vrf_name in (af.import_vrf if af.import_vrf is defined else []) %}
+  import vrf {{ vrf_name }}
+{% endfor %}
+{% endmacro %}
+{% set instance_clause = " view " ~ instance.vrf if instance.instance_type == "view" else (" vrf " ~ instance.vrf if instance.vrf and instance.vrf != "default" else "") %}
+router bgp {{ instance.autonomous_system }}{{ instance_clause }}
+{# Instance-level knobs, bgp_config_write()'s emission order. #}
+{% if instance.fast_external_failover is false %}
+ no bgp fast-external-failover
+{% endif %}
 {% if instance.router_id %}
  bgp router-id {{ instance.router_id }}
+{% endif %}
+{% if instance.suppress_fib_pending.enabled %}
+{% set sfp_delay = " " ~ instance.suppress_fib_pending.advertisement_delay if instance.suppress_fib_pending.advertisement_delay is not none else "" %}
+ bgp suppress-fib-pending{{ sfp_delay }}
+{% endif %}
+{% if instance.log_neighbor_changes is true %}
+ bgp log-neighbor-changes
+{% elif instance.log_neighbor_changes is false %}
+ no bgp log-neighbor-changes
+{% endif %}
+{% if instance.always_compare_med %}
+ bgp always-compare-med
+{% endif %}
+{% if instance.ebgp_requires_policy is true %}
+ bgp ebgp-requires-policy
+{% elif instance.ebgp_requires_policy is false %}
+ no bgp ebgp-requires-policy
+{% endif %}
+{% if instance.enforce_first_as is true %}
+ bgp enforce-first-as
+{% elif instance.enforce_first_as is false %}
+ no bgp enforce-first-as
+{% endif %}
+{% if instance.labeled_unicast_explicit_null == "both" %}
+ bgp labeled-unicast explicit-null
+{% elif instance.labeled_unicast_explicit_null == "ipv4" %}
+ bgp labeled-unicast ipv4-explicit-null
+{% elif instance.labeled_unicast_explicit_null == "ipv6" %}
+ bgp labeled-unicast ipv6-explicit-null
+{% endif %}
+{% if instance.reject_as_sets is false %}
+ no bgp reject-as-sets
+{% endif %}
+{% if instance.suppress_duplicates is true %}
+ bgp suppress-duplicates
+{% elif instance.suppress_duplicates is false %}
+ no bgp suppress-duplicates
+{% endif %}
+{% if instance.hard_administrative_reset is true %}
+ bgp hard-administrative-reset
+{% elif instance.hard_administrative_reset is false %}
+ no bgp hard-administrative-reset
 {% endif %}
 {# 'bgp default ipv4-unicast' is the only per-AF activation default
    that is on by default; FRR writes its negation and every other
@@ -37,6 +165,57 @@ router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
  bgp default {{ token }}
 {% endif %}
 {% endfor %}
+{% if instance.default.local_preference is not none %}
+ bgp default local-preference {{ instance.default.local_preference }}
+{% endif %}
+{% if instance.default.show_hostname is true %}
+ bgp default show-hostname
+{% elif instance.default.show_hostname is false %}
+ no bgp default show-hostname
+{% endif %}
+{% if instance.default.show_nexthop_hostname is true %}
+ bgp default show-nexthop-hostname
+{% elif instance.default.show_nexthop_hostname is false %}
+ no bgp default show-nexthop-hostname
+{% endif %}
+{% if instance.default.software_version_capability is true %}
+ bgp default software-version-capability
+{% elif instance.default.software_version_capability is false %}
+ no bgp default software-version-capability
+{% endif %}
+{% if instance.default.software_version_capability_latest_encoding is true %}
+ bgp default software-version-capability latest-encoding
+{% elif instance.default.software_version_capability_latest_encoding is false %}
+ no bgp default software-version-capability latest-encoding
+{% endif %}
+{% if instance.default.link_local_capability is true %}
+ bgp default link-local-capability
+{% elif instance.default.link_local_capability is false %}
+ no bgp default link-local-capability
+{% endif %}
+{% if instance.default.dynamic_capability is true %}
+ bgp default dynamic-capability
+{% elif instance.default.dynamic_capability is false %}
+ no bgp default dynamic-capability
+{% endif %}
+{% if instance.default.subgroup_pkt_queue_max is not none %}
+ bgp default subgroup-pkt-queue-max {{ instance.default.subgroup_pkt_queue_max }}
+{% endif %}
+{% if instance.client_to_client_reflection is false %}
+ no bgp client-to-client reflection
+{% endif %}
+{% if instance.cluster_id is not none %}
+ bgp cluster-id {{ instance.cluster_id }}
+{% endif %}
+{% if instance.disable_ebgp_connected_route_check %}
+ bgp disable-ebgp-connected-route-check
+{% endif %}
+{% if instance.confederation.identifier is not none %}
+ bgp confederation identifier {{ instance.confederation.identifier }}
+{% endif %}
+{% if instance.confederation.peers %}
+ bgp confederation peers {{ instance.confederation.peers | join(' ') }}
+{% endif %}
 {# deterministic-med's default depends on the 'frr defaults' profile
    (on for datacenter), so both explicit forms render. #}
 {% if instance.deterministic_med is true %}
@@ -44,17 +223,119 @@ router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
 {% elif instance.deterministic_med is false %}
  no bgp deterministic-med
 {% endif %}
+{# Per-instance update-delay / advertisement-delay have no 'bgp '
+   prefix (bgp_config_write_update_delay / _advertisement_delay). #}
+{% if instance.update_delay.delay is not none %}
+{% set ud_wait = " " ~ instance.update_delay.establish_wait if instance.update_delay.establish_wait is not none else "" %}
+ update-delay {{ instance.update_delay.delay }}{{ ud_wait }}
+{% endif %}
+{% if instance.advertisement_delay is not none %}
+ advertisement-delay {{ instance.advertisement_delay }}
+{% endif %}
+{% if instance.max_med.on_startup.period is not none %}
+{% set mm_med = " " ~ instance.max_med.on_startup.med if instance.max_med.on_startup.med is not none else "" %}
+ bgp max-med on-startup {{ instance.max_med.on_startup.period }}{{ mm_med }}
+{% endif %}
+{% if instance.max_med.administrative.enabled %}
+{% set mma_med = " " ~ instance.max_med.administrative.med if instance.max_med.administrative.med is not none else "" %}
+ bgp max-med administrative{{ mma_med }}
+{% endif %}
+{% if instance.write_quanta is not none %}
+ write-quanta {{ instance.write_quanta }}
+{% endif %}
+{% if instance.read_quanta is not none %}
+ read-quanta {{ instance.read_quanta }}
+{% endif %}
+{% if instance.coalesce_time is not none %}
+ coalesce-time {{ instance.coalesce_time }}
+{% endif %}
+{% if instance.graceful_shutdown %}
+ bgp graceful-shutdown
+{% endif %}
+{% if instance.long_lived_graceful_restart_stale_time is not none %}
+ bgp long-lived-graceful-restart stale-time {{ instance.long_lived_graceful_restart_stale_time }}
+{% endif %}
+{% if instance.graceful_restart.stalepath_time is not none %}
+ bgp graceful-restart stalepath-time {{ instance.graceful_restart.stalepath_time }}
+{% endif %}
+{% if instance.graceful_restart.restart_time is not none %}
+ bgp graceful-restart restart-time {{ instance.graceful_restart.restart_time }}
+{% endif %}
+{% if instance.graceful_restart.notification is true %}
+ bgp graceful-restart notification
+{% elif instance.graceful_restart.notification is false %}
+ no bgp graceful-restart notification
+{% endif %}
+{% if instance.graceful_restart.select_defer_time is not none %}
+ bgp graceful-restart select-defer-time {{ instance.graceful_restart.select_defer_time }}
+{% endif %}
 {% if instance.graceful_restart.mode == "restarter" %}
  bgp graceful-restart
 {% elif instance.graceful_restart.mode == "disable" %}
  bgp graceful-restart-disable
 {% endif %}
+{% if instance.graceful_restart.preserve_fw_state %}
+ bgp graceful-restart preserve-fw-state
+{% endif %}
+{% if instance.tcp_keepalive.idle is not none %}
+ bgp tcp-keepalive {{ instance.tcp_keepalive.idle }} {{ instance.tcp_keepalive.interval }} {{ instance.tcp_keepalive.probes }}
+{% endif %}
+{% if instance.graceful_restart.rib_stale_time is not none %}
+ bgp graceful-restart rib-stale-time {{ instance.graceful_restart.rib_stale_time }}
+{% endif %}
+{% if instance.bestpath.as_path_ignore %}
+ bgp bestpath as-path ignore
+{% endif %}
+{% if instance.bestpath.as_path_confed %}
+ bgp bestpath as-path confed
+{% endif %}
 {% if instance.bestpath.as_path_multipath_relax.enabled %}
 {% set mpr_as_set = " as-set" if instance.bestpath.as_path_multipath_relax.as_set else "" %}
  bgp bestpath as-path multipath-relax{{ mpr_as_set }}
 {% endif %}
+{% if instance.route_reflector_allow_outbound_policy is true %}
+ bgp route-reflector allow-outbound-policy
+{% elif instance.route_reflector_allow_outbound_policy is false %}
+ no bgp route-reflector allow-outbound-policy
+{% endif %}
 {% if instance.bestpath.compare_routerid %}
  bgp bestpath compare-routerid
+{% endif %}
+{% if instance.bestpath.use_imported_attributes %}
+ bgp bestpath use-imported-attributes
+{% endif %}
+{% if instance.bestpath.aigp is true %}
+ bgp bestpath aigp
+{% elif instance.bestpath.aigp is false %}
+ no bgp bestpath aigp
+{% endif %}
+{% if instance.bestpath.med.confed or instance.bestpath.med.missing_as_worst %}
+{% set med_confed = " confed" if instance.bestpath.med.confed else "" %}
+{% set med_missing = " missing-as-worst" if instance.bestpath.med.missing_as_worst else "" %}
+ bgp bestpath med{{ med_confed }}{{ med_missing }}
+{% endif %}
+{% if instance.bestpath.peer_type_multipath_relax %}
+ bgp bestpath peer-type multipath-relax
+{% endif %}
+{% if instance.bestpath.bandwidth %}
+ bgp bestpath bandwidth {{ instance.bestpath.bandwidth }}
+{% endif %}
+{% if instance.network_import_check is true %}
+ bgp network import-check
+{% elif instance.network_import_check is false %}
+ no bgp network import-check
+{% endif %}
+{% if instance.timers.keepalive is not none %}
+ timers bgp {{ instance.timers.keepalive }} {{ instance.timers.holdtime }}
+{% endif %}
+{% if instance.timers.minimum_holdtime is not none %}
+ bgp minimum-holdtime {{ instance.timers.minimum_holdtime }}
+{% endif %}
+{% if instance.timers.conditional_advertisement is not none %}
+ bgp conditional-advertisement timer {{ instance.timers.conditional_advertisement }}
+{% endif %}
+{% if instance.timers.default_originate is not none %}
+ bgp default-originate timer {{ instance.timers.default_originate }}
 {% endif %}
 {# Peer-groups before neighbors, matching bgp_config_write()'s two
    loops over bgp->group and bgp->peer. #}
@@ -87,7 +368,38 @@ router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
 {% endif %}
 {{ nb.session_lines(neighbor.address, neighbor) -}}
 {% endfor %}
-{% for af_cli, af_field in [("ipv4 unicast", "ipv4_unicast"), ("ipv6 unicast", "ipv6_unicast")] %}
+{# Dynamic-neighbor listen limit and per-group listen ranges, written
+   after the neighbors (bgp_config_write_listen). #}
+{% if instance.listen_limit is not none %}
+ bgp listen limit {{ instance.listen_limit }}
+{% endif %}
+{% for group in instance.peer_group %}
+{% for range in group.listen_range %}
+ bgp listen range {{ range }} peer-group {{ group.name }}
+{% endfor %}
+{% endfor %}
+{# 'bgp default shutdown' must come after all peer configuration so a
+   reload doesn't shut existing peers down (bgp_config_write, #2286). #}
+{% if instance.default.shutdown %}
+ bgp default shutdown
+{% endif %}
+{% if instance.shutdown %}
+ bgp shutdown
+{% endif %}
+{% if instance.allow_martian_nexthop %}
+ bgp allow-martian-nexthop
+{% endif %}
+{% if instance.fast_convergence %}
+ bgp fast-convergence
+{% endif %}
+{% for af_cli, af_field in [("ipv4 unicast", "ipv4_unicast"),
+                            ("ipv4 multicast", "ipv4_multicast"),
+                            ("ipv4 labeled-unicast", "ipv4_labeled_unicast"),
+                            ("ipv4 vpn", "ipv4_vpn"),
+                            ("ipv6 unicast", "ipv6_unicast"),
+                            ("ipv6 multicast", "ipv6_multicast"),
+                            ("ipv6 labeled-unicast", "ipv6_labeled_unicast"),
+                            ("ipv6 vpn", "ipv6_vpn")] %}
 {% set af = instance.afi_safis[af_field] %}
 {% set af_groups = instance.peer_group
      | selectattr('afi_safis.' ~ af_field, 'has_config')
@@ -95,18 +407,19 @@ router bgp {{ instance.autonomous_system }}{{ vrf_clause }}
 {% set af_neighbors = instance.neighbor
      | selectattr('afi_safis.' ~ af_field, 'has_config')
      | list %}
-{% if af.network or af_groups or af_neighbors %}
+{% if af is has_config or af_groups or af_neighbors %}
  !
  address-family {{ af_cli }}
-{% for net in af.network %}
-  network {{ net.prefix }}
-{% endfor %}
+{{ af_head_lines(af) -}}
 {% for group in af_groups %}
 {{ nb.af_lines(group.name, group.afi_safis[af_field]) -}}
 {% endfor %}
 {% for neighbor in af_neighbors %}
 {{ nb.af_lines(neighbor.address, neighbor.afi_safis[af_field]) -}}
 {% endfor %}
+{{ af_tail_lines(af) -}}
+{# this comment stops the '-' above from also eating the next line's
+   leading space #}
  exit-address-family
 {% endif %}
 {% endfor %}

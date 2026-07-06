@@ -219,3 +219,13 @@ def test_set_metric_operation_alone_needs_operand():
     entry.set.metric.operation = "add"
     with pytest.raises(bindings.YangValidationError):
         bindings.validate_tree(root)
+
+
+def test_set_aigp_metric_zero_renders():
+    # Regression: `set aigp-metric 0` is schema-valid but falsy; a
+    # truthiness guard used to drop it silently.
+    root, entry = _root_with_entry()
+    entry.set.aigp_metric = 0
+    assert " set aigp-metric 0\n" in render_route_maps(root)
+    entry.set.aigp_metric = "igp-metric"
+    assert " set aigp-metric igp-metric\n" in render_route_maps(root)

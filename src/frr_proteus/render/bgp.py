@@ -39,6 +39,7 @@ _env = jinja2.Environment(
 _env.globals.update(
     evpn_af_needed=helpers.evpn_af_needed,
     route_target_texts=helpers.route_target_texts,
+    route_origin_text=helpers.route_origin_text,
     rd_text=helpers.rd_text,
 )
 # As a Jinja *test* so templates can write
@@ -46,6 +47,7 @@ _env.globals.update(
 _env.tests["has_config"] = helpers.has_config
 
 _bgp_template = _env.get_template("bgp.conf.j2")
+_bgp_process_template = _env.get_template("bgp_process.conf.j2")
 _evpn_global_template = _env.get_template("evpn_global.conf.j2")
 
 # Output format -> the template rendering the l2vpn evpn AF block.
@@ -87,10 +89,13 @@ def render_bgp_instance(instance, *, format: str = "frr") -> str:
     command syntax is removed). Everything outside the EVPN AF renders
     identically in both formats.
 
-    Renderer scope is still steps 1+2 (basic BGP + EVPN) plus the
-    experimental scheme; the schema models far more than these
-    templates render, and every new *stock* field needs its CLI text
-    confirmed against bgpd's config-write code before being added.
+    The renderer covers the full proteus-bgp.yang instance surface
+    (all eight non-EVPN address families, the complete neighbor
+    session/per-AF vocabulary, instance-level knobs, and the EVPN AF
+    incl. multihoming/dup-addr-detection/type-5 networks); every
+    rendered line's CLI text is confirmed against bgpd's config-write
+    code -- keep that rule for anything new. Process-wide 'bgp ...'
+    lines are separate: see render_bgp_process().
     """
     if not instance.autonomous_system:
         raise ValueError("instance autonomous-system is not set")
@@ -99,6 +104,20 @@ def render_bgp_instance(instance, *, format: str = "frr") -> str:
         format=format,
         evpn_af_template=_evpn_af_template(format),
     )
+
+
+def render_bgp_process(process) -> str:
+    """Render the process-wide `/bgp/process` container into the 'bgp
+    ...' lines FRR writes before any 'router bgp' block (the bm->
+    globals at the top of bgp_config_write in bgpd/bgp_vty.c).
+
+    `process` is the generated `ProteusBgp.Bgp.Process` container.
+    Returns the empty string when nothing in it is configured, so
+    callers can unconditionally prepend it to a composed frr.conf.
+    """
+    if not helpers.has_config(process):
+        return ""
+    return _bgp_process_template.render(process=process)
 
 
 def render_evpn_global(evpn, *, format: str = "frr") -> str:

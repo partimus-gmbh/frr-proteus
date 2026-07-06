@@ -79,6 +79,17 @@ def rd_text(rd) -> str | None:
     return None
 
 
+def route_origin_text(ro) -> str | None:
+    """Render a proteus-types route-origin container (site-of-origin,
+    RFC 4360 subtype 0x03; a mandatory choice of as2/as4/ipv4 encoding)
+    into FRR's CLI token '<AS>:<NN>' / '<A.B.C.D>:<NN>', or None when
+    the enclosing container is unconfigured."""
+    for encoding in (ro.as2, ro.as4, ro.ipv4):
+        if encoding.global_admin is not None:
+            return f"{encoding.global_admin}:{encoding.local_admin}"
+    return None
+
+
 def community_texts(cset) -> list[str]:
     """Render a proteus-types community-set (structured members,
     well-known names, raw fallbacks) into FRR's CLI tokens, in that

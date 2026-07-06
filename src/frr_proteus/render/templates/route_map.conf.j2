@@ -189,7 +189,7 @@ route-map {{ rm.name }} {{ e.action }} {{ e.sequence }}
 {% if s.aggregator.as_ %}
  set aggregator as {{ s.aggregator.as_ }} {{ s.aggregator.address }}
 {% endif %}
-{% if s.aigp_metric %}
+{% if s.aigp_metric is not none %}
  set aigp-metric {{ s.aigp_metric }}
 {% endif %}
 {% if s.atomic_aggregate %}

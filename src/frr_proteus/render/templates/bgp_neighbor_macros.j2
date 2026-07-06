@@ -10,12 +10,31 @@ shape differs between neighbors and peer-groups, so bgp.conf.j2 renders
 them at the call site.
 
 af_lines: per-address-family lines inside an 'address-family' block, in
-bgp_config_write_peer_af()'s + bgp_config_write_filter()'s order. FRR
-installs these commands with identical text in every family, so one
-macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
+bgp_config_write_peer_af()'s + bgp_config_write_filter()'s order, plus
+per-neighbor dampening (bgp_config_write_peer_damp in bgp_damp.c --
+FRR emits it before the peer's other AF lines, we append it after;
+placement inside the AF block is free). FRR installs these commands
+with identical text in every family, so one macro serves all address
+families. #}
 {% macro session_lines(addr, n) %}
+{% if n.local_as.as_ is not none %}
+{% set la_np = " no-prepend" if n.local_as.no_prepend else "" %}
+{% set la_ra = " replace-as" if n.local_as.replace_as else "" %}
+{% set la_da = " dual-as" if n.local_as.dual_as else "" %}
+ neighbor {{ addr }} local-as {{ n.local_as.as_ }}{{ la_np }}{{ la_ra }}{{ la_da }}
+{% endif %}
 {% if n.description %}
  neighbor {{ addr }} description {{ n.description }}
+{% endif %}
+{# shutdown: the message rides on the same line when present
+   (bgp_config_write_peer_global writes either form, never both). #}
+{% if n.shutdown.enabled %}
+{% set sd_msg = " message " ~ n.shutdown.message if n.shutdown.message else "" %}
+ neighbor {{ addr }} shutdown{{ sd_msg }}
+{% endif %}
+{% if n.shutdown.rtt.threshold is not none %}
+{% set sd_count = " count " ~ n.shutdown.rtt.count if n.shutdown.rtt.count is not none else "" %}
+ neighbor {{ addr }} shutdown rtt {{ n.shutdown.rtt.threshold }}{{ sd_count }}
 {% endif %}
 {% if n.bfd.enabled %}
  neighbor {{ addr }} bfd
@@ -29,8 +48,17 @@ macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
 {% if n.password %}
  neighbor {{ addr }} password {{ n.password }}
 {% endif %}
+{% if n.solo %}
+ neighbor {{ addr }} solo
+{% endif %}
+{% if n.port is not none %}
+ neighbor {{ addr }} port {{ n.port }}
+{% endif %}
 {% if n.source_interface %}
  neighbor {{ addr }} interface {{ n.source_interface }}
+{% endif %}
+{% if n.tcp_mss is not none %}
+ neighbor {{ addr }} tcp-mss {{ n.tcp_mss }}
 {% endif %}
 {% if n.passive %}
  neighbor {{ addr }} passive
@@ -41,8 +69,33 @@ macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
 {% elif n.ebgp_multihop %}
  neighbor {{ addr }} ebgp-multihop {{ n.ebgp_multihop }}
 {% endif %}
+{% if n.aigp %}
+ neighbor {{ addr }} aigp
+{% endif %}
+{% if n.graceful_shutdown %}
+ neighbor {{ addr }} graceful-shutdown
+{% endif %}
+{% if n.local_role.role %}
+{% set lr_strict = " strict-mode" if n.local_role.strict_mode else "" %}
+ neighbor {{ addr }} local-role {{ n.local_role.role }}{{ lr_strict }}
+{% endif %}
+{% if n.oad %}
+ neighbor {{ addr }} oad
+{% endif %}
 {% if n.ttl_security_hops %}
  neighbor {{ addr }} ttl-security hops {{ n.ttl_security_hops }}
+{% endif %}
+{% if n.disable_connected_check %}
+ neighbor {{ addr }} disable-connected-check
+{% endif %}
+{% if n.disable_link_bw_encoding_ieee %}
+ neighbor {{ addr }} disable-link-bw-encoding-ieee
+{% endif %}
+{% if n.extended_link_bandwidth %}
+ neighbor {{ addr }} extended-link-bandwidth
+{% endif %}
+{% if n.extended_optional_parameters %}
+ neighbor {{ addr }} extended-optional-parameters
 {% endif %}
 {# Three-valued: unset inherits the instance-level setting, the
    explicit forms render as written. #}
@@ -54,6 +107,9 @@ macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
 {% if n.update_source %}
  neighbor {{ addr }} update-source {{ n.update_source }}
 {% endif %}
+{% if n.ip_transparent %}
+ neighbor {{ addr }} ip-transparent
+{% endif %}
 {% if n.advertisement_interval is not none %}
  neighbor {{ addr }} advertisement-interval {{ n.advertisement_interval }}
 {% endif %}
@@ -63,6 +119,75 @@ macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
 {% if n.timers.connect %}
  neighbor {{ addr }} timers connect {{ n.timers.connect }}
 {% endif %}
+{% if n.timers.delayopen %}
+ neighbor {{ addr }} timers delayopen {{ n.timers.delayopen }}
+{% endif %}
+{# Capabilities. The three-valued ones ([no] capability dynamic /
+   extended-nexthop / software-version [latest-encoding] / link-local)
+   render nothing when unset and the explicit form otherwise; fqdn is
+   on by default and only its negation is ever written
+   (bgp_config_write_peer_global). #}
+{% if n.capabilities.dynamic is true %}
+ neighbor {{ addr }} capability dynamic
+{% elif n.capabilities.dynamic is false %}
+ no neighbor {{ addr }} capability dynamic
+{% endif %}
+{% if n.capabilities.extended_nexthop is true %}
+ neighbor {{ addr }} capability extended-nexthop
+{% elif n.capabilities.extended_nexthop is false %}
+ no neighbor {{ addr }} capability extended-nexthop
+{% endif %}
+{% if n.capabilities.software_version is true %}
+ neighbor {{ addr }} capability software-version
+{% elif n.capabilities.software_version is false %}
+ no neighbor {{ addr }} capability software-version
+{% endif %}
+{% if n.capabilities.software_version_latest_encoding is true %}
+ neighbor {{ addr }} capability software-version latest-encoding
+{% elif n.capabilities.software_version_latest_encoding is false %}
+ no neighbor {{ addr }} capability software-version latest-encoding
+{% endif %}
+{% if n.rpki_strict %}
+ neighbor {{ addr }} rpki strict
+{% endif %}
+{% if n.capabilities.link_local is true %}
+ neighbor {{ addr }} capability link-local
+{% elif n.capabilities.link_local is false %}
+ no neighbor {{ addr }} capability link-local
+{% endif %}
+{% if n.capabilities.dont_capability_negotiate %}
+ neighbor {{ addr }} dont-capability-negotiate
+{% endif %}
+{% if n.capabilities.fqdn is false %}
+ no neighbor {{ addr }} capability fqdn
+{% endif %}
+{% if n.capabilities.override_capability %}
+ neighbor {{ addr }} override-capability
+{% endif %}
+{% if n.capabilities.strict_capability_match %}
+ neighbor {{ addr }} strict-capability-match
+{% endif %}
+{% if n.sender_as_path_loop_detection %}
+ neighbor {{ addr }} sender-as-path-loop-detection
+{% endif %}
+{% if n.path_attribute_discard %}
+ neighbor {{ addr }} path-attribute discard {{ n.path_attribute_discard | join(' ') }}
+{% endif %}
+{% if n.path_attribute_treat_as_withdraw %}
+ neighbor {{ addr }} path-attribute treat-as-withdraw {{ n.path_attribute_treat_as_withdraw | join(' ') }}
+{% endif %}
+{# Per-neighbor graceful-restart role: one command per enum value
+   (bgp_config_write_peer_global's peer_gr_new_status_flag block). #}
+{% if n.graceful_restart_mode == "restarter" %}
+ neighbor {{ addr }} graceful-restart
+{% elif n.graceful_restart_mode == "helper" %}
+ neighbor {{ addr }} graceful-restart-helper
+{% elif n.graceful_restart_mode == "disable" %}
+ neighbor {{ addr }} graceful-restart-disable
+{% endif %}
+{% if n.send_nexthop_characteristics %}
+ neighbor {{ addr }} send-nexthop-characteristics
+{% endif %}
 {% endmacro %}
 {% macro af_lines(addr, af) %}
 {# activate is three-valued: unset follows the per-AF default
@@ -71,6 +196,24 @@ macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
   neighbor {{ addr }} activate
 {% elif af.activate is false %}
   no neighbor {{ addr }} activate
+{% endif %}
+{# ADD-PATH: the tx enum maps onto three distinct commands
+   (bgp_config_write_peer_af's addpath switch). #}
+{% if af.addpath.tx == "all-paths" %}
+  neighbor {{ addr }} addpath-tx-all-paths
+{% elif af.addpath.tx == "best-per-as" %}
+  neighbor {{ addr }} addpath-tx-bestpath-per-AS
+{% elif af.addpath.tx == "best-selected" %}
+  neighbor {{ addr }} addpath-tx-best-selected {{ af.addpath.tx_best_selected }}
+{% endif %}
+{% if af.addpath.disable_rx %}
+  neighbor {{ addr }} disable-addpath-rx
+{% endif %}
+{% if af.addpath.rx_paths_limit is not none %}
+  neighbor {{ addr }} addpath-rx-paths-limit {{ af.addpath.rx_paths_limit }}
+{% endif %}
+{% if af.orf_prefix_list %}
+  neighbor {{ addr }} capability orf prefix-list {{ af.orf_prefix_list }}
 {% endif %}
 {% if af.route_reflector_client %}
   neighbor {{ addr }} route-reflector-client
@@ -124,11 +267,24 @@ macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
 {% if af.maximum_prefix_out %}
   neighbor {{ addr }} maximum-prefix-out {{ af.maximum_prefix_out }}
 {% endif %}
+{% if af.route_server_client %}
+  neighbor {{ addr }} route-server-client
+{% endif %}
+{% if af.nexthop_local_unchanged %}
+  neighbor {{ addr }} nexthop-local unchanged
+{% endif %}
 {% if af.allowas_in.enabled %}
 {% set ai = af.allowas_in %}
 {% set ai_rmap = " route-map " ~ ai.route_map if ai.route_map else "" %}
 {% set ai_arg = " origin" if ai.origin else (" " ~ ai.count if ai.count is not none else "") %}
   neighbor {{ addr }} allowas-in{{ ai_rmap }}{{ ai_arg }}
+{% endif %}
+{% if af.accept_own %}
+  neighbor {{ addr }} accept-own
+{% endif %}
+{% set soo_text = route_origin_text(af.soo) %}
+{% if soo_text %}
+  neighbor {{ addr }} soo {{ soo_text }}
 {% endif %}
 {% if af.weight is not none %}
   neighbor {{ addr }} weight {{ af.weight }}
@@ -172,5 +328,18 @@ macro serves ipv4/ipv6 unicast and l2vpn evpn. #}
 {% set au_next_hop = " next-hop" if af.attribute_unchanged.next_hop else "" %}
 {% set au_med = " med" if af.attribute_unchanged.med else "" %}
   neighbor {{ addr }} attribute-unchanged{{ au_as_path }}{{ au_next_hop }}{{ au_med }}
+{% endif %}
+{# Route-flap dampening: bare, half-life only, or all four numbers
+   (the schema 'must' guarantees no other combination). #}
+{% if af.dampening.enabled %}
+{% set nd = af.dampening %}
+{% if nd.reuse_threshold is not none %}
+{% set damp_args = " " ~ nd.half_life ~ " " ~ nd.reuse_threshold ~ " " ~ nd.suppress_threshold ~ " " ~ nd.max_suppress_time %}
+{% elif nd.half_life is not none %}
+{% set damp_args = " " ~ nd.half_life %}
+{% else %}
+{% set damp_args = "" %}
+{% endif %}
+  neighbor {{ addr }} dampening{{ damp_args }}
 {% endif %}
 {% endmacro %}

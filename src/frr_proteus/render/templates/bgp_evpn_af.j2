@@ -3,8 +3,10 @@ from bgp.conf.j2 when evpn_configured(instance) says the block is
 needed; `instance` (the /bgp/instance entry) and `evpn`
 (instance.afi_safis.l2vpn_evpn) are in scope from the caller.
 
-Renders the legacy EVPN command set, plus a COMPATIBILITY TRANSLATION
-of the experimental-scheme typing into stock FRR syntax:
+Renders the legacy EVPN command set (bgp_config_write_evpn_info /
+write_vni_config in bgpd/bgp_evpn_vty.c, bgp_config_write_network_evpn
+in bgp_route.c, in their emission order), plus a COMPATIBILITY
+TRANSLATION of the experimental-scheme typing into stock FRR syntax:
   - vxlan-underlay  ->  'advertise-all-vni' (its direct stock
     equivalent; emitted once even if both fields are set).
   - vlan-based-evi with origination-l2vni N  ->  'vni N' block, with
@@ -18,27 +20,28 @@ new scheme emitted, legacy syntax removed. #}
 {% import "evpn_macros.j2" as evpn_macros %}
  !
  address-family l2vpn evpn
+{# EVPN type-5 static 'network' statements come first, mirroring
+   bgp_config_write_family's bgp_config_write_network call before the
+   per-peer lines. FRR writes every mandatory token back
+   (bgp_config_write_network_evpn). #}
+{% for net in evpn.network %}
+{% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
+  network {{ net.prefix }} rd {{ rd_text(net.rd) }} ethtag {{ net.ethtag }} label {{ net.label }} esi {{ net.esi }} gwip {{ net.gwip }} routermac {{ net.routermac }}{{ net_rmap }}
+{% endfor %}
 {% include "bgp_evpn_neighbors.j2" %}
 {% if evpn.advertise_all_vni or evpn.vxlan_underlay %}
   advertise-all-vni
 {% endif %}
-{% if evpn.advertise_default_gw %}
-  advertise-default-gw
-{% endif %}
-{% if evpn.advertise_svi_ip %}
-  advertise-svi-ip
-{% endif %}
-{% if evpn.enable_resolve_overlay_index %}
-  enable-resolve-overlay-index
-{% endif %}
-{% if evpn.flooding %}
-  flooding {{ evpn.flooding }}
-{% endif %}
+{# Per-VNI sub-blocks, write_vni_config's line order: rd, flooding,
+   route-targets, then the per-VNI advertise overrides. #}
 {% for vni in evpn.vni %}
   vni {{ vni.vni_id }}
 {% set vni_rd = rd_text(vni.rd) %}
 {% if vni_rd %}
    rd {{ vni_rd }}
+{% endif %}
+{% if vni.flooding %}
+   flooding {{ vni.flooding }}
 {% endif %}
 {% for rt in route_target_texts(vni.route_target_import) %}
    route-target import {{ rt }}
@@ -49,8 +52,14 @@ new scheme emitted, legacy syntax removed. #}
 {% for rt in route_target_texts(vni.route_target_both) %}
    route-target both {{ rt }}
 {% endfor %}
-{% if vni.flooding %}
-   flooding {{ vni.flooding }}
+{% if vni.advertise_default_gw %}
+   advertise-default-gw
+{% endif %}
+{% if vni.advertise_svi_ip %}
+   advertise-svi-ip
+{% endif %}
+{% if vni.advertise_subnet %}
+   advertise-subnet
 {% endif %}
   exit-vni
 {% endfor %}
@@ -69,19 +78,91 @@ new scheme emitted, legacy syntax removed. #}
   exit-vni
 {% endif %}
 {% endfor %}
-{% set vrf_rd = rd_text(evpn.rd) %}
-{% if vrf_rd %}
-  rd {{ vrf_rd }}
+{% if evpn.autort_rfc8365_compatible %}
+  autort rfc8365-compatible
 {% endif %}
-{{ evpn_macros.vrf_route_targets(evpn, "  ") -}}
+{% if evpn.advertise_default_gw %}
+  advertise-default-gw
+{% endif %}
+{% if evpn.advertise_svi_ip %}
+  advertise-svi-ip
+{% endif %}
+{% set macvrf_soo = route_origin_text(evpn.mac_vrf_soo) %}
+{% if macvrf_soo %}
+  mac-vrf soo {{ macvrf_soo }}
+{% endif %}
+{% if evpn.enable_resolve_overlay_index %}
+  enable-resolve-overlay-index
+{% endif %}
+{# bgpd-side EVPN multihoming knobs. use-es-l3nhg and the two
+   disable-ead-evi leaves are three-valued: FRR writes whichever form
+   differs from its default, we write the explicit form given. #}
+{% if evpn.multihoming.ead_es_frag_evi_limit is not none %}
+  ead-es-frag evi-limit {{ evpn.multihoming.ead_es_frag_evi_limit }}
+{% endif %}
+{% if evpn.multihoming.use_es_l3nhg is true %}
+  use-es-l3nhg
+{% elif evpn.multihoming.use_es_l3nhg is false %}
+  no use-es-l3nhg
+{% endif %}
+{% if evpn.multihoming.disable_ead_evi_rx is true %}
+  disable-ead-evi-rx
+{% elif evpn.multihoming.disable_ead_evi_rx is false %}
+  no disable-ead-evi-rx
+{% endif %}
+{% if evpn.multihoming.disable_ead_evi_tx is true %}
+  disable-ead-evi-tx
+{% elif evpn.multihoming.disable_ead_evi_tx is false %}
+  no disable-ead-evi-tx
+{% endif %}
+{# Duplicate address detection: on by default, only the negation is
+   written; max-moves and time ride on one line (set together). #}
+{% if evpn.dup_addr_detection.enabled is false %}
+  no dup-addr-detection
+{% endif %}
+{% if evpn.dup_addr_detection.max_moves is not none %}
+  dup-addr-detection max-moves {{ evpn.dup_addr_detection.max_moves }} time {{ evpn.dup_addr_detection.time }}
+{% endif %}
+{% if evpn.dup_addr_detection.freeze is not none %}
+  dup-addr-detection freeze {{ evpn.dup_addr_detection.freeze }}
+{% endif %}
+{% if evpn.flooding %}
+  flooding {{ evpn.flooding }}
+{% endif %}
 {% if evpn.advertise_ipv4_unicast.enabled %}
 {% set gw = " gateway-ip" if evpn.advertise_ipv4_unicast.gateway_ip else "" %}
 {% set rmap = " route-map " ~ evpn.advertise_ipv4_unicast.route_map if evpn.advertise_ipv4_unicast.route_map else "" %}
   advertise ipv4 unicast{{ gw }}{{ rmap }}
 {% endif %}
+{% for rt in route_target_texts(evpn.multihoming.ead_es_route_target_export) %}
+  ead-es-route-target export {{ rt }}
+{% endfor %}
 {% if evpn.advertise_ipv6_unicast.enabled %}
 {% set gw = " gateway-ip" if evpn.advertise_ipv6_unicast.gateway_ip else "" %}
 {% set rmap = " route-map " ~ evpn.advertise_ipv6_unicast.route_map if evpn.advertise_ipv6_unicast.route_map else "" %}
   advertise ipv6 unicast{{ gw }}{{ rmap }}
 {% endif %}
+{% if evpn.default_originate.ipv4 %}
+  default-originate ipv4
+{% endif %}
+{% if evpn.default_originate.ipv6 %}
+  default-originate ipv6
+{% endif %}
+{# advertise-pip: on by default in FRR, so false renders the bare
+   negation; the positive form only appears with a static PIP ip
+   [mac] (bgp_config_write_evpn_info writes nothing for a plain
+   enabled default). #}
+{% if evpn.advertise_pip.enabled is false %}
+  no advertise-pip
+{% elif evpn.advertise_pip.ip %}
+{% set pip_mac = " mac " ~ evpn.advertise_pip.mac if evpn.advertise_pip.mac else "" %}
+  advertise-pip ip {{ evpn.advertise_pip.ip }}{{ pip_mac }}
+{% endif %}
+{% set vrf_rd = rd_text(evpn.rd) %}
+{% if vrf_rd %}
+  rd {{ vrf_rd }}
+{% endif %}
+{{ evpn_macros.vrf_route_targets(evpn, "  ") -}}
+{# this comment stops the '-' above from also eating the next line's
+   leading space #}
  exit-address-family

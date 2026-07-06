@@ -1,0 +1,59 @@
+{# Process-wide 'bgp ...' lines written before any 'router bgp' block:
+the bm-> globals at the start of bgp_config_write() in bgpd/bgp_vty.c,
+in its emission order. All top-level (no leading space). #}
+{% if process.route_map_delay_timer is not none %}
+bgp route-map delay-timer {{ process.route_map_delay_timer }}
+{% endif %}
+{% if process.update_delay.delay is not none %}
+{% set ud_wait = " " ~ process.update_delay.establish_wait if process.update_delay.establish_wait is not none else "" %}
+bgp update-delay {{ process.update_delay.delay }}{{ ud_wait }}
+{% endif %}
+{% if process.advertisement_delay is not none %}
+bgp advertisement-delay {{ process.advertisement_delay }}
+{% endif %}
+{% if process.suppress_fib_pending.enabled %}
+{% set sfp_delay = " " ~ process.suppress_fib_pending.advertisement_delay if process.suppress_fib_pending.advertisement_delay is not none else "" %}
+bgp suppress-fib-pending{{ sfp_delay }}
+{% endif %}
+{% if process.graceful_restart.stalepath_time is not none %}
+bgp graceful-restart stalepath-time {{ process.graceful_restart.stalepath_time }}
+{% endif %}
+{% if process.graceful_restart.restart_time is not none %}
+bgp graceful-restart restart-time {{ process.graceful_restart.restart_time }}
+{% endif %}
+{% if process.graceful_restart.select_defer_time is not none %}
+bgp graceful-restart select-defer-time {{ process.graceful_restart.select_defer_time }}
+{% endif %}
+{% if process.graceful_restart.mode == "restarter" %}
+bgp graceful-restart
+{% elif process.graceful_restart.mode == "disable" %}
+bgp graceful-restart-disable
+{% endif %}
+{% if process.graceful_restart.preserve_fw_state %}
+bgp graceful-restart preserve-fw-state
+{% endif %}
+{% if process.graceful_restart.rib_stale_time is not none %}
+bgp graceful-restart rib-stale-time {{ process.graceful_restart.rib_stale_time }}
+{% endif %}
+{% if process.graceful_shutdown %}
+bgp graceful-shutdown
+{% endif %}
+{% if process.no_rib %}
+bgp no-rib
+{% endif %}
+{% if process.send_extra_data_zebra %}
+bgp send-extra-data zebra
+{% endif %}
+{# Default on; FRR only ever writes the negation. #}
+{% if process.ipv6_auto_ra is false %}
+no bgp ipv6-auto-ra
+{% endif %}
+{% if process.session_dscp is not none %}
+bgp session-dscp {{ process.session_dscp }}
+{% endif %}
+{% if process.input_queue_limit is not none %}
+bgp input-queue-limit {{ process.input_queue_limit }}
+{% endif %}
+{% if process.output_queue_limit is not none %}
+bgp output-queue-limit {{ process.output_queue_limit }}
+{% endif %}

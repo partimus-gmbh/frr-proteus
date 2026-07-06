@@ -309,29 +309,47 @@ same shape (one `.j2` template, thin Python glue module, thin
   `bgp_neighbor_macros.j2`, shared verbatim between peer-groups and
   real neighbors and (for the per-AF macro) between all address
   families, mirroring how FRR installs the same commands everywhere:
-  `session_lines` covers description/bfd [profile]/password/
-  `neighbor X interface IFNAME`/passive/ebgp-multihop (255 renders the
-  bare form)/ttl-security/enforce-first-as/update-source/
-  advertisement-interval/timers [connect] in
-  bgp_config_write_peer_global's order; `af_lines` covers [no]
-  activate/route-reflector-client/next-hop-self [force]/
-  remove-private-AS variants/as-override/send-community negations/
-  default-originate/soft-reconfiguration inbound/maximum-prefix[-out]/
-  allowas-in/weight/the filter references (distribute-list/prefix-list/
-  route-map/unsuppress-map/advertise-map/filter-list from
-  bgp_config_write_filter)/attribute-unchanged in
-  bgp_config_write_peer_af's order. `bgp.conf.j2` itself renders the
-  header lines whose shape differs (peer-group declarations before
-  neighbors matching bgp_config_write's loop order; `neighbor IFNAME
-  interface [v6only] [peer-group PG|remote-as R]` for unnumbered
-  interface peers; separate peer-group-membership/remote-as lines
-  otherwise) plus the instance-level knobs ([no] bgp default
-  <family>, [no] deterministic-med, graceful-restart[-disable],
-  bestpath as-path multipath-relax [as-set], bestpath
-  compare-routerid). Three-valued leaves (activate,
-  default.ipv4-unicast, deterministic-med, enforce-first-as,
-  send-community) render nothing when unset and the explicit
-  positive/negative form otherwise. `has_config` is registered as a
+  `session_lines` covers the ENTIRE neighbor-session-parameters
+  grouping (local-as, shutdown [message|rtt], bfd, password, solo,
+  port, interface, tcp-mss, passive, ebgp-multihop (255 renders the
+  bare form), aigp, graceful-shutdown, local-role, oad, ttl-security,
+  the capability family, path-attribute discard/treat-as-withdraw,
+  per-neighbor graceful-restart[-helper|-disable], timers
+  [connect|delayopen], ...) in bgp_config_write_peer_global's order;
+  `af_lines` covers the entire neighbor-af grouping (activate,
+  addpath-tx-*/disable-addpath-rx/addpath-rx-paths-limit, orf,
+  route-reflector-/route-server-client, next-hop-self [force],
+  remove-private-AS variants, as-override, send-community negations,
+  default-originate, soft-reconfiguration inbound,
+  maximum-prefix[-out], nexthop-local unchanged, allowas-in,
+  accept-own, soo, weight, the filter references from
+  bgp_config_write_filter, attribute-unchanged, per-neighbor
+  dampening) in bgp_config_write_peer_af's order. `bgp.conf.j2`
+  itself renders the header lines whose shape differs (peer-group
+  declarations before neighbors matching bgp_config_write's loop
+  order; `neighbor IFNAME interface [v6only] [peer-group PG|remote-as
+  R]` for unnumbered interface peers; separate
+  peer-group-membership/remote-as lines otherwise), the full
+  instance-level knob surface in bgp_config_write's order
+  (`router bgp ASN [view|vrf NAME]` header, cluster-id, confederation,
+  suppress-fib-pending, defaults block, max-med, quanta, tcp-keepalive,
+  graceful-restart timers, bestpath family, instance timers, listen
+  limit/range, [bgp default] shutdown after the peers per FRR #2286,
+  ...), and two shared macros `af_head_lines`/`af_tail_lines` for the
+  instance per-AF groupings (distance, network with
+  label-index/route-map/backdoor, aggregate-address, redistribute,
+  nexthop prefer-global, AF dampening // maximum-paths, table-map,
+  export/import vpn, import vrf) around the per-AF neighbor loop --
+  the AF loop covers all eight non-EVPN families, with
+  `is defined` guards for groupings a family lacks.
+  `render_bgp_process()` (bgp_process.conf.j2) renders the
+  process-wide `/bgp/process` container ('bgp ...' lines before any
+  router block; empty string when unconfigured). Three-valued leaves
+  render nothing when unset and the explicit positive/negative form
+  otherwise; negative-only leaves (fast-external-failover,
+  reject-as-sets, client-to-client-reflection, capability fqdn,
+  dup-addr-detection, ipv6-auto-ra) render only their 'no' form.
+  `has_config` is registered as a
   Jinja *test* there for `selectattr(..., 'has_config')`.
   route-map `set metric` is a STRUCTURED container, not a
   sign-carrying value (per the structured-values rule; a
@@ -358,7 +376,11 @@ same shape (one `.j2` template, thin Python glue module, thin
   <vrf>` header line, then the EVPN `advertise ipv4 unicast [gateway-ip]
   [route-map ...]` line). Fix is the same both times: hoist the optional
   suffix into a `{% set %}` above the line so the content line ends in
-  `{{ var }}` instead of `{% endif %}`.
+  `{{ var }}` instead of `{% endif %}`. Related: a macro call written
+  `{{ some_macro(x) -}}` directly above a content line eats that line's
+  leading space too when the macro renders empty -- put a `{# comment #}`
+  line between them to stop the whitespace strip (see the
+  `exit-address-family` lines in bgp.conf.j2 / bgp_evpn_af.j2).
 - `examples/basic_bgp.py` -- two-router eBGP config (step 1 smoke test);
   r1 additionally exercises the object modules (prefix-list feeding a
   route-map via route-map-in, BFD profile on the neighbor), composing
@@ -406,45 +428,34 @@ same shape (one `.j2` template, thin Python glue module, thin
 
 ## Current scope
 
-**Step 1 (done):** `router bgp <asn>`, optional `vrf <name>`, `bgp
-router-id`, neighbors with `remote-as` (as-specified/internal/external),
-`network` statements under `address-family ipv4|ipv6 unicast` /
-`exit-address-family`.
-
-**Step 2 (in progress, EVPN):** default-instance `advertise-all-vni`,
-`advertise-default-gw`, `advertise-svi-ip`, `enable-resolve-overlay-index`,
-`flooding`, per-VNI `vni <N>`/`rd`/`route-target`/`flooding`; per-VRF `rd`,
-`route-target <both|import|export> <RT|*:NN|auto>`, `advertise
-ipv4|ipv6 unicast [gateway-ip] [route-map ...]`; per-neighbor `activate`,
-`route-reflector-client`, `route-map <name> in|out`, `allowas-in <N>`.
-Verified against most of `frr/tests/topotests/bgp_evpn_*`, `evpn_pim_*`,
-`bgp_evpn_mh` by manual comparison (not by loading into a running bgpd).
+**Steps 1+2 (done)** and, since the 2026-07-06 parity pass, the
+renderer covers the FULL proteus-bgp.yang / proteus-bgp-evpn.yang
+config surface: every schema node has an emitting template line
+(instance knobs, `/bgp/process`, all eight non-EVPN address families,
+the complete neighbor session/per-AF vocabulary, EVPN incl.
+multihoming, dup-addr-detection, mac-vrf soo, advertise-pip and
+type-5 `network` statements). EVPN originally verified against most
+of `frr/tests/topotests/bgp_evpn_*`, `evpn_pim_*`, `bgp_evpn_mh` by
+manual comparison (not by loading into a running bgpd); the parity
+pass verified each line against the config-write functions in
+bgp_vty.c / bgp_evpn_vty.c / bgp_route.c / bgp_damp.c.
 
 ## Known model gaps
 
-- Per-neighbor EVPN `maximum-prefix` and `addpath-tx-all-paths` are not
-  modeled. FRR's own `frr-bgp.yang` augment of the neighbor's
-  `l2vpn-evpn` container (around line 866, search
-  `augment ".../neighbor/afi-safis/afi-safi/l2vpn-evpn"`) includes
-  `as-path-options`/`attr-unchanged`/`route-reflector`/`route-server`/
-  `soft-reconfiguration`/`filter-config` but *not*
-  `structure-neighbor-prefix-limit` or `structure-neighbor-group-add-paths`
-  (both groupings already exist in `frr-bgp-common-structure.yang`,
-  reused for other afi-safis -- just not wired up for l2vpn-evpn). Adding
-  them needs one more augment in `frr-proteus-bgp-evpn.yang` targeting the
-  neighbor path, same pattern as the existing instance-side augment.
-- Per-VNI `advertise-default-gw`/`advertise-svi-ip` overrides
-  (`bgp_evpn_advertise_default_gw_vni_cmd`/`bgp_evpn_advertise_svi_ip_vni_cmd`)
-  and `autort rfc8365-compatible` are not modeled -- not exercised by the
-  topotests read so far, add if a topotest needs them.
-- The stock `frr-bgp.yang` also has no modeling for `redistribute`
-  route-map application details or several other neighbor/global knobs
-  beyond what's listed above -- check the YANG file before assuming a
-  field exists; it's an incomplete model even outside EVPN.
+These are SCHEMA exclusions (deliberate, listed in
+proteus-bgp.yang's module description), not renderer gaps: SRv6, the
+detailed vpn_policy leaking block (only export/import vpn +
+import vrf are modeled), encap/flowspec/unreachability/link-state
+AFs, RPKI cache config, BMP, VNC, `as-notation dot`. Also:
+
 - Zebra-side Ethernet Segment (EVPN multihoming) config -- `evpn mh
   es-id` etc. -- is genuinely out of scope, not just unimplemented. It's
   zebra's surface (interface/ES config), not bgpd's; this project is
   BGP-only. Don't try to model it here.
+- The old FRR-schema world (`yang/augments/` + `_generated/frr_bgp`)
+  keeps its own gaps (no EVPN neighbor maximum-prefix/addpath
+  modeling, incomplete redistribute, ...) but is renderer-less
+  reference material only.
 
 ## Commands
 
