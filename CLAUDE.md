@@ -391,11 +391,13 @@ same shape (one `.j2` template, thin Python glue module, thin
   helpers.py imports unwrap from _comments, so _comments must not
   import helpers (its comment splitting is inlined, same rules as
   helpers.comment_lines, which stays as the public one-node API).
-  `bgp.py` wires up the Jinja `Environment` and exposes
-  `render_bgp_instance(instance, format=...)` (takes one instance list
-  entry; the vrf clause comes from its `vrf` key) plus
-  `render_evpn_global(evpn, format=...)` for the experimental global
-  `evpn` block. The referenced-object renderers follow the same shape,
+  `bgp.py` wires up the Jinja `Environment` and exposes the STANDARD
+  `render_bgp_instance(instance)` (takes one instance list entry; the
+  vrf clause comes from its `vrf` key; renders the legacy model only,
+  NO format param, NO experimental awareness). The experimental scheme
+  lives entirely in `render/experimental.py` (see the experimental
+  paragraph below) -- the standard renderer never sees it. The
+  referenced-object renderers follow the same shape,
   sharing one Jinja `Environment` from `_env.py`: `filters.py` /
   `filters.conf.j2` (`render_filters`, prefix- and access-lists; IPv4
   access-lists are UNPREFIXED `access-list ...` per lib/filter_cli.c),
@@ -483,17 +485,58 @@ same shape (one `.j2` template, thin Python glue module, thin
   CLI's bare/`+`/`-` prefix, the operand is a mandatory CHOICE (not
   must-guarded sibling leaves) between a real uint32 `value` and the
   rtt/igp/aigp `variable`; the one remaining `must` says only rtt is
-  add/subtractable (route_value_compile in bgpd/bgp_routemap.c). Two output formats: `"frr"` (default) renders legacy
-  syntax and *translates* the experimental typing where stock FRR has
-  an equivalent (vxlan-underlay -> `advertise-all-vni` (direct
-  equivalent per the user), vlan-based-evi with origination-l2vni ->
-  `vni` block; wildcard/auto RTs, underlay refs and the global block
-  are dropped); `"experimental"` renders the new scheme's syntax and
-  removes legacy EVPN command syntax (neighbor lines and route-targets
-  are shared and render in both). Only the l2vpn evpn AF differs
-  between formats -- template selection via
-  `{% include evpn_af_template %}`; per-neighbor lines live in shared
-  `bgp_evpn_neighbors.j2`, RT/EVI rendering in `evpn_macros.j2`.
+  add/subtractable (route_value_compile in bgpd/bgp_routemap.c).
+  **Experimental EVPN scheme is COMPLETELY SEPARATED from the standard
+  renderer** (redesigned 2026-07-06 at the user's explicit direction:
+  "the normal rendering code should not be polluted"). `bgp_evpn_af.j2`
+  and the standard `render_bgp_instance` render ONLY the legacy model
+  and contain zero experimental logic. Everything experimental lives in
+  `render/experimental.py`:
+    - `render_experimental_bgp_instance(instance)` /
+      `render_experimental_evpn_global(evpn)` emit the scheme's OWN
+      syntax (vxlan-underlay / auto-discover-vnis / underlay-vrf /
+      origination-l3vni / vlan-based-evi / the global `evpn` block),
+      lossless, no warnings. They reuse `bgp.conf.j2` via
+      `bgp._render_bgp_block(instance, evpn_af_template=...)` -- that
+      template is neutral scaffolding, gated on a `render_evpn_af` bool
+      and a swappable `{% include evpn_af_template %}` (legacy
+      `bgp_evpn_af.j2` for standard, `bgp_evpn_af_experimental.j2` for
+      experimental); sharing it is NOT pollution (no experimental logic
+      in it). Per-neighbor lines are shared vocabulary
+      (`bgp_evpn_neighbors.j2`), RT/EVI rendering `evpn_macros.j2`.
+    - `translate_experimental_to_standard(bgp, evpn_global=None)` is the
+      bridge for stock-FRR output: it deep-copies the tree (never
+      mutates input), converts the experimental typing INTO the legacy
+      model, and returns a `StandardTranslation(bgp, vrfs, default_l3vni,
+      default_l3vni_prefix_routes_only)` you then feed to the STANDARD
+      renderers. The workflow the user mandated: experimental config ->
+      translate -> standard model -> standard renderer (which has no idea
+      it originated from the experimental model). Translations:
+      vxlan-underlay -> `advertise-all-vni`; vlan-based-evi with
+      origination-l2vni -> a legacy `vni` block (its qualified RTs
+      copied; wildcard/auto dropped) with the EVI **name preserved as a
+      `comment` annotation on the synthesized Vni** (a stock `vni` block
+      has no name field -- the standard renderer emits it as a `!` line
+      above the block); origination-l3vni -> a named `vrf NAME / vni N`
+      block in the returned ProteusVrf, EXCEPT the default instance's,
+      which is the default VRF's GLOBAL top-level `vni N` line (no `vrf
+      default` block; verified: vni_mapping_cmd is installed at
+      CONFIG_NODE and zebra_vrf_indent_cli_write emits no indent for the
+      default VRF). That global vni has NO proteus-vrf data node by
+      design (user forbade one twice) -- it rides out as the
+      `default_l3vni` / `default_l3vni_prefix_routes_only` SCALAR params
+      of `render_vrfs` (the `vni N` line is stock FRR syntax, so this is
+      a standard-renderer capability, not experimental pollution; it is
+      the one construct with no data-model node). Lossy drops each emit
+      an `EvpnTranslationWarning` (defined in / raised from
+      experimental.py, exported from `render/__init__`) via the stdlib
+      `warnings` machinery, ONLY during translation (rendering never
+      warns): vxlan-underlay without auto-discover-vnis, any non-`default`
+      underlay-vrf / EVI underlay-vrf / global default-underlay-vrf,
+      dropped EVI import-wildcard/import-auto/export-auto RTs, an EVI
+      dropped for lacking origination-l2vni, and the whole global block.
+      Messages name the instance/EVI so `warnings.warn`'s (message,
+      location) de-dup doesn't collapse them.
   **Whitespace gotcha:** with `trim_blocks=True`, *any* line ending in a
   `{% %}` tag has its trailing newline eaten -- including a content line
   that just happens to end with an inline `{% endif %}` (not only
@@ -544,6 +587,20 @@ same shape (one `.j2` template, thin Python glue module, thin
   attribute-unchanged next-hop), leaves carry L2 VNIs + per-tenant
   VRF instances with type-5. One `out/fabric/<name>_frr.conf` per
   device.
+- `examples/evpn_experimental.py` -- the experimental EVPN scheme
+  showcase: builds ONE config tree (a vxlan-underlay default instance
+  with auto-discover-vnis + a default-VRF origination-l3vni + eBGP EVPN
+  overlay neighbor + vlan-based-evi blocks, two tenant VRFs riding it
+  via underlay-vrf leafrefs with origination-l3vni + auto/wildcard RTs,
+  and a global `evpn` block) and emits it via the TWO SEPARATE code
+  paths: (1) `render_experimental_bgp_instance` /
+  `render_experimental_evpn_global` for the scheme's own syntax; (2)
+  `translate_experimental_to_standard` -> the STANDARD `render_vrfs` +
+  `render_bgp_instance` for stock FRR (the renderer never knows it came
+  from the experimental model). Captures and prints the
+  `EvpnTranslationWarning`s the translator emits for the lossy drops
+  (one EVI carries an `auto` import RT to trigger one). Writes
+  `out/evpn_experimental_exp.conf` and `out/evpn_experimental_frr.conf`.
 - `tests/test_render_*.py` -- renderer unit tests (bgp, bgp_evpn,
   evpn_experimental, filters, bgp_filters, bfd, interfaces, vrf,
   system, route_map);
@@ -602,5 +659,6 @@ PYTHONPATH=src .venv/bin/python examples/evpn_bgp.py
 PYTHONPATH=src .venv/bin/python examples/evpn_dual_speed_host.py
 PYTHONPATH=src .venv/bin/python examples/internet_peering.py
 PYTHONPATH=src .venv/bin/python examples/evpn_fabric.py
+PYTHONPATH=src .venv/bin/python examples/evpn_experimental.py
 .venv/bin/pytest tests/
 ```

@@ -1,6 +1,25 @@
-{# One 'vrf NAME' block per declared VRF.
+{# One 'vrf NAME' block per declared VRF, optionally preceded by the
+   default VRF's L3VNI as a GLOBAL (unindented) 'vni' statement.
    Text: lib/vrf.c lib_vrf_cli_write / lib_vrf_cli_write_end; the vni
-   line is zebra/zebra_cli.c lib_vrf_zebra_l3vni_id_cli_write. #}
+   line is zebra/zebra_cli.c lib_vrf_zebra_l3vni_id_cli_write. That
+   same DEFPY (vni_mapping_cmd) is installed at CONFIG_NODE too, and
+   zebra_vrf_indent_cli_write emits NO indent for the default VRF -- so
+   the default VRF's L3VNI is this bare top-level line, never a 'vrf
+   default' block. `default_l3vni` (a plain VNI integer, or None) and
+   `default_l3vni_prefix_routes_only` (bool) carry it; the proteus-vrf
+   data model has no node for it by design, so the caller supplies it
+   as scalars (render.experimental's translator does, from a default-VRF
+   origination-l3vni). #}
+{% if default_l3vni is not none %}
+{% set gpro = " prefix-routes-only" if default_l3vni_prefix_routes_only else "" %}
+{# clarifying comment: this bare top-level 'vni' is the default VRF's
+   L3VNI, easy to misread as belonging to a preceding 'vrf' block. #}
+! default VRF L3VNI
+vni {{ default_l3vni }}{{ gpro }}
+{% if vrfs.vrf %}
+!
+{% endif %}
+{% endif %}
 {% for vrf in vrfs.vrf %}
 vrf {{ vrf.name }}
 {% if vrf.l3vni is not none %}

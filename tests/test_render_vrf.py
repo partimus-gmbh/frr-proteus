@@ -21,6 +21,32 @@ Vrf: TypeAlias = bindings.ProteusVrf.Vrf
 
 def test_empty_root_renders_nothing():
     assert render_vrfs(ProteusVrf()) == ""
+    # no default_l3vni scalar is also "empty"
+    assert render_vrfs(ProteusVrf(), default_l3vni=None) == ""
+
+
+def test_default_l3vni_only_renders_bare_top_level_vni():
+    # The default VRF's L3VNI: a GLOBAL unindented 'vni' line, no block,
+    # with a clarifying comment that it is the default VRF's.
+    assert render_vrfs(
+        ProteusVrf(),
+        heading=None,
+        default_l3vni=4000,
+        default_l3vni_prefix_routes_only=True,
+    ) == ("! default VRF L3VNI\nvni 4000 prefix-routes-only\n")
+
+
+def test_default_l3vni_precedes_vrf_blocks():
+    root = ProteusVrf()
+    root.vrf.append(Vrf(name="tnt1", l3vni=15000001))
+    assert render_vrfs(root, heading=None, default_l3vni=4000) == (
+        "! default VRF L3VNI\n"
+        "vni 4000\n"
+        "!\n"
+        "vrf tnt1\n"
+        " vni 15000001\n"
+        "exit-vrf\n"
+    )
 
 
 def test_vrf_blocks():

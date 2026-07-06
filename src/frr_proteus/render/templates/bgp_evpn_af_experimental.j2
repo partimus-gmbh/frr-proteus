@@ -23,7 +23,10 @@ route-targets are shared syntax and render in both formats. #}
   origination-l3vni {{ evpn.origination_l3vni.vni }}{{ pro }}
 {% endif %}
 {{ evpn_macros.vrf_route_targets(evpn, "  ") -}}
+{# a '!' before every EVI: separates the route-target block from the
+   first EVI and each vlan-based-evi block from the next. #}
 {% for evi in evpn.vlan_based_evi %}
+  !
 {{ evpn_macros.vlan_based_evi(evi, "  ") }}
 {% endfor %}
  exit-address-family

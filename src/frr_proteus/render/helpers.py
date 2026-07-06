@@ -224,59 +224,21 @@ def extcommunity_color_texts(colors) -> list[str]:
     ]
 
 
-# Experimental-scheme fields on the instance-level l2vpn-evpn container
-# (proteus-bgp-evpn-experimental.yang's augment) that produce NO output
-# in the frr format. vxlan_underlay is absent on purpose: it translates
-# to 'advertise-all-vni', so it counts as renderable config there;
-# vlan_based_evi is listed but handled separately (translatable only
-# when an EVI carries an origination-l2vni).
-_FRR_UNRENDERABLE_EVPN_FIELDS = frozenset(
-    {
-        "auto_discover_vnis",
-        "underlay_vrf",
-        "origination_l3vni",
-        "vlan_based_evi",
-    }
-)
+def evpn_af_needed(instance) -> bool:
+    """Whether this instance needs an 'address-family l2vpn evpn' block.
 
-
-def _has_config_except(node: object, exclude: frozenset[str]) -> bool:
-    node = unwrap(node)
-    for field in dataclasses.fields(node):  # type: ignore[arg-type]
-        if field.name in exclude:
-            continue
-        value = getattr(node, field.name)
-        if dataclasses.is_dataclass(value) and not isinstance(value, type):
-            if has_config(value):
-                return True
-        elif isinstance(value, list):
-            if value:
-                return True
-        elif value is not None:
-            return True
-    return False
-
-
-def evpn_af_needed(instance, format: str) -> bool:
-    """Whether this instance needs an 'address-family l2vpn evpn' block
-    in the given output format.
-
-    Neighbor EVPN config always needs the block. Beyond that it depends
-    on what the format would actually emit: the experimental format
-    renders both typings, the frr format renders legacy fields plus the
-    translatable subset of the experimental ones (EVIs that carry an
-    origination-l2vni) -- an instance holding only untranslatable
-    experimental config must not produce an empty AF block there.
+    True when any peer-group/neighbor carries EVPN config, or the
+    instance-level l2vpn-evpn container holds any config. This is a
+    plain, field-agnostic ``has_config`` check -- it does not know or
+    care whether a field is legacy or experimental. Both the standard
+    renderer (fed a translated legacy model) and the experimental-syntax
+    renderer use it; each renders whatever fields the chosen AF template
+    reads.
     """
     instance = unwrap(instance)
-    evpn = instance.afi_safis.l2vpn_evpn
     if any(
         has_config(entity.afi_safis.l2vpn_evpn)
         for entity in [*instance.peer_group, *instance.neighbor]
     ):
         return True
-    if format == "experimental":
-        return has_config(evpn)
-    if _has_config_except(evpn, _FRR_UNRENDERABLE_EVPN_FIELDS):
-        return True
-    return any(evi.origination_l2vni for evi in evpn.vlan_based_evi)
+    return has_config(instance.afi_safis.l2vpn_evpn)

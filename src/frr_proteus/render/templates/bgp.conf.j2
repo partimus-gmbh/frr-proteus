@@ -431,7 +431,7 @@ router bgp {{ asn_text(instance.autonomous_system) }}{{ instance_clause }}{{ not
  exit-address-family
 {% endif %}
 {% endfor %}
-{% if evpn_af_needed(instance, format) %}
+{% if render_evpn_af %}
 {% set evpn = instance.afi_safis.l2vpn_evpn %}
 {% include evpn_af_template %}
 {% endif %}

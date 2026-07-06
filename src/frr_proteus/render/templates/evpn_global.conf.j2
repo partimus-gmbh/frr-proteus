@@ -1,14 +1,18 @@
 {# Global 'evpn' ... 'exit' configuration block -- experimental config
 scheme only (proteus-bgp-evpn-experimental.yang's top-level `evpn`
-container, passed in as `evpn`). The caller (render_evpn_global)
-guarantees the container has content; in the "frr" output format this
-block has no stock equivalent and is not rendered at all. #}
+container, passed in as `evpn`). The caller
+(render.experimental.render_experimental_evpn_global) guarantees the
+container has content. Stock FRR has no equivalent, so the translator
+drops the whole block (with warnings) rather than emitting anything. #}
 {% import "evpn_macros.j2" as evpn_macros %}
 evpn
 {% if evpn.default_underlay_vrf %}
  default-underlay-vrf {{ evpn.default_underlay_vrf }}
 {% endif %}
+{# a '!' before every EVI: separates default-underlay-vrf from the
+   first EVI and each vlan-based-evi block from the next. #}
 {% for evi in evpn.vlan_based_evi %}
+ !
 {{ evpn_macros.vlan_based_evi(evi, " ") }}
 {% endfor %}
 exit

@@ -1,22 +1,17 @@
-{# L2VPN EVPN address-family block, stock-FRR ("frr") format. Included
-from bgp.conf.j2 when evpn_configured(instance) says the block is
-needed; `instance` (the /bgp/instance entry) and `evpn`
-(instance.afi_safis.l2vpn_evpn) are in scope from the caller.
+{# L2VPN EVPN address-family block, stock FRR syntax. Included from
+bgp.conf.j2 when `render_evpn_af` says the block is needed; `instance`
+(the /bgp/instance entry) and `evpn` (instance.afi_safis.l2vpn_evpn)
+are in scope from the caller.
 
-Renders the legacy EVPN command set (bgp_config_write_evpn_info /
+Renders ONLY the legacy EVPN command set (bgp_config_write_evpn_info /
 write_vni_config in bgpd/bgp_evpn_vty.c, bgp_config_write_network_evpn
-in bgp_route.c, in their emission order), plus a COMPATIBILITY
-TRANSLATION of the experimental-scheme typing into stock FRR syntax:
-  - vxlan-underlay  ->  'advertise-all-vni' (its direct stock
-    equivalent; emitted once even if both fields are set).
-  - vlan-based-evi with origination-l2vni N  ->  'vni N' block, with
-    its fully qualified route-targets ('vni' RT lines support neither
-    wildcard nor auto, so those are dropped, as is underlay-vrf);
-    an EVI without origination-l2vni has no vni id and is dropped.
-  - auto-discover-vnis, underlay-vrf, origination-l3vni have no
-    stock-FRR equivalent and are left out.
-The experimental format (bgp_evpn_af_experimental.j2) is the inverse:
-new scheme emitted, legacy syntax removed. #}
+in bgp_route.c, in their emission order). This is the STANDARD
+renderer: it has no knowledge of the experimental EVPN scheme
+(proteus-bgp-evpn-experimental.yang). Config authored in that scheme
+is rendered as stock FRR by first running it through
+render.experimental.translate_experimental_to_standard, which produces
+a pure legacy model this template then renders -- the translation and
+its lossiness warnings live entirely in that translator, never here. #}
 {% import "evpn_macros.j2" as evpn_macros %}
  !
  address-family l2vpn evpn
@@ -29,7 +24,7 @@ new scheme emitted, legacy syntax removed. #}
   network {{ net.prefix }} rd {{ rd_text(net.rd) }} ethtag {{ net.ethtag }} label {{ net.label }} esi {{ net.esi }} gwip {{ net.gwip }} routermac {{ net.routermac }}{{ net_rmap }}
 {% endfor %}
 {% include "bgp_evpn_neighbors.j2" %}
-{% if evpn.advertise_all_vni or evpn.vxlan_underlay %}
+{% if evpn.advertise_all_vni %}
   advertise-all-vni
 {% endif %}
 {# Per-VNI sub-blocks, write_vni_config's line order: rd, flooding,
@@ -62,21 +57,6 @@ new scheme emitted, legacy syntax removed. #}
    advertise-subnet
 {% endif %}
   exit-vni
-{% endfor %}
-{% for evi in evpn.vlan_based_evi %}
-{% if evi.origination_l2vni %}
-  vni {{ evi.origination_l2vni }}
-{% for rt in route_target_texts(evi.route_target_import, include_wildcard=False) %}
-   route-target import {{ rt }}
-{% endfor %}
-{% for rt in route_target_texts(evi.route_target_export) %}
-   route-target export {{ rt }}
-{% endfor %}
-{% for rt in route_target_texts(evi.route_target_both) %}
-   route-target both {{ rt }}
-{% endfor %}
-  exit-vni
-{% endif %}
 {% endfor %}
 {% if evpn.autort_rfc8365_compatible %}
   autort rfc8365-compatible

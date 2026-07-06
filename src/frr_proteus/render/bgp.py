@@ -39,7 +39,6 @@ _env = jinja2.Environment(
     undefined=jinja2.StrictUndefined,
 )
 _env.globals.update(
-    evpn_af_needed=helpers.evpn_af_needed,
     route_target_texts=helpers.route_target_texts,
     route_origin_text=helpers.route_origin_text,
     rd_text=helpers.rd_text,
@@ -53,72 +52,71 @@ _env.tests["has_config"] = helpers.has_config
 
 _bgp_template = _env.get_template("bgp.conf.j2")
 _bgp_process_template = _env.get_template("bgp_process.conf.j2")
-_evpn_global_template = _env.get_template("evpn_global.conf.j2")
 
-# Output format -> the template rendering the l2vpn evpn AF block.
-# "frr": stock FRR syntax; legacy fields render as-is and the
-#   experimental-scheme typing is translated where stock FRR can
-#   express it (vlan-based-evi -> 'vni' block) and left out where it
-#   can't (vxlan-underlay, underlay-vrf, origination-l3vni, ...).
-# "experimental": the experimental config scheme's syntax; legacy
-#   EVPN command syntax is removed from the output.
-_EVPN_AF_TEMPLATES = {
-    "frr": "bgp_evpn_af.j2",
-    "experimental": "bgp_evpn_af_experimental.j2",
-}
+# The stock-FRR l2vpn-evpn AF template. The experimental-syntax variant
+# ("bgp_evpn_af_experimental.j2") is selected by render.experimental via
+# _render_bgp_block -- bgp.conf.j2 is neutral scaffolding shared by both,
+# but this standard module only ever emits the legacy one.
+_STANDARD_EVPN_AF_TEMPLATE = "bgp_evpn_af.j2"
 
 
-def _evpn_af_template(format: str) -> str:
-    try:
-        return _EVPN_AF_TEMPLATES[format]
-    except KeyError:
-        raise ValueError(
-            f"unknown output format {format!r}; expected one of "
-            f"{sorted(_EVPN_AF_TEMPLATES)}"
-        ) from None
+def _render_bgp_block(instance, *, evpn_af_template: str) -> str:
+    """Render one 'router bgp' block (no heading) using `evpn_af_template`
+    for the l2vpn-evpn AF. Shared by render_bgp_instance (legacy AF) and
+    render.experimental (experimental-syntax AF); bgp.conf.j2 itself is
+    format-agnostic scaffolding -- it just includes the given AF template
+    and gates it on `render_evpn_af`."""
+    if helpers.asn_text(instance.autonomous_system) is None:
+        raise ValueError("instance autonomous-system is not set")
+    return render_with_comments(
+        _bgp_template,
+        instance=instance,
+        evpn_af_template=evpn_af_template,
+        render_evpn_af=helpers.evpn_af_needed(instance),
+    )
 
 
-def render_bgp_instance(
-    instance, *, format: str = "frr", heading: str | None = "!"
-) -> str:
-    """Render one BGP instance into bgpd config text.
+def render_bgp_instance(instance, *, heading: str | None = "!") -> str:
+    """Render one BGP instance into stock-FRR bgpd config text.
 
     `instance` is one entry of the generated `/bgp/instance` list
-    (`frr_proteus._generated.proteus.ProteusBgp.Bgp.Instance`). Its
-    `vrf` key selects the enclosing VRF; "default" (or unset) renders
-    as a plain `router bgp <asn>` with no `vrf` clause, matching
+    (`frr_proteus._generated.proteus.ProteusBgp.Instance`). Its `vrf`
+    key selects the enclosing VRF; "default" (or unset) renders as a
+    plain `router bgp <asn>` with no `vrf` clause, matching
     bgp_config_write() in bgpd/bgp_vty.c.
 
-    `format` picks the output syntax for the EVPN address-family:
-    "frr" (default, stock FRR; experimental-scheme fields are
-    translated where possible and otherwise left out) or
-    "experimental" (the experimental EVPN config scheme; legacy EVPN
-    command syntax is removed). Everything outside the EVPN AF renders
-    identically in both formats.
+    This is the STANDARD renderer: it renders the proteus-bgp legacy
+    model and has NO knowledge of the experimental EVPN scheme. To
+    render experimental-scheme config as stock FRR, translate it first
+    with render.experimental.translate_experimental_to_standard and
+    render the resulting legacy model here. To render it in the
+    experimental scheme's own syntax, use
+    render.experimental.render_experimental_bgp_instance.
+
+    Contract: feed a legacy (or translated) model. Any experimental
+    fields still set on the instance are IGNORED, not rendered -- the
+    renderer never translates. (Because the AF-block gate is a plain
+    field-agnostic has_config, an *untranslated* instance whose only
+    EVPN config is experimental will emit an empty 'address-family
+    l2vpn evpn' block; that is misuse, and suppressing it would require
+    the standard renderer to know which fields are experimental, i.e.
+    the very coupling this split removes.)
 
     The renderer covers the full proteus-bgp.yang instance surface
     (all eight non-EVPN address families, the complete neighbor
-    session/per-AF vocabulary, instance-level knobs, and the EVPN AF
-    incl. multihoming/dup-addr-detection/type-5 networks); every
-    rendered line's CLI text is confirmed against bgpd's config-write
-    code -- keep that rule for anything new. Process-wide 'bgp ...'
-    lines are separate: see render_bgp_process().
+    session/per-AF vocabulary, instance-level knobs, and the legacy
+    EVPN AF incl. multihoming/dup-addr-detection/type-5 networks);
+    every rendered line's CLI text is confirmed against bgpd's
+    config-write code -- keep that rule for anything new. Process-wide
+    'bgp ...' lines are separate: see render_bgp_process().
 
     `heading` defaults to "!" -- one bare separator line before
     the section; pass a title for a three-line '!' heading instead,
     or None for no prefix at all. Skipped when the section renders
     empty -- see render._heading.
     """
-    if helpers.asn_text(instance.autonomous_system) is None:
-        raise ValueError("instance autonomous-system is not set")
     return with_heading(
-        heading,
-        render_with_comments(
-            _bgp_template,
-            instance=instance,
-            format=format,
-            evpn_af_template=_evpn_af_template(format),
-        ),
+        heading, _render_bgp_block(instance, evpn_af_template=_STANDARD_EVPN_AF_TEMPLATE)
     )
 
 
@@ -139,28 +137,4 @@ def render_bgp_process(process, *, heading: str | None = "!") -> str:
         return ""
     return with_heading(
         heading, render_with_comments(_bgp_process_template, process=process)
-    )
-
-
-def render_evpn_global(
-    evpn, *, format: str = "frr", heading: str | None = "!"
-) -> str:
-    """Render the experimental scheme's global 'evpn' ... 'exit' block.
-
-    `evpn` is the generated top-level container
-    (`frr_proteus._generated.proteus.ProteusBgpEvpnExperimental`'s
-    `.evpn`). Only the "experimental" format has this block; in the
-    "frr" format (and whenever the container holds no config) the
-    result is the empty string -- stock FRR has no equivalent to
-    translate it to, so per the compatibility rules it is left out.
-    `heading` defaults to "!" -- one bare separator line before
-    the section; pass a title for a three-line '!' heading instead,
-    or None for no prefix at all. Skipped when the section renders
-    empty -- see render._heading.
-    """
-    _evpn_af_template(format)  # validate the format name
-    if format != "experimental" or not helpers.has_config(evpn):
-        return ""
-    return with_heading(
-        heading, render_with_comments(_evpn_global_template, evpn=evpn)
     )
