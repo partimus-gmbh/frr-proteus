@@ -30,11 +30,11 @@ from frr_proteus.render import (
     render_route_maps,
 )
 
-Instance: TypeAlias = ProteusBgp.Bgp.Instance
-RemoteAs: TypeAlias = ProteusBgp.Bgp.Instance.Neighbor.RemoteAs
-RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
+Instance: TypeAlias = ProteusBgp.Instance
+RemoteAs: TypeAlias = ProteusBgp.Instance.Neighbor.RemoteAs
+RouteMap: TypeAlias = ProteusRouteMap.RouteMap
 PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
-AsPathList: TypeAlias = ProteusBgpFilter.BgpFilters.AsPathAccessList
+AsPathList: TypeAlias = ProteusBgpFilter.AsPathAccessList
 
 LOCAL_AS, TRANSIT_AS = 64620, 64720
 LOOPBACK = "192.0.2.1"
@@ -153,24 +153,24 @@ def main() -> None:
             regex="_(6451[2-9]|645[2-9][0-9]|64[6-9][0-9][0-9]|65[0-4][0-9][0-9]|655[0-2][0-9]|6553[0-4])_",
         )
     )
-    bgp_filters.bgp_filters.as_path_access_list.append(private)
+    bgp_filters.as_path_access_list.append(private)
 
     rmaps = ProteusRouteMap()
-    rmaps.route_maps.route_map.extend([
+    rmaps.route_map.extend([
         tag_map("IXP-IN", local_pref=200, community=200),
         tag_map("TRANSIT-IN", local_pref=100, community=100),
         export_map(),
     ])
 
     bgp = ProteusBgp()
-    bgp.bgp.instance.append(build_instance())
+    bgp.instance.append(build_instance())
     validate_tree(bgp, rmaps, filters, bgp_filters)
 
     text = (
         render_filters(filters)
         + render_bgp_filters(bgp_filters)
         + render_route_maps(rmaps)
-        + render_bgp_instance(bgp.bgp.instance[0])
+        + render_bgp_instance(bgp.instance[0])
     )
     out = pathlib.Path(__file__).resolve().parent.parent / "out"
     out.mkdir(exist_ok=True)

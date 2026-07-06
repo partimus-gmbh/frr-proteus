@@ -73,9 +73,9 @@ module proteus-bgp-evpn-experimental {
 
       leaf underlay-vrf {
         type leafref {
-          path "/bgp:bgp/bgp:instance/bgp:vrf";
+          path "/bgp:instance/bgp:vrf";
         }
-        must "/bgp:bgp/bgp:instance[bgp:vrf = current()]"
+        must "/bgp:instance[bgp:vrf = current()]"
            + "/bgp:afi-safis/bgp:l2vpn-evpn"
            + "/proteus-bgp-evpn-exp:vxlan-underlay = 'true'" {
           error-message
@@ -106,7 +106,7 @@ module proteus-bgp-evpn-experimental {
    * this is an augment (opt-in removability) despite the custom
    * models' no-augment rule.
    */
-  augment "/bgp:bgp/bgp:instance/bgp:afi-safis/bgp:l2vpn-evpn" {
+  augment "/bgp:instance/bgp:afi-safis/bgp:l2vpn-evpn" {
     description
       "Experimental-scheme commands in the instance-level
        'address-family l2vpn evpn' block.";
@@ -131,9 +131,9 @@ module proteus-bgp-evpn-experimental {
 
     leaf underlay-vrf {
       type leafref {
-        path "/bgp:bgp/bgp:instance/bgp:vrf";
+        path "/bgp:instance/bgp:vrf";
       }
-      must "/bgp:bgp/bgp:instance[bgp:vrf = current()]"
+      must "/bgp:instance[bgp:vrf = current()]"
          + "/bgp:afi-safis/bgp:l2vpn-evpn"
          + "/proteus-bgp-evpn-exp:vxlan-underlay = 'true'" {
         error-message
@@ -181,9 +181,9 @@ module proteus-bgp-evpn-experimental {
 
     leaf default-underlay-vrf {
       type leafref {
-        path "/bgp:bgp/bgp:instance/bgp:vrf";
+        path "/bgp:instance/bgp:vrf";
       }
-      must "/bgp:bgp/bgp:instance[bgp:vrf = current()]"
+      must "/bgp:instance[bgp:vrf = current()]"
          + "/bgp:afi-safis/bgp:l2vpn-evpn"
          + "/proteus-bgp-evpn-exp:vxlan-underlay = 'true'" {
         error-message

@@ -39,50 +39,45 @@ module proteus-vrf {
       "Initial revision.";
   }
 
-  container vrfs {
+  list vrf {
+    key "name";
     description
-      "All declared VRF config blocks.";
+      "One 'vrf NAME' block (lib/vrf.c vrf_cmd). The default VRF
+       is never written as a block (lib_vrf_cli_write skips
+       VRF_DEFAULT_NAME) and must not be declared here.";
 
-    list vrf {
-      key "name";
+    leaf name {
+      type string {
+        length "1..36";
+      }
+      must ". != 'default'" {
+        error-message
+          "The default VRF is not a 'vrf NAME' block; only named
+           VRFs are declared here.";
+      }
       description
-        "One 'vrf NAME' block (lib/vrf.c vrf_cmd). The default VRF
-         is never written as a block (lib_vrf_cli_write skips
-         VRF_DEFAULT_NAME) and must not be declared here.";
+        "VRF name. 36 is FRR's VRF_NAMSIZ bound (lib/vrf.h).";
+    }
 
-      leaf name {
-        type string {
-          length "1..36";
-        }
-        must ". != 'default'" {
-          error-message
-            "The default VRF is not a 'vrf NAME' block; only named
-             VRFs are declared here.";
-        }
-        description
-          "VRF name. 36 is FRR's VRF_NAMSIZ bound (lib/vrf.h).";
-      }
+    leaf l3vni {
+      type pt:vni;
+      description
+        "'vni VNI' inside the vrf block: the L3VNI mapped to this
+         tenant VRF (zebra/zebra_cli.c vni_mapping_cmd,
+         lib_vrf_zebra_l3vni_id_cli_write).";
+    }
 
-      leaf l3vni {
-        type pt:vni;
-        description
-          "'vni VNI' inside the vrf block: the L3VNI mapped to this
-           tenant VRF (zebra/zebra_cli.c vni_mapping_cmd,
-           lib_vrf_zebra_l3vni_id_cli_write).";
+    leaf prefix-routes-only {
+      type boolean;
+      must "../l3vni" {
+        error-message
+          "prefix-routes-only is a suffix of the 'vni' line and
+           needs l3vni set.";
       }
-
-      leaf prefix-routes-only {
-        type boolean;
-        must "../l3vni" {
-          error-message
-            "prefix-routes-only is a suffix of the 'vni' line and
-             needs l3vni set.";
-        }
-        description
-          "'vni VNI prefix-routes-only' when true: only leak prefix
-           routes into the VRF, no MAC/IP host routes (same DEFPY as
-           the vni line; rendered as its suffix).";
-      }
+      description
+        "'vni VNI prefix-routes-only' when true: only leak prefix
+         routes into the VRF, no MAC/IP host routes (same DEFPY as
+         the vni line; rendered as its suffix).";
     }
   }
 }

@@ -16,7 +16,7 @@ else:
     bindings = pytest.importorskip("frr_proteus._generated.proteus")
 
 ProteusVrf: TypeAlias = bindings.ProteusVrf
-Vrf: TypeAlias = bindings.ProteusVrf.Vrfs.Vrf
+Vrf: TypeAlias = bindings.ProteusVrf.Vrf
 
 
 def test_empty_root_renders_nothing():
@@ -25,8 +25,8 @@ def test_empty_root_renders_nothing():
 
 def test_vrf_blocks():
     root = ProteusVrf()
-    root.vrfs.vrf.append(Vrf(name="tnt1", l3vni=15000001))
-    root.vrfs.vrf.append(Vrf(name="tnt2"))
+    root.vrf.append(Vrf(name="tnt1", l3vni=15000001))
+    root.vrf.append(Vrf(name="tnt2"))
     assert render_vrfs(root) == (
         "vrf tnt1\n"
         " vni 15000001\n"
@@ -38,7 +38,7 @@ def test_vrf_blocks():
 
 def test_prefix_routes_only_suffix():
     root = ProteusVrf()
-    root.vrfs.vrf.append(
+    root.vrf.append(
         Vrf(name="tnt1", l3vni=15000001, prefix_routes_only=True)
     )
     assert " vni 15000001 prefix-routes-only\n" in render_vrfs(root)
@@ -46,13 +46,13 @@ def test_prefix_routes_only_suffix():
 
 def test_default_vrf_rejected():
     root = ProteusVrf()
-    root.vrfs.vrf.append(Vrf(name="default"))
+    root.vrf.append(Vrf(name="default"))
     with pytest.raises(bindings.YangValidationError):
         bindings.validate_tree(root)
 
 
 def test_prefix_routes_only_requires_l3vni():
     root = ProteusVrf()
-    root.vrfs.vrf.append(Vrf(name="tnt1", prefix_routes_only=True))
+    root.vrf.append(Vrf(name="tnt1", prefix_routes_only=True))
     with pytest.raises(bindings.YangValidationError):
         bindings.validate_tree(root)

@@ -40,135 +40,130 @@ module proteus-bfd {
       "Initial revision.";
   }
 
-  container bfd {
+  list profile {
+    key "name";
     description
-      "The 'bfd' configuration block (bfdd).";
+      "One 'profile NAME' block inside 'bfd'
+       (bfdd/bfdd_cli.c bfd_profile_cmd: 'profile BFDPROF';
+       written by bfd_cli_show_profile). Referenced from bgpd via
+       'neighbor X bfd profile NAME'.";
 
-    list profile {
-      key "name";
+    leaf name {
+      type string {
+        length "1..64";
+      }
       description
-        "One 'profile NAME' block inside 'bfd'
-         (bfdd/bfdd_cli.c bfd_profile_cmd: 'profile BFDPROF';
-         written by bfd_cli_show_profile). Referenced from bgpd via
-         'neighbor X bfd profile NAME'.";
-
-      leaf name {
-        type string {
-          length "1..64";
-        }
-        description
-          "Profile name. Length bound from FRR's frr-bfdd.yang
-           typedef profile-name (string length 1..64).";
-      }
-
-      leaf detect-multiplier {
-        type uint8 {
-          range "1..255";
-        }
-        description
-          "'detect-multiplier (1-255)': number of consecutive lost
-           control packets before the session is declared down
-           (bfdd_cli.c bfd_peer_mult_cmd / bfd_cli_show_mult).";
-      }
-
-      leaf receive-interval {
-        type uint32 {
-          range "10..4294967";
-        }
-        units "milliseconds";
-        description
-          "'receive-interval (10-4294967)': minimum interval in
-           milliseconds at which this system can receive control
-           packets (bfdd_cli.c bfd_peer_rx_cmd / bfd_cli_show_rx).";
-      }
-
-      leaf transmit-interval {
-        type uint32 {
-          range "10..4294967";
-        }
-        units "milliseconds";
-        description
-          "'transmit-interval (10-4294967)': desired interval in
-           milliseconds between transmitted control packets
-           (bfdd_cli.c bfd_peer_tx_cmd / bfd_cli_show_tx).";
-      }
-
-      leaf echo-mode {
-        type boolean;
-        description
-          "'echo-mode' / 'no echo-mode': use echo packets to detect
-           failures (bfdd_cli.c bfd_peer_echo_cmd /
-           bfd_cli_show_echo). Only render when true -- FRR only
-           writes the 'no' form when defaults are shown.";
-      }
-
-      leaf echo-transmit-interval {
-        type uint32 {
-          range "10..4294967";
-        }
-        units "milliseconds";
-        description
-          "'echo transmit-interval (10-4294967)': desired interval in
-           milliseconds between transmitted echo packets (bfdd_cli.c
-           bfd_peer_echo_transmit_interval_cmd /
-           bfd_cli_show_desired_echo_transmission_interval).";
-      }
-
-      leaf echo-receive-interval {
-        type uint32 {
-          range "0 | 10..4294967";
-        }
-        units "milliseconds";
-        description
-          "'echo receive-interval <disabled|(10-4294967)>': minimum
-           interval in milliseconds at which this system can receive
-           echo packets; 0 renders as the 'disabled' token
-           (bfdd_cli.c bfd_peer_echo_receive_interval_cmd /
-           bfd_cli_show_required_echo_receive_interval).";
-      }
-
-      leaf minimum-ttl {
-        type uint8 {
-          range "1..254";
-        }
-        description
-          "'minimum-ttl (1-254)': expect packets with at least this
-           TTL (multihop sessions only) (bfdd_cli.c
-           bfd_peer_minimum_ttl_cmd / bfd_cli_show_minimum_ttl).";
-      }
-
-      leaf shutdown {
-        type boolean;
-        description
-          "'shutdown' / 'no shutdown': administratively disable
-           sessions using this profile (bfdd_cli.c
-           bfd_peer_shutdown_cmd / bfd_cli_show_shutdown). Only
-           render when true.";
-      }
-
-      leaf passive-mode {
-        type boolean;
-        description
-          "'passive-mode' / 'no passive-mode': do not attempt to
-           start sessions, wait for the peer (bfdd_cli.c
-           bfd_peer_passive_cmd / bfd_cli_show_passive). Only render
-           when true.";
-      }
-
-      leaf log-session-changes {
-        type boolean;
-        description
-          "'log-session-changes': log Up/Down changes for sessions
-           using this profile (bfdd_cli.c
-           bfd_peer_log_session_changes_cmd /
-           bfd_cli_show_log_session_changes). Only render when
-           true.";
-      }
-
-      // TODO(leafref): 'authentication key-chain NAME' references
-      // key-chains (lib/keychain.c), which are not modeled yet --
-      // authentication is excluded entirely, see the module
-      // description.
+        "Profile name. Length bound from FRR's frr-bfdd.yang
+         typedef profile-name (string length 1..64).";
     }
+
+    leaf detect-multiplier {
+      type uint8 {
+        range "1..255";
+      }
+      description
+        "'detect-multiplier (1-255)': number of consecutive lost
+         control packets before the session is declared down
+         (bfdd_cli.c bfd_peer_mult_cmd / bfd_cli_show_mult).";
+    }
+
+    leaf receive-interval {
+      type uint32 {
+        range "10..4294967";
+      }
+      units "milliseconds";
+      description
+        "'receive-interval (10-4294967)': minimum interval in
+         milliseconds at which this system can receive control
+         packets (bfdd_cli.c bfd_peer_rx_cmd / bfd_cli_show_rx).";
+    }
+
+    leaf transmit-interval {
+      type uint32 {
+        range "10..4294967";
+      }
+      units "milliseconds";
+      description
+        "'transmit-interval (10-4294967)': desired interval in
+         milliseconds between transmitted control packets
+         (bfdd_cli.c bfd_peer_tx_cmd / bfd_cli_show_tx).";
+    }
+
+    leaf echo-mode {
+      type boolean;
+      description
+        "'echo-mode' / 'no echo-mode': use echo packets to detect
+         failures (bfdd_cli.c bfd_peer_echo_cmd /
+         bfd_cli_show_echo). Only render when true -- FRR only
+         writes the 'no' form when defaults are shown.";
+    }
+
+    leaf echo-transmit-interval {
+      type uint32 {
+        range "10..4294967";
+      }
+      units "milliseconds";
+      description
+        "'echo transmit-interval (10-4294967)': desired interval in
+         milliseconds between transmitted echo packets (bfdd_cli.c
+         bfd_peer_echo_transmit_interval_cmd /
+         bfd_cli_show_desired_echo_transmission_interval).";
+    }
+
+    leaf echo-receive-interval {
+      type uint32 {
+        range "0 | 10..4294967";
+      }
+      units "milliseconds";
+      description
+        "'echo receive-interval <disabled|(10-4294967)>': minimum
+         interval in milliseconds at which this system can receive
+         echo packets; 0 renders as the 'disabled' token
+         (bfdd_cli.c bfd_peer_echo_receive_interval_cmd /
+         bfd_cli_show_required_echo_receive_interval).";
+    }
+
+    leaf minimum-ttl {
+      type uint8 {
+        range "1..254";
+      }
+      description
+        "'minimum-ttl (1-254)': expect packets with at least this
+         TTL (multihop sessions only) (bfdd_cli.c
+         bfd_peer_minimum_ttl_cmd / bfd_cli_show_minimum_ttl).";
+    }
+
+    leaf shutdown {
+      type boolean;
+      description
+        "'shutdown' / 'no shutdown': administratively disable
+         sessions using this profile (bfdd_cli.c
+         bfd_peer_shutdown_cmd / bfd_cli_show_shutdown). Only
+         render when true.";
+    }
+
+    leaf passive-mode {
+      type boolean;
+      description
+        "'passive-mode' / 'no passive-mode': do not attempt to
+         start sessions, wait for the peer (bfdd_cli.c
+         bfd_peer_passive_cmd / bfd_cli_show_passive). Only render
+         when true.";
+    }
+
+    leaf log-session-changes {
+      type boolean;
+      description
+        "'log-session-changes': log Up/Down changes for sessions
+         using this profile (bfdd_cli.c
+         bfd_peer_log_session_changes_cmd /
+         bfd_cli_show_log_session_changes). Only render when
+         true.";
+    }
+
+    // TODO(leafref): 'authentication key-chain NAME' references
+    // key-chains (lib/keychain.c), which are not modeled yet --
+    // authentication is excluded entirely, see the module
+    // description.
   }
 }

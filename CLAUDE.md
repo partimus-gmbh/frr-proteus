@@ -172,9 +172,18 @@ same shape (one `.j2` template, thin Python glue module, thin
   containers (`afi-safis/ipv4-unicast`, `afi-safis/l2vpn-evpn`, ...),
   NOT the OpenConfig/Nokia identityref-keyed `afi-safi` list whose
   entries all carry every family's container plus `must` guards --
-  the user explicitly prefers the nested shape. Structure departs
+  the user explicitly prefers the nested shape. (4) Module top level
+  holds the data nodes directly, Nokia-style: top-level lists
+  (`/instance`, `/route-map`, `/vrf`, `/profile`, `/interface`, the
+  proteus-bgp-filter lists) and leaves (proteus-system), never a
+  plural wrapper container whose only job is holding one list -- the
+  old `vrfs`/`route-maps`/`bgp-filters`/`bgp`/`system` wrappers were
+  flattened away 2026-07-06 to kill the `X().x.y` stutter in the
+  bindings (semantic containers like proteus-filter's per-family
+  trees and the experimental global `evpn` block stay). Structure
+  departs
   from FRR where FRR's is baroque (no control-plane-protocol wrapper:
-  root is `/bgp/instance`, keyed by `vrf` since FRR allows one BGP
+  root is the top-level `/instance` list, keyed by `vrf` since FRR allows one BGP
   instance per VRF; neighbor `remote-as` is one node mirroring the
   single CLI token -- a choice between a structured plain/asdot ASN
   and the internal/external/auto keywords -- not FRR's
@@ -314,7 +323,7 @@ same shape (one `.j2` template, thin Python glue module, thin
   variant backend `pybind-dataclass-dumb` is kept in the fork.
 - `src/frr_proteus/render/` -- templates under `templates/*.j2` (one per
   protocol/AF, e.g. `bgp.conf.j2`, `bgp_evpn_af.j2`) walk the generated
-  *proteus* dataclasses (`/bgp/instance` entries) close to directly, with
+  *proteus* dataclasses (`/instance` entries) close to directly, with
   minimal template logic. `helpers.py` holds the small amount of Python
   glue templates can't express cleanly (has_config/evpn_configured
   subtree-emptiness checks -- the old identityref/enum helpers died with
@@ -375,7 +384,7 @@ same shape (one `.j2` template, thin Python glue module, thin
   the AF loop covers all eight non-EVPN families, with
   `is defined` guards for groupings a family lacks.
   `render_bgp_process()` (bgp_process.conf.j2) renders the
-  process-wide `/bgp/process` container ('bgp ...' lines before any
+  process-wide `/process` container ('bgp ...' lines before any
   router block; empty string when unconfigured). Three-valued leaves
   render nothing when unset and the explicit positive/negative form
   otherwise; negative-only leaves (fast-external-failover,
@@ -465,7 +474,7 @@ same shape (one `.j2` template, thin Python glue module, thin
 **Steps 1+2 (done)** and, since the 2026-07-06 parity pass, the
 renderer covers the FULL proteus-bgp.yang / proteus-bgp-evpn.yang
 config surface: every schema node has an emitting template line
-(instance knobs, `/bgp/process`, all eight non-EVPN address families,
+(instance knobs, `/process`, all eight non-EVPN address families,
 the complete neighbor session/per-AF vocabulary, EVPN incl.
 multihoming, dup-addr-detection, mac-vrf soo, advertise-pip and
 type-5 `network` statements). EVPN originally verified against most

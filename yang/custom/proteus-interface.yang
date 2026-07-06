@@ -47,68 +47,63 @@ module proteus-interface {
       "Initial revision.";
   }
 
-  container interfaces {
+  list interface {
+    key "name";
     description
-      "All declared interfaces.";
+      "One 'interface NAME' block (lib/if.c interface_cmd:
+       'interface IFNAME [vrf NAME]').";
 
-    list interface {
-      key "name";
+    leaf name {
+      type string {
+        length "1..16";
+      }
       description
-        "One 'interface NAME' block (lib/if.c interface_cmd:
-         'interface IFNAME [vrf NAME]').";
+        "Interface name (IFNAME). Linux limits interface names to
+         15 characters plus NUL (IFNAMSIZ = 16); FRR's own
+         frr-interface.yang leaves the name unconstrained, but the
+         kernel bound is the real-world limit.";
+    }
 
-      leaf name {
-        type string {
-          length "1..16";
-        }
+    leaf description {
+      type string;
+      description
+        "'description LINE' inside the interface block
+         (lib/if.c interface_desc_cmd / cli_show_interface_desc).";
+    }
+
+    container ipv6-nd {
+      description
+        "IPv6 neighbor-discovery / router-advertisement settings.
+         Only ra-interval is modeled (see the module
+         description).";
+
+      choice ra-interval-units {
         description
-          "Interface name (IFNAME). Linux limits interface names to
-           15 characters plus NUL (IFNAMSIZ = 16); FRR's own
-           frr-interface.yang leaves the name unconstrained, but the
-           kernel bound is the real-world limit.";
-      }
+          "'ipv6 nd ra-interval <(1-1800)|msec (70-1800000)>'
+           (zebra/zebra_cli.c ipv6_nd_ra_interval_cmd): one
+           interval, in whole seconds or in milliseconds. The
+           cli_write emits the msec form exactly when the stored
+           interval isn't a whole second, so the two cases
+           round-trip.";
 
-      leaf description {
-        type string;
-        description
-          "'description LINE' inside the interface block
-           (lib/if.c interface_desc_cmd / cli_show_interface_desc).";
-      }
-
-      container ipv6-nd {
-        description
-          "IPv6 neighbor-discovery / router-advertisement settings.
-           Only ra-interval is modeled (see the module
-           description).";
-
-        choice ra-interval-units {
-          description
-            "'ipv6 nd ra-interval <(1-1800)|msec (70-1800000)>'
-             (zebra/zebra_cli.c ipv6_nd_ra_interval_cmd): one
-             interval, in whole seconds or in milliseconds. The
-             cli_write emits the msec form exactly when the stored
-             interval isn't a whole second, so the two cases
-             round-trip.";
-
-          case seconds {
-            leaf ra-interval {
-              type uint16 {
-                range "1..1800";
-              }
-              units "seconds";
-              description
-                "'ipv6 nd ra-interval (1-1800)'.";
+        case seconds {
+          leaf ra-interval {
+            type uint16 {
+              range "1..1800";
             }
+            units "seconds";
+            description
+              "'ipv6 nd ra-interval (1-1800)'.";
           }
-          case milliseconds {
-            leaf ra-interval-msec {
-              type uint32 {
-                range "70..1800000";
-              }
-              units "milliseconds";
-              description
-                "'ipv6 nd ra-interval msec (70-1800000)'.";
+        }
+        case milliseconds {
+          leaf ra-interval-msec {
+            type uint32 {
+              range "70..1800000";
             }
+            units "milliseconds";
+            description
+              "'ipv6 nd ra-interval msec (70-1800000)'.";
           }
         }
       }

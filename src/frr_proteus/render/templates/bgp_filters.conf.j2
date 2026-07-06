@@ -33,6 +33,6 @@ bgp large-community-list {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.a
 bgp extcommunity-list {{ cl.type }} {{ cl.name }} seq {{ e.sequence }} {{ e.action }} {{ value }}
 {% endfor %}
 {% endfor %}
-{% for alias in community_aliases.alias %}
+{% for alias in bgp_filters.community_alias %}
 bgp community alias {{ community_value_text(alias.community) }} {{ alias.name }}
 {% endfor %}

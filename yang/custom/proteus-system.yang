@@ -37,73 +37,67 @@ module proteus-system {
       "Initial revision.";
   }
 
-  container system {
+  leaf frr-defaults {
+    type enumeration {
+      enum traditional {
+        description
+          "Retain behaviors FRR's predecessors shipped with.";
+      }
+      enum datacenter {
+        description
+          "Faster timers, datacenter-appropriate defaults.";
+      }
+    }
     description
-      "Global host-level config lines, rendered before any protocol
-       or object blocks.";
+      "'frr defaults <profile>' (lib/lib_vty.c frr_defaults_cmd
+       'frr defaults PROFILE...'; the two profiles come from
+       lib/defaults.c frr_defaults_profiles).";
+  }
 
-    leaf frr-defaults {
+  leaf hostname {
+    type string {
+      length "1..255";
+    }
+    description
+      "'hostname NAME' (lib/command.c hostname_cmd /
+       config_write_host).";
+  }
+
+  container log {
+    description
+      "Logging targets. Only syslog is modeled.";
+
+    leaf syslog {
       type enumeration {
-        enum traditional {
-          description
-            "Retain behaviors FRR's predecessors shipped with.";
-        }
-        enum datacenter {
-          description
-            "Faster timers, datacenter-appropriate defaults.";
-        }
+        enum emergencies;
+        enum alerts;
+        enum critical;
+        enum errors;
+        enum warnings;
+        enum notifications;
+        enum informational;
+        enum debugging;
       }
       description
-        "'frr defaults <profile>' (lib/lib_vty.c frr_defaults_cmd
-         'frr defaults PROFILE...'; the two profiles come from
-         lib/defaults.c frr_defaults_profiles).";
+        "'log syslog <level>' (lib/log_cli.c config_log_syslog_cmd /
+         logging_syslog_cli_write; the level tokens are that
+         DEFPY's own list).";
     }
+  }
 
-    leaf hostname {
-      type string {
-        length "1..255";
-      }
+  container service {
+    description
+      "'service ...' lines. Only integrated-vtysh-config is
+       modeled.";
+
+    leaf integrated-vtysh-config {
+      type boolean;
       description
-        "'hostname NAME' (lib/command.c hostname_cmd /
-         config_write_host).";
-    }
-
-    container log {
-      description
-        "Logging targets. Only syslog is modeled.";
-
-      leaf syslog {
-        type enumeration {
-          enum emergencies;
-          enum alerts;
-          enum critical;
-          enum errors;
-          enum warnings;
-          enum notifications;
-          enum informational;
-          enum debugging;
-        }
-        description
-          "'log syslog <level>' (lib/log_cli.c config_log_syslog_cmd /
-           logging_syslog_cli_write; the level tokens are that
-           DEFPY's own list).";
-      }
-    }
-
-    container service {
-      description
-        "'service ...' lines. Only integrated-vtysh-config is
-         modeled.";
-
-      leaf integrated-vtysh-config {
-        type boolean;
-        description
-          "'service integrated-vtysh-config' when true, the explicit
-           'no service integrated-vtysh-config' when false (vtysh.c
-           vtysh_integrated_config_cmd; vtysh_config.c writes
-           whichever side differs from the build default). Unset
-           renders nothing.";
-      }
+        "'service integrated-vtysh-config' when true, the explicit
+         'no service integrated-vtysh-config' when false (vtysh.c
+         vtysh_integrated_config_cmd; vtysh_config.c writes
+         whichever side differs from the build default). Unset
+         renders nothing.";
     }
   }
 }

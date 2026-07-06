@@ -23,11 +23,11 @@ def render_route_maps(root) -> str:
     for an entry without an action (mandatory in YANG, but a caller
     may render without validate_tree).
     """
-    for rm in root.route_maps.route_map:
+    for rm in root.route_map:
         for entry in rm.entry:
             if not entry.action:
                 raise ValueError(
                     f"route-map {rm.name!r} entry {entry.sequence}: "
                     "action (permit|deny) is not set"
                 )
-    return _template.render(route_maps=root.route_maps)
+    return _template.render(route_maps=root)

@@ -22,7 +22,7 @@ else:
 # `TypeAlias` marks them as aliases while keeping normal assignments, so the
 # values stay callable. A PEP 695 `type X = ...` can't be used here: a
 # TypeAliasType is neither callable nor attribute-accessible.
-Instance: TypeAlias = bindings.ProteusBgp.Bgp.Instance
+Instance: TypeAlias = bindings.ProteusBgp.Instance
 EvpnAf: TypeAlias = Instance.AfiSafis.L2vpnEvpn
 
 

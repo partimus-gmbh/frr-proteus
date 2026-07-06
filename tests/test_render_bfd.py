@@ -16,7 +16,7 @@ else:
     bindings = pytest.importorskip("frr_proteus._generated.proteus")
 
 ProteusBfd: TypeAlias = bindings.ProteusBfd
-Profile: TypeAlias = bindings.ProteusBfd.Bfd.Profile
+Profile: TypeAlias = bindings.ProteusBfd.Profile
 
 
 def test_empty_root_renders_nothing():
@@ -25,7 +25,7 @@ def test_empty_root_renders_nothing():
 
 def test_profile_block_structure():
     root = ProteusBfd()
-    root.bfd.profile.append(
+    root.profile.append(
         Profile(
             name="fast",
             detect_multiplier=3,
@@ -48,13 +48,13 @@ def test_echo_receive_interval_zero_renders_disabled():
     # bfd_cli_show_required_echo_receive_interval() prints 'disabled'
     # for the 0 value (bfdd/bfdd_cli.c).
     root = ProteusBfd()
-    root.bfd.profile.append(Profile(name="p", echo_receive_interval=0))
+    root.profile.append(Profile(name="p", echo_receive_interval=0))
     assert "  echo receive-interval disabled\n" in render_bfd(root)
 
 
 def test_flags_and_echo_intervals():
     root = ProteusBfd()
-    root.bfd.profile.append(
+    root.profile.append(
         Profile(
             name="p",
             echo_mode=True,
@@ -78,5 +78,5 @@ def test_flags_and_echo_intervals():
 
 def test_unset_leaves_render_nothing():
     root = ProteusBfd()
-    root.bfd.profile.append(Profile(name="bare"))
+    root.profile.append(Profile(name="bare"))
     assert render_bfd(root) == "bfd\n profile bare\n exit\nexit\n"

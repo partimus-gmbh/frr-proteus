@@ -97,351 +97,339 @@ module proteus-bgp-filter {
     }
   }
 
-  container bgp-filters {
+  list as-path-access-list {
+    key "name";
     description
-      "bgpd's global filter lists.";
+      "One 'bgp as-path access-list NAME' (bgpd/bgp_filter.c
+       bgp_as_path_cmd; written by config_write_as_list:
+       'bgp as-path access-list NAME seq SEQ <permit|deny>
+       REGEX').";
 
-    list as-path-access-list {
-      key "name";
+    leaf name {
+      type pt:object-name;
       description
-        "One 'bgp as-path access-list NAME' (bgpd/bgp_filter.c
-         bgp_as_path_cmd; written by config_write_as_list:
-         'bgp as-path access-list NAME seq SEQ <permit|deny>
-         REGEX').";
-
-      leaf name {
-        type pt:object-name;
-        description
-          "AS-path access-list name (AS_PATH_FILTER_NAME).";
-      }
-
-      list entry {
-        key "sequence";
-        description
-          "One 'bgp as-path access-list NAME seq SEQ <permit|deny>
-           REGEX' line.";
-
-        uses bgp-filter-entry-header;
-
-        leaf regex {
-          type string {
-            length "1..max";
-          }
-          mandatory true;
-          description
-            "AS-path regular expression (the LINE... argument),
-             emitted verbatim (bgp_filter.c stores reg_str and
-             re-emits it).";
-        }
-      }
+        "AS-path access-list name (AS_PATH_FILTER_NAME).";
     }
 
-    list community-list {
-      key "name";
+    list entry {
+      key "sequence";
       description
-        "One named 'bgp community-list <standard|expanded> NAME'
-         (DEFUNs community_list_standard / community_list_expanded in
-         bgpd/bgp_vty.c; written by community_list_config_write:
-         'bgp community-list <standard|expanded> NAME seq SEQ
-         <permit|deny> VALUE'). FRR rejects mixing styles under one
-         name, hence the list-level type leaf.";
+        "One 'bgp as-path access-list NAME seq SEQ <permit|deny>
+         REGEX' line.";
 
-      leaf name {
-        type pt:object-name;
-        description
-          "Community-list name (COMMUNITY_LIST_NAME).";
-      }
+      uses bgp-filter-entry-header;
 
-      leaf type {
-        type enumeration {
-          enum standard {
-            description
-              "Entries match literal community values.";
-          }
-          enum expanded {
-            description
-              "Entries match a regular expression against the
-               community attribute string.";
-          }
+      leaf regex {
+        type string {
+          length "1..max";
         }
         mandatory true;
         description
-          "The <standard|expanded> keyword.";
-      }
-
-      list entry {
-        key "sequence";
-        description
-          "One 'bgp community-list ... seq SEQ <permit|deny> VALUE'
-           line.";
-
-        uses bgp-filter-entry-header;
-
-        choice value {
-          mandatory true;
-          description
-            "Entry value; which case is allowed follows the list's
-             type leaf (the 'must' pair).";
-
-          case standard {
-            container communities {
-              must "../../type = 'standard'" {
-                error-message
-                  "literal community values require a standard-type
-                   list";
-              }
-              must "member or well-known or raw" {
-                error-message
-                  "a standard community-list entry needs at least one
-                   community value";
-              }
-              description
-                "Literal communities -- one config line carries the
-                 whole space-separated set; FRR stores them as one
-                 entry.";
-              uses pt:community-set;
-            }
-          }
-          case expanded {
-            leaf regex {
-              type string {
-                length "1..max";
-              }
-              must "../../type = 'expanded'" {
-                error-message
-                  "a community regex requires an expanded-type list";
-              }
-              description
-                "Regular expression (LINE...) matched against the
-                 community attribute string, emitted verbatim.";
-            }
-          }
-        }
+          "AS-path regular expression (the LINE... argument),
+           emitted verbatim (bgp_filter.c stores reg_str and
+           re-emits it).";
       }
     }
+  }
 
-    list large-community-list {
-      key "name";
+  list community-list {
+    key "name";
+    description
+      "One named 'bgp community-list <standard|expanded> NAME'
+       (DEFUNs community_list_standard / community_list_expanded in
+       bgpd/bgp_vty.c; written by community_list_config_write:
+       'bgp community-list <standard|expanded> NAME seq SEQ
+       <permit|deny> VALUE'). FRR rejects mixing styles under one
+       name, hence the list-level type leaf.";
+
+    leaf name {
+      type pt:object-name;
       description
-        "One named 'bgp large-community-list <standard|expanded>
-         NAME' (DEFPYs lcommunity_list_standard/_expanded in
-         bgpd/bgp_vty.c; written by community_list_config_write).";
-
-      leaf name {
-        type pt:object-name;
-        description
-          "Large-community-list name (LCOMMUNITY_LIST_NAME).";
-      }
-
-      leaf type {
-        type enumeration {
-          enum standard {
-            description
-              "Entries match literal large-community values.";
-          }
-          enum expanded {
-            description
-              "Entries match a regular expression.";
-          }
-        }
-        mandatory true;
-        description
-          "The <standard|expanded> keyword.";
-      }
-
-      list entry {
-        key "sequence";
-        description
-          "One 'bgp large-community-list ... seq SEQ <permit|deny>
-           VALUE' line.";
-
-        uses bgp-filter-entry-header;
-
-        choice value {
-          mandatory true;
-          description
-            "Entry value; which case is allowed follows the list's
-             type leaf.";
-
-          case standard {
-            container large-communities {
-              must "../../type = 'standard'" {
-                error-message
-                  "literal large-community values require a
-                   standard-type list";
-              }
-              must "member or raw" {
-                error-message
-                  "a standard large-community-list entry needs at
-                   least one value";
-              }
-              description
-                "Literal large communities -- one config line carries
-                 the whole space-separated set.";
-              uses pt:large-community-set;
-            }
-          }
-          case expanded {
-            leaf regex {
-              type string {
-                length "1..max";
-              }
-              must "../../type = 'expanded'" {
-                error-message
-                  "a large-community regex requires an expanded-type
-                   list";
-              }
-              description
-                "Regular expression (LINE...), emitted verbatim.";
-            }
-          }
-        }
-      }
+        "Community-list name (COMMUNITY_LIST_NAME).";
     }
 
-    list extcommunity-list {
-      key "name";
-      description
-        "One named 'bgp extcommunity-list <standard|expanded> NAME'
-         (DEFUNs extcommunity_list_standard/_expanded in
-         bgpd/bgp_vty.c; written by community_list_config_write).";
-
-      leaf name {
-        type pt:object-name;
-        description
-          "Extended-community-list name (EXTCOMMUNITY_LIST_NAME).";
-      }
-
-      leaf type {
-        type enumeration {
-          enum standard {
-            description
-              "Entries match literal rt/soo extended-community
-               values.";
-          }
-          enum expanded {
-            description
-              "Entries match a regular expression.";
-          }
+    leaf type {
+      type enumeration {
+        enum standard {
+          description
+            "Entries match literal community values.";
         }
+        enum expanded {
+          description
+            "Entries match a regular expression against the
+             community attribute string.";
+        }
+      }
+      mandatory true;
+      description
+        "The <standard|expanded> keyword.";
+    }
+
+    list entry {
+      key "sequence";
+      description
+        "One 'bgp community-list ... seq SEQ <permit|deny> VALUE'
+         line.";
+
+      uses bgp-filter-entry-header;
+
+      choice value {
         mandatory true;
         description
-          "The <standard|expanded> keyword.";
-      }
+          "Entry value; which case is allowed follows the list's
+           type leaf (the 'must' pair).";
 
-      list entry {
-        key "sequence";
-        description
-          "One 'bgp extcommunity-list ... seq SEQ <permit|deny>
-           VALUE' line.";
-
-        uses bgp-filter-entry-header;
-
-        choice value {
-          mandatory true;
-          description
-            "Entry value; which case is allowed follows the list's
-             type leaf.";
-
-          case standard {
-            container extcommunities {
-              must "../../type = 'standard'" {
-                error-message
-                  "literal extended-community values require a
-                   standard-type list";
-              }
-              must "route-target/as2 or route-target/as4 "
-                 + "or route-target/ipv4 or route-origin/as2 "
-                 + "or route-origin/as4 or route-origin/ipv4 or raw" {
-                error-message
-                  "a standard extcommunity-list entry needs at least
-                   one value";
-              }
-              description
-                "Literal extended communities -- one config line
-                 carries the whole set, each value rendered as
-                 'rt <RT>' or 'soo <SoO>'. Route targets (RFC 4360
-                 subtype 0x02) and route origins (subtype 0x03) are
-                 distinct sets; the raw fallback tokens are emitted
-                 verbatim (including the rt/soo keyword).";
-              container route-target {
-                description
-                  "'rt AA:NN' / 'rt A.B.C.D:NN' values.";
-                uses pt:route-target-set;
-              }
-              container route-origin {
-                description
-                  "'soo AA:NN' / 'soo A.B.C.D:NN' values
-                   (site-of-origin).";
-                uses pt:route-origin-set;
-              }
-              leaf-list raw {
-                type string;
-                description
-                  "Fallback: whole tokens ('rt ...' / 'soo ...')
-                   emitted verbatim, for values outside the
-                   structured encodings.";
-              }
+        case standard {
+          container communities {
+            must "../../type = 'standard'" {
+              error-message
+                "literal community values require a standard-type
+                 list";
             }
+            must "member or well-known or raw" {
+              error-message
+                "a standard community-list entry needs at least one
+                 community value";
+            }
+            description
+              "Literal communities -- one config line carries the
+               whole space-separated set; FRR stores them as one
+               entry.";
+            uses pt:community-set;
           }
-          case expanded {
-            leaf regex {
-              type string {
-                length "1..max";
-              }
-              must "../../type = 'expanded'" {
-                error-message
-                  "an extcommunity regex requires an expanded-type
-                   list";
-              }
-              description
-                "Regular expression (LINE...), emitted verbatim.";
+        }
+        case expanded {
+          leaf regex {
+            type string {
+              length "1..max";
             }
+            must "../../type = 'expanded'" {
+              error-message
+                "a community regex requires an expanded-type list";
+            }
+            description
+              "Regular expression (LINE...) matched against the
+               community attribute string, emitted verbatim.";
           }
         }
       }
     }
   }
 
-  container community-aliases {
+  list large-community-list {
+    key "name";
     description
-      "Community aliases: symbolic names for community values, usable
-       in route-map 'match alias' and shown in place of the numeric
-       value in 'show bgp' output.";
+      "One named 'bgp large-community-list <standard|expanded>
+       NAME' (DEFPYs lcommunity_list_standard/_expanded in
+       bgpd/bgp_vty.c; written by community_list_config_write).";
 
-    list alias {
-      key "name";
-      must "community/community/global-admin "
-         + "or community/well-known "
-         + "or community/large-community/global-admin "
-         + "or community/raw" {
-        error-message
-          "an alias needs the community value it names";
-      }
+    leaf name {
+      type pt:object-name;
       description
-        "One 'bgp community alias COMMUNITY ALIAS' line (DEFPY
-         bgp_community_alias_cmd in bgpd/bgp_vty.c; written by
-         bgp_community_alias_write in bgpd/bgp_community_alias.c).
-         Both directions are unique in FRR: a community has one alias
-         and an alias names one community -- the alias direction is
-         the list key; the community direction is enforced by the
-         DEFPY only (a 'unique' statement can't span the value
-         choice's branches).";
+        "Large-community-list name (LCOMMUNITY_LIST_NAME).";
+    }
 
-      leaf name {
-        type pt:object-name;
-        description
-          "The alias name (ALIAS_NAME) -- what 'match alias'
-           references.";
+    leaf type {
+      type enumeration {
+        enum standard {
+          description
+            "Entries match literal large-community values.";
+        }
+        enum expanded {
+          description
+            "Entries match a regular expression.";
+        }
       }
+      mandatory true;
+      description
+        "The <standard|expanded> keyword.";
+    }
 
-      container community {
+    list entry {
+      key "sequence";
+      description
+        "One 'bgp large-community-list ... seq SEQ <permit|deny>
+         VALUE' line.";
+
+      uses bgp-filter-entry-header;
+
+      choice value {
+        mandatory true;
         description
-          "The community or large-community value being aliased (the
-           WORD argument; FRR accepts both kinds). Required -- the
-           'must' on the alias entry.";
-        uses pt:community-value;
+          "Entry value; which case is allowed follows the list's
+           type leaf.";
+
+        case standard {
+          container large-communities {
+            must "../../type = 'standard'" {
+              error-message
+                "literal large-community values require a
+                 standard-type list";
+            }
+            must "member or raw" {
+              error-message
+                "a standard large-community-list entry needs at
+                 least one value";
+            }
+            description
+              "Literal large communities -- one config line carries
+               the whole space-separated set.";
+            uses pt:large-community-set;
+          }
+        }
+        case expanded {
+          leaf regex {
+            type string {
+              length "1..max";
+            }
+            must "../../type = 'expanded'" {
+              error-message
+                "a large-community regex requires an expanded-type
+                 list";
+            }
+            description
+              "Regular expression (LINE...), emitted verbatim.";
+          }
+        }
       }
+    }
+  }
+
+  list extcommunity-list {
+    key "name";
+    description
+      "One named 'bgp extcommunity-list <standard|expanded> NAME'
+       (DEFUNs extcommunity_list_standard/_expanded in
+       bgpd/bgp_vty.c; written by community_list_config_write).";
+
+    leaf name {
+      type pt:object-name;
+      description
+        "Extended-community-list name (EXTCOMMUNITY_LIST_NAME).";
+    }
+
+    leaf type {
+      type enumeration {
+        enum standard {
+          description
+            "Entries match literal rt/soo extended-community
+             values.";
+        }
+        enum expanded {
+          description
+            "Entries match a regular expression.";
+        }
+      }
+      mandatory true;
+      description
+        "The <standard|expanded> keyword.";
+    }
+
+    list entry {
+      key "sequence";
+      description
+        "One 'bgp extcommunity-list ... seq SEQ <permit|deny>
+         VALUE' line.";
+
+      uses bgp-filter-entry-header;
+
+      choice value {
+        mandatory true;
+        description
+          "Entry value; which case is allowed follows the list's
+           type leaf.";
+
+        case standard {
+          container extcommunities {
+            must "../../type = 'standard'" {
+              error-message
+                "literal extended-community values require a
+                 standard-type list";
+            }
+            must "route-target/as2 or route-target/as4 "
+               + "or route-target/ipv4 or route-origin/as2 "
+               + "or route-origin/as4 or route-origin/ipv4 or raw" {
+              error-message
+                "a standard extcommunity-list entry needs at least
+                 one value";
+            }
+            description
+              "Literal extended communities -- one config line
+               carries the whole set, each value rendered as
+               'rt <RT>' or 'soo <SoO>'. Route targets (RFC 4360
+               subtype 0x02) and route origins (subtype 0x03) are
+               distinct sets; the raw fallback tokens are emitted
+               verbatim (including the rt/soo keyword).";
+            container route-target {
+              description
+                "'rt AA:NN' / 'rt A.B.C.D:NN' values.";
+              uses pt:route-target-set;
+            }
+            container route-origin {
+              description
+                "'soo AA:NN' / 'soo A.B.C.D:NN' values
+                 (site-of-origin).";
+              uses pt:route-origin-set;
+            }
+            leaf-list raw {
+              type string;
+              description
+                "Fallback: whole tokens ('rt ...' / 'soo ...')
+                 emitted verbatim, for values outside the
+                 structured encodings.";
+            }
+          }
+        }
+        case expanded {
+          leaf regex {
+            type string {
+              length "1..max";
+            }
+            must "../../type = 'expanded'" {
+              error-message
+                "an extcommunity regex requires an expanded-type
+                 list";
+            }
+            description
+              "Regular expression (LINE...), emitted verbatim.";
+          }
+        }
+      }
+    }
+  }
+
+  list community-alias {
+    key "name";
+    must "community/community/global-admin "
+       + "or community/well-known "
+       + "or community/large-community/global-admin "
+       + "or community/raw" {
+      error-message
+        "an alias needs the community value it names";
+    }
+    description
+      "One 'bgp community alias COMMUNITY ALIAS' line (DEFPY
+       bgp_community_alias_cmd in bgpd/bgp_vty.c; written by
+       bgp_community_alias_write in bgpd/bgp_community_alias.c).
+       Both directions are unique in FRR: a community has one alias
+       and an alias names one community -- the alias direction is
+       the list key; the community direction is enforced by the
+       DEFPY only (a 'unique' statement can't span the value
+       choice's branches).";
+
+    leaf name {
+      type pt:object-name;
+      description
+        "The alias name (ALIAS_NAME) -- what 'match alias'
+         references.";
+    }
+
+    container community {
+      description
+        "The community or large-community value being aliased (the
+         WORD argument; FRR accepts both kinds). Required -- the
+         'must' on the alias entry.";
+      uses pt:community-value;
     }
   }
 }

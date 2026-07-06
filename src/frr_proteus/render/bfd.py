@@ -20,6 +20,6 @@ def render_bfd(root) -> str:
     Returns "" when no profiles are configured (an empty 'bfd'/'exit'
     pair would be pointless, if harmless).
     """
-    if not root.bfd.profile:
+    if not root.profile:
         return ""
-    return _template.render(bfd=root.bfd)
+    return _template.render(bfd=root)

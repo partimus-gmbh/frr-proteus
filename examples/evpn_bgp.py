@@ -30,9 +30,9 @@ from frr_proteus.render import render_bgp_instance, render_route_maps
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
-Instance: TypeAlias = ProteusBgp.Bgp.Instance
+Instance: TypeAlias = ProteusBgp.Instance
 EvpnAf: TypeAlias = Instance.AfiSafis.L2vpnEvpn
-RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
+RouteMap: TypeAlias = ProteusRouteMap.RouteMap
 
 
 def build_default_instance(*, local_as: int, router_id: str) -> Instance:
@@ -101,19 +101,19 @@ def build_route_maps() -> ProteusRouteMap:
     entry = RouteMap.Entry(sequence=10, action="permit")
     entry.match.evpn.route_type = "macip"
     rmap.entry.append(entry)
-    root.route_maps.route_map.append(rmap)
+    root.route_map.append(rmap)
     return root
 
 
 def main() -> None:
     root = ProteusBgp()
-    root.bgp.instance.append(
+    root.instance.append(
         build_default_instance(local_as=65000, router_id="10.10.10.10")
     )
-    root.bgp.instance.append(
+    root.instance.append(
         build_vrf_instance_auto_rt(local_as=65000, vrf="vrf-red")
     )
-    root.bgp.instance.append(
+    root.instance.append(
         build_vrf_instance_type5(local_as=65000, vrf="vrf-purple")
     )
     route_maps = build_route_maps()
@@ -127,7 +127,7 @@ def main() -> None:
     # One combined frr.conf-shaped file: route-maps first, then the
     # router bgp blocks.
     text = render_route_maps(route_maps) + "".join(
-        render_bgp_instance(instance) for instance in root.bgp.instance
+        render_bgp_instance(instance) for instance in root.instance
     )
 
     OUT_DIR.mkdir(exist_ok=True)

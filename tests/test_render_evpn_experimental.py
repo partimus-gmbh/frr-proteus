@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 else:
     bindings = pytest.importorskip("frr_proteus._generated.proteus")
 
-Instance: TypeAlias = bindings.ProteusBgp.Bgp.Instance
+Instance: TypeAlias = bindings.ProteusBgp.Instance
 EvpnAf: TypeAlias = Instance.AfiSafis.L2vpnEvpn
 GlobalEvpn: TypeAlias = bindings.ProteusBgpEvpnExperimental.Evpn
 
@@ -275,7 +275,7 @@ def test_underlay_vrf_leafref_enforced():
     underlay.afi_safis.l2vpn_evpn.vxlan_underlay = True
     tenant = _new_instance(vrf="blue")
     tenant.afi_safis.l2vpn_evpn.underlay_vrf = "underlay-red"
-    root.bgp.instance.extend([underlay, tenant])
+    root.instance.extend([underlay, tenant])
     exp_root.evpn.default_underlay_vrf = "underlay-red"
     bindings.validate_tree(root, exp_root)
 
@@ -293,7 +293,7 @@ def test_underlay_vrf_must_enforces_vxlan_underlay_role():
     tenant.afi_safis.l2vpn_evpn.underlay_vrf = "underlay-red"
     evi = _evi("blue-v100", underlay="underlay-red", l2vni=100)
     tenant.afi_safis.l2vpn_evpn.vlan_based_evi.append(evi)
-    root.bgp.instance.extend([underlay, tenant])
+    root.instance.extend([underlay, tenant])
     exp_root.evpn.default_underlay_vrf = "underlay-red"
     exp_root.evpn.vlan_based_evi.append(_evi("shared", underlay="underlay-red"))
 

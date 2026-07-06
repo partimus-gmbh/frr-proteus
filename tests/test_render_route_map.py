@@ -16,14 +16,14 @@ else:
     bindings = pytest.importorskip("frr_proteus._generated.proteus")
 
 ProteusRouteMap: TypeAlias = bindings.ProteusRouteMap
-RouteMap: TypeAlias = bindings.ProteusRouteMap.RouteMaps.RouteMap
+RouteMap: TypeAlias = bindings.ProteusRouteMap.RouteMap
 
 
 def _root_with_entry(sequence: int = 10, action: str = "permit"):
     root = ProteusRouteMap()
     rm = RouteMap(name="RM")
     rm.entry.append(RouteMap.Entry(sequence=sequence, action=action))
-    root.route_maps.route_map.append(rm)
+    root.route_map.append(rm)
     return root, rm.entry[0]
 
 
@@ -40,7 +40,7 @@ def test_action_required():
     root = ProteusRouteMap()
     rm = RouteMap(name="RM")
     rm.entry.append(RouteMap.Entry(sequence=10))
-    root.route_maps.route_map.append(rm)
+    root.route_map.append(rm)
     with pytest.raises(ValueError, match="action"):
         render_route_maps(root)
 
@@ -176,7 +176,7 @@ def test_match_evpn_rd_structured():
 
 def test_multiple_entries_each_get_a_block():
     root, _ = _root_with_entry()
-    rm = root.route_maps.route_map[0]
+    rm = root.route_map[0]
     rm.entry.append(RouteMap.Entry(sequence=20, action="deny"))
     text = render_route_maps(root)
     assert "route-map RM permit 10\nexit\nroute-map RM deny 20\nexit\n" == text

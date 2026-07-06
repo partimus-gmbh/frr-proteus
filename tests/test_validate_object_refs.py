@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 else:
     bindings = pytest.importorskip("frr_proteus._generated.proteus")
 
-Instance: TypeAlias = bindings.ProteusBgp.Bgp.Instance
-RouteMap: TypeAlias = bindings.ProteusRouteMap.RouteMaps.RouteMap
+Instance: TypeAlias = bindings.ProteusBgp.Instance
+RouteMap: TypeAlias = bindings.ProteusRouteMap.RouteMap
 PrefixList4: TypeAlias = bindings.ProteusFilter.PrefixLists.Ipv4.PrefixList
 AccessList4: TypeAlias = bindings.ProteusFilter.AccessLists.Ipv4.AccessList
 AccessList6: TypeAlias = bindings.ProteusFilter.AccessLists.Ipv6.AccessList
@@ -42,7 +42,7 @@ def _all_roots():
 def _route_map_entry(rm_root, name="RM"):
     rm = RouteMap(name=name)
     rm.entry.append(RouteMap.Entry(sequence=10, action="permit"))
-    rm_root.route_maps.route_map.append(rm)
+    rm_root.route_map.append(rm)
     return rm.entry[0]
 
 
@@ -52,7 +52,7 @@ def _bgp_neighbor(bgp_root):
     neighbor = Instance.Neighbor(address="192.0.2.1")
     neighbor.remote_as.type = "external"
     instance.neighbor.append(neighbor)
-    bgp_root.bgp.instance.append(instance)
+    bgp_root.instance.append(instance)
     return neighbor
 
 
@@ -90,10 +90,10 @@ def test_route_map_bgp_filter_refs():
     entry.match.alias = "gold"
     with pytest.raises(bindings.YangValidationError, match="no matching instance"):
         bindings.validate_tree(*roots)
-    Filters = bindings.ProteusBgpFilter.BgpFilters
+    Filters = bindings.ProteusBgpFilter
     asp = Filters.AsPathAccessList(name="ASP")
     asp.entry.append(Filters.AsPathAccessList.Entry(sequence=5, action="permit", regex=".*"))
-    bgpfilter_root.bgp_filters.as_path_access_list.append(asp)
+    bgpfilter_root.as_path_access_list.append(asp)
     cl = Filters.CommunityList(name="CL", type="standard")
     cl_entry = Filters.CommunityList.Entry(sequence=5, action="permit")
     cl_entry.communities.member.append(
@@ -102,11 +102,11 @@ def test_route_map_bgp_filter_refs():
         )
     )
     cl.entry.append(cl_entry)
-    bgpfilter_root.bgp_filters.community_list.append(cl)
-    alias = bindings.ProteusBgpFilter.CommunityAliases.Alias(name="gold")
+    bgpfilter_root.community_list.append(cl)
+    alias = bindings.ProteusBgpFilter.CommunityAlias(name="gold")
     alias.community.community.global_admin = 65001
     alias.community.community.local_admin = 1
-    bgpfilter_root.community_aliases.alias.append(alias)
+    bgpfilter_root.community_alias.append(alias)
     bindings.validate_tree(*roots)
 
 
@@ -114,13 +114,13 @@ def test_neighbor_bfd_profile_and_source_interface_refs():
     roots = _all_roots()
     bgp_root, *_ , bfd_root, intf_root = roots
     neighbor = _bgp_neighbor(bgp_root)
-    neighbor.bfd.profile = "fast"
+    neighbor.profile = "fast"
     neighbor.source_interface = "swp1"
     with pytest.raises(bindings.YangValidationError, match="no matching instance"):
         bindings.validate_tree(*roots)
-    bfd_root.bfd.profile.append(bindings.ProteusBfd.Bfd.Profile(name="fast"))
-    intf_root.interfaces.interface.append(
-        bindings.ProteusInterface.Interfaces.Interface(name="swp1")
+    bfd_root.profile.append(bindings.ProteusBfd.Profile(name="fast"))
+    intf_root.interface.append(
+        bindings.ProteusInterface.Interface(name="swp1")
     )
     bindings.validate_tree(*roots)
 
@@ -158,7 +158,7 @@ def test_community_list_type_value_must():
     # The YANG 'must' pair ties entry values to the list's type.
     roots = _all_roots()
     bgpfilter_root = roots[3]
-    Filters = bindings.ProteusBgpFilter.BgpFilters
+    Filters = bindings.ProteusBgpFilter
     cl = Filters.CommunityList(name="BROKEN", type="expanded")
     entry = Filters.CommunityList.Entry(sequence=5, action="permit")
     entry.communities.member.append(
@@ -167,7 +167,7 @@ def test_community_list_type_value_must():
         )
     )
     cl.entry.append(entry)
-    bgpfilter_root.bgp_filters.community_list.append(cl)
+    bgpfilter_root.community_list.append(cl)
     with pytest.raises(bindings.YangValidationError, match="standard-type"):
         bindings.validate_tree(*roots)
 
@@ -180,6 +180,6 @@ def test_rd_type6_mac_is_blocked():
     instance = Instance(vrf="default")
     instance.autonomous_system.plain = 65001
     instance.afi_safis.l2vpn_evpn.rd.mac = "00:11:22:33:44:55"
-    bgp_root.bgp.instance.append(instance)
+    bgp_root.instance.append(instance)
     with pytest.raises(bindings.YangValidationError, match="type-6"):
         bindings.validate_tree(*roots)

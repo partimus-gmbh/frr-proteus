@@ -49,11 +49,11 @@ from frr_proteus.render import (
     render_vrfs,
 )
 
-Instance: TypeAlias = ProteusBgp.Bgp.Instance
-RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
+Instance: TypeAlias = ProteusBgp.Instance
+RouteMap: TypeAlias = ProteusRouteMap.RouteMap
 PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
 LargeCommunityList: TypeAlias = (
-    ProteusBgpFilter.BgpFilters.LargeCommunityList
+    ProteusBgpFilter.LargeCommunityList
 )
 
 # Dotted (asdot) notation, as in the original config, structured as
@@ -93,22 +93,22 @@ def build_host_objects() -> tuple[ProteusSystem, ProteusVrf, ProteusInterface]:
     RA interval on every underlay port (RAs are how unnumbered eBGP
     learns the peer's link-local next hop)."""
     system = ProteusSystem()
-    system.system.frr_defaults = "datacenter"
-    system.system.hostname = "vtep-host-01"
-    system.system.log.syslog = "informational"
-    system.system.service.integrated_vtysh_config = True
+    system.frr_defaults = "datacenter"
+    system.hostname = "vtep-host-01"
+    system.log.syslog = "informational"
+    system.service.integrated_vtysh_config = True
 
     vrfs = ProteusVrf()
-    vrfs.vrfs.vrf.extend(
-        ProteusVrf.Vrfs.Vrf(name=vrf, l3vni=vni) for vrf, vni in VRFS.items()
+    vrfs.vrf.extend(
+        ProteusVrf.Vrf(name=vrf, l3vni=vni) for vrf, vni in VRFS.items()
     )
 
     interfaces = ProteusInterface()
     for _, _, ifaces in SPINE_NEIGHBORS:
         for ifname in ifaces:
-            intf = ProteusInterface.Interfaces.Interface(name=ifname)
+            intf = ProteusInterface.Interface(name=ifname)
             intf.ipv6_nd.ra_interval = 5
-            interfaces.interfaces.interface.append(intf)
+            interfaces.interface.append(intf)
     return system, vrfs, interfaces
 
 
@@ -157,7 +157,7 @@ def build_policy_objects() -> tuple[ProteusFilter, ProteusBgpFilter, ProteusRout
             )
         )
         lcl.entry.append(entry)
-        bgp_filters.bgp_filters.large_community_list.append(lcl)
+        bgp_filters.large_community_list.append(lcl)
 
     tagger = RouteMap(name="ATTACH-COMMUNITIES-TO-EXPORT-PREFIXES")
     tagger.entry.extend(
@@ -204,7 +204,7 @@ def build_policy_objects() -> tuple[ProteusFilter, ProteusBgpFilter, ProteusRout
         rm_entry(40, desc="Allow 25G-ONLY Prefix on 25G link", match_lc="LOOPBACK-25G-ONLY"),
         rm_entry(65535, "deny"),
     ])
-    rmaps.route_maps.route_map.extend([tagger, in_100g, out_100g, in_25g, out_25g])
+    rmaps.route_map.extend([tagger, in_100g, out_100g, in_25g, out_25g])
     return filters, bgp_filters, rmaps
 
 
@@ -300,8 +300,8 @@ def main() -> None:
     system, vrfs, interfaces = build_host_objects()
     filters, bgp_filters, rmaps = build_policy_objects()
     bgp = ProteusBgp()
-    bgp.bgp.instance.append(build_default_instance())
-    bgp.bgp.instance.extend(
+    bgp.instance.append(build_default_instance())
+    bgp.instance.extend(
         build_vrf_instance(vrf, vni) for vrf, vni in VRFS.items()
     )
     validate_tree(bgp, rmaps, filters, bgp_filters, system, vrfs, interfaces)
@@ -312,7 +312,7 @@ def main() -> None:
         + render_interfaces(interfaces)
         + render_filters(filters)
         + render_route_maps(rmaps)
-        + "".join(render_bgp_instance(i) for i in bgp.bgp.instance)
+        + "".join(render_bgp_instance(i) for i in bgp.instance)
         + render_bgp_filters(bgp_filters)
     )
     out = pathlib.Path(__file__).resolve().parent.parent / "out"

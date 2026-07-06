@@ -18,6 +18,6 @@ def render_vrfs(root) -> str:
 
     Returns "" when no VRFs are declared.
     """
-    if not root.vrfs.vrf:
+    if not root.vrf:
         return ""
-    return _template.render(vrfs=root.vrfs)
+    return _template.render(vrfs=root)

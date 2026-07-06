@@ -23,7 +23,7 @@ else:
 # while keeping a normal assignment, so the value stays callable. A PEP 695
 # `type X = ...` can't be used here: a TypeAliasType is neither callable nor
 # attribute-accessible.
-Instance: TypeAlias = bindings.ProteusBgp.Bgp.Instance
+Instance: TypeAlias = bindings.ProteusBgp.Instance
 
 
 def _new_instance(
@@ -149,7 +149,7 @@ def test_asdot_asn_zero_rejected():
     instance.autonomous_system.asdot.low = 0
     with pytest.raises(bindings.YangValidationError):
         root = bindings.ProteusBgp()
-        root.bgp.instance.append(instance)
+        root.instance.append(instance)
         bindings.validate_tree(root)
 
 
@@ -958,7 +958,7 @@ def test_neighbor_af_config_reaches_all_families():
 def test_render_bgp_process():
     from frr_proteus.render import render_bgp_process
 
-    process = bindings.ProteusBgp.Bgp.Process()
+    process = bindings.ProteusBgp.Process()
     assert render_bgp_process(process) == ""
     process.route_map_delay_timer = 30
     process.update_delay.delay = 300

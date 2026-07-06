@@ -20,6 +20,6 @@ def render_system(root) -> str:
 
     Returns "" when nothing under /system is configured.
     """
-    if not helpers.has_config(root.system):
+    if not helpers.has_config(root):
         return ""
-    return _template.render(system=root.system)
+    return _template.render(system=root)

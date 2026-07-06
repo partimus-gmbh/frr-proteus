@@ -39,9 +39,9 @@ from frr_proteus.render import (
     render_route_maps,
 )
 
-Instance: TypeAlias = ProteusBgp.Bgp.Instance
-RemoteAs: TypeAlias = ProteusBgp.Bgp.Instance.PeerGroup.RemoteAs
-RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
+Instance: TypeAlias = ProteusBgp.Instance
+RemoteAs: TypeAlias = ProteusBgp.Instance.PeerGroup.RemoteAs
+RouteMap: TypeAlias = ProteusRouteMap.RouteMap
 PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
 
 RT_AS = 65000  # route-target administrator, shared fabric-wide
@@ -87,13 +87,13 @@ def build_policy() -> tuple[ProteusFilter, ProteusRouteMap]:
     permit = RouteMap.Entry(sequence=10, action="permit")
     permit.match.ip_address_prefix_list = "FABRIC-LOOPBACKS"
     rmap.entry.extend([permit, RouteMap.Entry(sequence=65535, action="deny")])
-    rmaps.route_maps.route_map.append(rmap)
+    rmaps.route_map.append(rmap)
     return filters, rmaps
 
 
 def build_bfd() -> ProteusBfd:
     bfd = ProteusBfd()
-    bfd.bfd.profile.append(ProteusBfd.Bfd.Profile(
+    bfd.profile.append(ProteusBfd.Profile(
         name="fabric", detect_multiplier=3,
         receive_interval=300, transmit_interval=300,
     ))
@@ -102,8 +102,8 @@ def build_bfd() -> ProteusBfd:
 
 def build_interfaces(device: Device) -> ProteusInterface:
     interfaces = ProteusInterface()
-    interfaces.interfaces.interface.extend(
-        ProteusInterface.Interfaces.Interface(
+    interfaces.interface.extend(
+        ProteusInterface.Interface(
             name=port, description=f"fabric: {remote.name}"
         )
         for port, remote in fabric_ports(device)
@@ -123,7 +123,7 @@ def build_default_instance(device: Device) -> Instance:
         name="UNDERLAY", remote_as=RemoteAs(type="external")
     )
     underlay.bfd.enabled = True
-    underlay.bfd.profile = "fabric"
+    underlay.profile = "fabric"
     u_af = underlay.afi_safis.ipv4_unicast
     u_af.activate = True
     u_af.filters.route_map_out = "LOOPBACKS-ONLY"
@@ -186,9 +186,9 @@ def build_device(device: Device) -> str:
     filters, rmaps = build_policy()
     bfd, interfaces = build_bfd(), build_interfaces(device)
     bgp = ProteusBgp()
-    bgp.bgp.instance.append(build_default_instance(device))
+    bgp.instance.append(build_default_instance(device))
     if not device.is_spine:
-        bgp.bgp.instance.extend(
+        bgp.instance.extend(
             build_tenant_instance(device, tenant, l3vni)
             for tenant, (l3vni, _) in TENANTS.items()
         )
@@ -198,7 +198,7 @@ def build_device(device: Device) -> str:
         + render_filters(filters)
         + render_route_maps(rmaps)
         + render_bfd(bfd)
-        + "".join(render_bgp_instance(i) for i in bgp.bgp.instance)
+        + "".join(render_bgp_instance(i) for i in bgp.instance)
     )
 
 

@@ -164,7 +164,7 @@ module proteus-bgp-evpn {
     }
     leaf route-map {
       type leafref {
-        path "/rmap:route-maps/rmap:route-map/rmap:name";
+        path "/rmap:route-map/rmap:name";
       }
       description
         "Filter/transform the advertised routes.";
@@ -508,7 +508,7 @@ module proteus-bgp-evpn {
       }
       leaf route-map {
         type leafref {
-          path "/rmap:route-maps/rmap:route-map/rmap:name";
+          path "/rmap:route-map/rmap:name";
         }
         description
           "Optional trailing 'route-map NAME'.";

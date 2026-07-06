@@ -16,13 +16,13 @@ else:
     bindings = pytest.importorskip("frr_proteus._generated.proteus")
 
 ProteusBgpFilter: TypeAlias = bindings.ProteusBgpFilter
-AsPathList: TypeAlias = bindings.ProteusBgpFilter.BgpFilters.AsPathAccessList
-CommunityList: TypeAlias = bindings.ProteusBgpFilter.BgpFilters.CommunityList
+AsPathList: TypeAlias = bindings.ProteusBgpFilter.AsPathAccessList
+CommunityList: TypeAlias = bindings.ProteusBgpFilter.CommunityList
 LargeCommunityList: TypeAlias = (
-    bindings.ProteusBgpFilter.BgpFilters.LargeCommunityList
+    bindings.ProteusBgpFilter.LargeCommunityList
 )
-ExtcommunityList: TypeAlias = bindings.ProteusBgpFilter.BgpFilters.ExtcommunityList
-Alias: TypeAlias = bindings.ProteusBgpFilter.CommunityAliases.Alias
+ExtcommunityList: TypeAlias = bindings.ProteusBgpFilter.ExtcommunityList
+Alias: TypeAlias = bindings.ProteusBgpFilter.CommunityAlias
 
 
 def test_empty_root_renders_nothing():
@@ -33,7 +33,7 @@ def test_as_path_access_list():
     root = ProteusBgpFilter()
     asp = AsPathList(name="NO-PRIVATE")
     asp.entry.append(AsPathList.Entry(sequence=5, action="deny", regex="_6451[2-9]_"))
-    root.bgp_filters.as_path_access_list.append(asp)
+    root.as_path_access_list.append(asp)
     assert (
         render_bgp_filters(root)
         == "bgp as-path access-list NO-PRIVATE seq 5 deny _6451[2-9]_\n"
@@ -50,7 +50,7 @@ def test_standard_community_list_joins_values():
     entry.communities.well_known.append("no-export")
     entry.communities.raw.append("4294967296:1")  # deliberately invalid
     cl.entry.append(entry)
-    root.bgp_filters.community_list.append(cl)
+    root.community_list.append(cl)
     assert (
         "bgp community-list standard CUSTOMERS seq 5 permit "
         "65001:100 65001:200 no-export 4294967296:1\n" in render_bgp_filters(root)
@@ -61,7 +61,7 @@ def test_expanded_community_list_regex():
     root = ProteusBgpFilter()
     cl = CommunityList(name="RE", type="expanded")
     cl.entry.append(CommunityList.Entry(sequence=5, action="permit", regex="_65...:"))
-    root.bgp_filters.community_list.append(cl)
+    root.community_list.append(cl)
     assert (
         "bgp community-list expanded RE seq 5 permit _65...:\n"
         in render_bgp_filters(root)
@@ -78,7 +78,7 @@ def test_large_and_ext_community_lists():
         )
     )
     lcl.entry.append(lentry)
-    root.bgp_filters.large_community_list.append(lcl)
+    root.large_community_list.append(lcl)
 
     ecl = ExtcommunityList(name="RTS", type="standard")
     eentry = ExtcommunityList.Entry(sequence=5, action="permit")
@@ -96,7 +96,7 @@ def test_large_and_ext_community_lists():
         )
     )
     ecl.entry.append(eentry)
-    root.bgp_filters.extcommunity_list.append(ecl)
+    root.extcommunity_list.append(ecl)
 
     text = render_bgp_filters(root)
     assert "bgp large-community-list standard LARGE seq 5 permit 65001:1:1\n" in text
@@ -113,12 +113,12 @@ def test_community_alias_line():
     alias = Alias(name="cust-gold")
     alias.community.community.global_admin = 65001
     alias.community.community.local_admin = 100
-    root.community_aliases.alias.append(alias)
+    root.community_alias.append(alias)
     large = Alias(name="site-a")
     large.community.large_community.global_admin = 65001
     large.community.large_community.local_data_1 = 7
     large.community.large_community.local_data_2 = 9
-    root.community_aliases.alias.append(large)
+    root.community_alias.append(large)
     text = render_bgp_filters(root)
     assert "bgp community alias 65001:100 cust-gold\n" in text
     assert "bgp community alias 65001:7:9 site-a\n" in text
@@ -126,7 +126,7 @@ def test_community_alias_line():
 
 def test_alias_without_value_raises():
     root = ProteusBgpFilter()
-    root.community_aliases.alias.append(Alias(name="empty"))
+    root.community_alias.append(Alias(name="empty"))
     with pytest.raises(ValueError, match="community value"):
         render_bgp_filters(root)
 
@@ -139,6 +139,6 @@ def test_type_value_mismatch_raises():
         CommunityList.Entry.Communities.Member(global_admin=65001, local_admin=100)
     )
     cl.entry.append(entry)
-    root.bgp_filters.community_list.append(cl)
+    root.community_list.append(cl)
     with pytest.raises(ValueError, match="regex"):
         render_bgp_filters(root)

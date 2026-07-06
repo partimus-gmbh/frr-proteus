@@ -18,6 +18,6 @@ def render_interfaces(root) -> str:
 
     Returns "" when no interfaces are declared.
     """
-    if not root.interfaces.interface:
+    if not root.interface:
         return ""
-    return _template.render(interfaces=root.interfaces)
+    return _template.render(interfaces=root)

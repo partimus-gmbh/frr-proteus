@@ -37,7 +37,7 @@ def render_bgp_filters(root) -> str:
     expanded list a regex.
     """
     for list_field, values_field, texts in _COMMUNITY_LISTS:
-        for clist in getattr(root.bgp_filters, list_field):
+        for clist in getattr(root, list_field):
             for entry in clist.entry:
                 if clist.type == "expanded":
                     value_set = entry.regex
@@ -53,12 +53,9 @@ def render_bgp_filters(root) -> str:
                             else "literal values"
                         )
                     )
-    for alias in root.community_aliases.alias:
+    for alias in root.community_alias:
         if helpers.community_value_text(alias.community) is None:
             raise ValueError(
                 f"community alias {alias.name!r} has no community value"
             )
-    return _template.render(
-        bgp_filters=root.bgp_filters,
-        community_aliases=root.community_aliases,
-    )
+    return _template.render(bgp_filters=root)

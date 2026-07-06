@@ -37,9 +37,9 @@ from frr_proteus.render import (
 
 OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "out"
 
-Instance: TypeAlias = ProteusBgp.Bgp.Instance
+Instance: TypeAlias = ProteusBgp.Instance
 PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
-RouteMap: TypeAlias = ProteusRouteMap.RouteMaps.RouteMap
+RouteMap: TypeAlias = ProteusRouteMap.RouteMap
 
 
 class Router:
@@ -74,7 +74,7 @@ class Router:
                 render_bfd(self.bfd),
                 *(
                     render_bgp_instance(instance)
-                    for instance in self.bgp.bgp.instance
+                    for instance in self.bgp.instance
                 ),
             ]
         )
@@ -110,7 +110,7 @@ def build_router(
     instance.afi_safis.ipv4_unicast.network.append(
         Instance.AfiSafis.Ipv4Unicast.Network(prefix=network)
     )
-    router.bgp.bgp.instance.append(instance)
+    router.bgp.instance.append(instance)
     return router
 
 
@@ -131,10 +131,10 @@ def add_import_policy(router: Router) -> None:
     entry.match.ip_address_prefix_list = "PEER-ROUTES"
     entry.set.local_preference = 200
     rmap.entry.append(entry)
-    router.route_maps.route_maps.route_map.append(rmap)
+    router.route_maps.route_map.append(rmap)
 
-    router.bfd.bfd.profile.append(
-        ProteusBfd.Bfd.Profile(
+    router.bfd.profile.append(
+        ProteusBfd.Profile(
             name="fast",
             detect_multiplier=3,
             receive_interval=150,
@@ -142,9 +142,9 @@ def add_import_policy(router: Router) -> None:
         )
     )
 
-    neighbor = router.bgp.bgp.instance[0].neighbor[0]
+    neighbor = router.bgp.instance[0].neighbor[0]
     neighbor.bfd.enabled = True
-    neighbor.bfd.profile = "fast"
+    neighbor.profile = "fast"
     neighbor.afi_safis.ipv4_unicast.filters.route_map_in = "FROM-R2"
 
 
