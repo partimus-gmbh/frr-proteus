@@ -26,6 +26,7 @@ Run with the generated bindings on the path:
 import pathlib
 import sys
 from typing import TypeAlias
+import typing
 
 sys.path.insert(0, "src")
 
@@ -38,6 +39,7 @@ from frr_proteus._generated.proteus import (
     ProteusSystem,
     ProteusVrf,
     validate_tree,
+    annotate
 )
 from frr_proteus.render import (
     heading,
@@ -113,7 +115,7 @@ def build_host_objects() -> tuple[ProteusSystem, ProteusVrf, ProteusInterface]:
     return system, vrfs, interfaces
 
 
-def rm_entry(seq, action="permit", desc=None, **clauses) -> RouteMap.Entry:
+def rm_entry(seq, action: typing.Literal['permit', 'deny'], desc: str | None = None, annotation: str | None = None, **clauses) -> RouteMap.Entry:
     """One route-map entry from keyword clauses -- the schema is typed,
     so each clause is a plain attribute assignment."""
     e = RouteMap.Entry(sequence=seq, action=action, description=desc)
@@ -135,6 +137,10 @@ def rm_entry(seq, action="permit", desc=None, **clauses) -> RouteMap.Entry:
         e.set.weight = weight
     if call := clauses.get("call"):
         e.call, e.on_match = call, "next"
+
+    if annotation is not None:
+        annotate(e, comment=annotation)
+
     return e
 
 
@@ -162,7 +168,7 @@ def build_policy_objects() -> tuple[ProteusFilter, ProteusBgpFilter, ProteusRout
 
     tagger = RouteMap(name="ATTACH-COMMUNITIES-TO-EXPORT-PREFIXES")
     tagger.entry.extend(
-        rm_entry(10 * n, match_pl=f"LOOPBACK-{role}", set_lc=(LC_AS, 1, ld2))
+        rm_entry(10 * n, "permit", match_pl=f"LOOPBACK-{role}", set_lc=(LC_AS, 1, ld2))
         for n, (role, _, ld2) in enumerate(LOOPBACKS, start=1)
     )
 
@@ -172,37 +178,37 @@ def build_policy_objects() -> tuple[ProteusFilter, ProteusBgpFilter, ProteusRout
     # and weight what the spines send back.
     in_100g = RouteMap(name="SPINES-UNDERLAY-100G-IN")
     in_100g.entry.extend([
-        rm_entry(20, desc="Allow Primary Loopback", match_lc="LOOPBACK-PRIMARY"),
-        rm_entry(30, desc="Allow 25G-PREFERRED route", match_lc="LOOPBACK-25G-PREFERRED"),
-        rm_entry(40, desc="Allow 100G-ONLY routes", match_lc="LOOPBACK-100G-ONLY"),
+        rm_entry(20, "permit", desc="Allow Primary Loopback", match_lc="LOOPBACK-PRIMARY"),
+        rm_entry(30, "permit", desc="Allow 25G-PREFERRED route", match_lc="LOOPBACK-25G-PREFERRED"),
+        rm_entry(40, "permit", desc="Allow 100G-ONLY routes", match_lc="LOOPBACK-100G-ONLY"),
         rm_entry(50, "deny", desc="Deny 25G-ONLY routes", match_lc="LOOPBACK-25G-ONLY"),
-        rm_entry(65535, desc="Default Permit"),
+        rm_entry(65535, "permit", desc="Default Permit"),
     ])
     out_100g = RouteMap(name="SPINES-UNDERLAY-100G-OUT")
     out_100g.entry.extend([
-        rm_entry(10, call="ATTACH-COMMUNITIES-TO-EXPORT-PREFIXES"),
-        rm_entry(20, desc="Allow Primary Loopback", match_lc="LOOPBACK-PRIMARY"),
-        rm_entry(30, desc="Make 25G-PREFERRED route on 100G link less preferred by increasing MED",
+        rm_entry(10, "permit", call="ATTACH-COMMUNITIES-TO-EXPORT-PREFIXES"),
+        rm_entry(20, "permit", desc="Allow Primary Loopback", match_lc="LOOPBACK-PRIMARY"),
+        rm_entry(30, "permit", desc="Make 25G-PREFERRED route on 100G link less preferred by increasing MED",
                  match_lc="LOOPBACK-25G-PREFERRED", metric_add=100),
-        rm_entry(40, desc="Allow 100G-ONLY Prefix", match_lc="LOOPBACK-100G-ONLY"),
+        rm_entry(40, "permit", desc="Allow 100G-ONLY Prefix", match_lc="LOOPBACK-100G-ONLY"),
         rm_entry(65535, "deny"),
     ])
     in_25g = RouteMap(name="SPINES-UNDERLAY-25G-IN")
     in_25g.entry.extend([
-        rm_entry(20, desc="Allow Primary Loopback", match_lc="LOOPBACK-PRIMARY"),
-        rm_entry(30, desc="Make 25G-PREFERRED routes preferred (egress over 25G)",
+        rm_entry(20, "permit", desc="Allow Primary Loopback", match_lc="LOOPBACK-PRIMARY"),
+        rm_entry(30, "permit", desc="Make 25G-PREFERRED routes preferred (egress over 25G)",
                  match_lc="LOOPBACK-25G-PREFERRED", set_weight=100),
         rm_entry(40, "deny", desc="Deny 100G-ONLY routes", match_lc="LOOPBACK-100G-ONLY"),
-        rm_entry(50, desc="Allow 25G-ONLY routes", match_lc="LOOPBACK-25G-ONLY"),
-        rm_entry(65535, desc="Default Permit"),
+        rm_entry(50, "permit", desc="Allow 25G-ONLY routes", match_lc="LOOPBACK-25G-ONLY"),
+        rm_entry(65535, "permit", desc="Default Permit"),
     ])
     out_25g = RouteMap(name="SPINES-UNDERLAY-25G-OUT")
     out_25g.entry.extend([
-        rm_entry(10, call="ATTACH-COMMUNITIES-TO-EXPORT-PREFIXES"),
-        rm_entry(20, desc="Allow Primary Loopback", match_lc="LOOPBACK-PRIMARY"),
-        rm_entry(30, desc="Allow 25G-PREFERRED route on 25G link",
+        rm_entry(10, "permit", call="ATTACH-COMMUNITIES-TO-EXPORT-PREFIXES"),
+        rm_entry(20, "permit", desc="Allow Primary Loopback", match_lc="LOOPBACK-PRIMARY", annotation="Test Annotation"),
+        rm_entry(30, "permit", desc="Allow 25G-PREFERRED route on 25G link",
                  match_lc="LOOPBACK-25G-PREFERRED"),
-        rm_entry(40, desc="Allow 25G-ONLY Prefix on 25G link", match_lc="LOOPBACK-25G-ONLY"),
+        rm_entry(40, "permit", desc="Allow 25G-ONLY Prefix on 25G link", match_lc="LOOPBACK-25G-ONLY"),
         rm_entry(65535, "deny"),
     ])
     rmaps.route_map.extend([tagger, in_100g, out_100g, in_25g, out_25g])
