@@ -1641,6 +1641,77 @@ module proteus-bgp {
     }
   }
 
+  grouping af-network-vpn-ipv4 {
+    list network {
+      key "prefix";
+      must "rd/as2/administrator or rd/ipv4/administrator "
+         + "or rd/as4/administrator or rd/mac or rd/raw" {
+        error-message
+          "a VPN 'network' statement requires an rd (mandatory token
+           of vpnv4_network_cmd / vpnv6_network_cmd)";
+      }
+      description
+        "MPLS-VPN static 'network' statement
+         ('network A.B.C.D/M rd ASN:NN_OR_IP-ADDRESS:NN <tag|label>
+         (0-1048575) [route-map RMAP_NAME]', vpnv4_network_cmd in
+         bgp_mplsvpn.c; written back by bgp_config_write_network_vpn
+         in bgp_route.c as 'network P rd RD label N [route-map R]' --
+         'tag' is an input-side alias for 'label').
+         // FRR keys these statics by (rd, prefix), so the same
+         // prefix may legally recur under different RDs; keying by
+         // prefix alone (YANG keys must be leaves, the rd is a
+         // container) forgoes that corner.";
+      leaf prefix {
+        type inet:ipv4-prefix;
+      }
+      uses network-vpn-options;
+    }
+  }
+
+  grouping af-network-vpn-ipv6 {
+    list network {
+      key "prefix";
+      must "rd/as2/administrator or rd/ipv4/administrator "
+         + "or rd/as4/administrator or rd/mac or rd/raw" {
+        error-message
+          "a VPN 'network' statement requires an rd (mandatory token
+           of vpnv4_network_cmd / vpnv6_network_cmd)";
+      }
+      description
+        "MPLS-VPN static 'network' statement, IPv6 form
+         ('network X:X::X:X/M rd ... <tag|label> (0-1048575)
+         [route-map RMAP_NAME]', vpnv6_network_cmd) -- see
+         af-network-vpn-ipv4.";
+      leaf prefix {
+        type inet:ipv6-prefix;
+      }
+      uses network-vpn-options;
+    }
+  }
+
+  grouping network-vpn-options {
+    container rd {
+      description
+        "'rd ASN:NN_OR_IP-ADDRESS:NN'. Required (the 'must' on the
+         network entry -- 'mandatory' can't express it because an
+         all-empty container counts as unconfigured).";
+      uses pt:route-distinguisher;
+    }
+    leaf label {
+      type uint32 {
+        range "0..1048575";
+      }
+      mandatory true;
+      description
+        "'label (0-1048575)': MPLS label carried in the VPN NLRI.";
+    }
+    leaf route-map {
+      type leafref {
+        path "/rmap:route-map/rmap:name";
+      }
+    }
+  }
+
   grouping network-options {
     leaf route-map {
       type leafref {
@@ -1653,6 +1724,19 @@ module proteus-bgp {
       }
       description
         "SR label index (labeled-unicast).";
+    }
+  }
+
+  grouping af-retain-route-target {
+    leaf retain-route-target-all {
+      type boolean;
+      description
+        "'no bgp retain route-target all' when false
+         (bgp_retain_route_target_cmd; default true -- without
+         per-VRF import filtering a PE retains all VPN routes; the
+         positive form is never written back, so only the 'no' form
+         renders and true renders nothing, bgp_vpn_config_write in
+         bgp_vty.c).";
     }
   }
 
@@ -2945,12 +3029,11 @@ module proteus-bgp {
 
       container ipv4-vpn {
         description
-          "'address-family ipv4 vpn'.
-           // Not modeled: the VPN static 'network ... rd ... label
-           // ...' form (bgp_config_write_network_vpn) and 'no bgp
-           // retain route-target all'.";
+          "'address-family ipv4 vpn'.";
+        uses af-network-vpn-ipv4;
         uses af-route-selection;
         uses af-distance-ipv4;
+        uses af-retain-route-target;
       }
 
       container ipv6-unicast {
@@ -2991,10 +3074,11 @@ module proteus-bgp {
 
       container ipv6-vpn {
         description
-          "'address-family ipv6 vpn'. Same modeling gaps as
-           ipv4-vpn.";
+          "'address-family ipv6 vpn'.";
+        uses af-network-vpn-ipv6;
         uses af-route-selection;
         uses af-distance-ipv6;
+        uses af-retain-route-target;
       }
 
       container l2vpn-evpn {

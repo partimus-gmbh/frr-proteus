@@ -93,3 +93,24 @@ def test_ipv6_nd_ra_interval_choice_exclusive():
     root.interface.append(intf)
     with pytest.raises(bindings.YangValidationError):
         bindings.validate_tree(root)
+
+
+def test_mpls_bgp_interface_flags():
+    root = ProteusInterface()
+    iface = Interface(name="eth0")
+    iface.mpls_bgp_forwarding = True
+    iface.mpls_bgp_l3vpn_multi_domain_switching = True
+    root.interface.append(iface)
+    assert render_interfaces(root) == (
+        "!\n"
+        "interface eth0\n"
+        " mpls bgp forwarding\n"
+        " mpls bgp l3vpn-multi-domain-switching\n"
+        "exit\n"
+    )
+
+
+def test_mpls_bgp_interface_flags_omitted_when_unset():
+    root = ProteusInterface()
+    root.interface.append(Interface(name="eth0"))
+    assert "mpls" not in render_interfaces(root)

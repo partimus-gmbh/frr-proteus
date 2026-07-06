@@ -36,11 +36,18 @@ module proteus-interface {
        exit
 
      (zebra/zebra_cli.c ipv6_nd_ra_interval_cmd /
-     lib_interface_zebra_ipv6_router_advertisements_max_rtr_adv_interval_cli_write).";
+     lib_interface_zebra_ipv6_router_advertisements_max_rtr_adv_interval_cli_write).
+
+     Two interface-level knobs that ARE bgpd's own (DEFPYs in
+     bgpd/bgp_vty.c installed at INTERFACE_NODE, written back by
+     bgpd's config_write_interface_one) are also modeled:
+     'mpls bgp forwarding' and
+     'mpls bgp l3vpn-multi-domain-switching'.";
 
   revision 2026-07-06 {
     description
-      "Add the ipv6-nd ra-interval knob.";
+      "Add the ipv6-nd ra-interval knob and the bgpd interface-level
+       'mpls bgp ...' flags.";
   }
   revision 2026-07-05 {
     description
@@ -69,6 +76,27 @@ module proteus-interface {
       description
         "'description LINE' inside the interface block
          (lib/if.c interface_desc_cmd / cli_show_interface_desc).";
+    }
+
+    leaf mpls-bgp-forwarding {
+      type boolean;
+      default "false";
+      description
+        "'mpls bgp forwarding' (mpls_bgp_forwarding_cmd in
+         bgpd/bgp_vty.c): enable MPLS forwarding for directly
+         connected eBGP peers on this interface. Only the positive
+         form is ever written back.";
+    }
+
+    leaf mpls-bgp-l3vpn-multi-domain-switching {
+      type boolean;
+      default "false";
+      description
+        "'mpls bgp l3vpn-multi-domain-switching'
+         (mpls_bgp_l3vpn_multi_domain_switching_cmd in
+         bgpd/bgp_vty.c): bind a local MPLS label to incoming L3VPN
+         updates (inter-AS option B / multi-domain). Only the
+         positive form is ever written back.";
     }
 
     container ipv6-nd {

@@ -71,7 +71,9 @@ same shape (one `.j2` template, thin Python glue module, thin
   excluded pending a key-chain model), `proteus-interface.yang`
   (minimal name+description, mainly a leafref target, plus the one
   zebra knob real unnumbered-underlay configs need: `ipv6 nd
-  ra-interval` sec/msec as an explicit choice), `proteus-vrf.yang`
+  ra-interval` sec/msec as an explicit choice, and bgpd's own two
+  interface-level flags `mpls bgp forwarding` / `mpls bgp
+  l3vpn-multi-domain-switching`), `proteus-vrf.yang`
   (minimal `vrf NAME` blocks with the L3VNI mapping `vni N
   [prefix-routes-only]`; the BGP instance list deliberately stays
   keyed by a plain vrf string, NOT a leafref here -- 'default' is a
@@ -630,11 +632,15 @@ These are SCHEMA exclusions (deliberate, listed in
 proteus-bgp.yang's module description), not renderer gaps: SRv6,
 encap/flowspec/unreachability/link-state AFs (incl. flowspec's
 `rt|rt6 redirect import`), RPKI cache config, BMP, VNC.
-(`as-notation dot`, asdot AS values, and the detailed vpn_policy
+(`as-notation dot`, asdot AS values, the detailed vpn_policy
 leaking block -- the `vpn` container in af-vpn-leaking: rd/label/
 nexthop vpn export incl. `allocation-mode per-vrf|per-nexthop`, rt +
-route-map vpn import/export, import vrf route-map -- are modeled
-since 2026-07-06.) Also:
+route-map vpn import/export, import vrf route-map -- plus the rest
+of the MPLS-VPN surface: the vpn-AF static `network ... rd ... label
+...` form, `no bgp retain route-target all`, and the bgpd
+interface-level `mpls bgp forwarding` / `mpls bgp
+l3vpn-multi-domain-switching` flags in proteus-interface, are all
+modeled since 2026-07-06.) Also:
 
 - Zebra-side Ethernet Segment (EVPN multihoming) config -- `evpn mh
   es-id` etc. -- is genuinely out of scope, not just unimplemented. It's

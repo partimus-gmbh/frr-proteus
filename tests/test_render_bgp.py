@@ -980,6 +980,39 @@ def test_vpn_label_export_auto_and_ipv6_nexthop():
     assert "  nexthop vpn export 2001:db8::1\n" in text
 
 
+def test_vpn_af_static_network_statements():
+    instance = _new_instance()
+    af4 = instance.afi_safis.ipv4_vpn
+    net4 = Instance.AfiSafis.Ipv4Vpn.Network(prefix="10.0.0.0/24")
+    net4.rd.as2.administrator = 65001
+    net4.rd.as2.assigned_number = 1
+    net4.label = 100
+    net4.route_map = "VPN-NET"
+    af4.network.append(net4)
+    af6 = instance.afi_safis.ipv6_vpn
+    net6 = Instance.AfiSafis.Ipv6Vpn.Network(prefix="2001:db8::/48")
+    net6.rd.ipv4.administrator = "192.0.2.1"
+    net6.rd.ipv4.assigned_number = 2
+    net6.label = 200
+    af6.network.append(net6)
+    text = render_bgp_instance(instance)
+    assert " address-family ipv4 vpn\n" in text
+    assert "  network 10.0.0.0/24 rd 65001:1 label 100 route-map VPN-NET\n" in text
+    assert " address-family ipv6 vpn\n" in text
+    assert "  network 2001:db8::/48 rd 192.0.2.1:2 label 200\n" in text
+
+
+def test_retain_route_target_negative_only():
+    instance = _new_instance()
+    instance.afi_safis.ipv4_vpn.retain_route_target_all = False
+    text = render_bgp_instance(instance)
+    assert " address-family ipv4 vpn\n" in text
+    assert "  no bgp retain route-target all\n" in text
+    # True (FRR's default) renders nothing, like unset.
+    instance.afi_safis.ipv4_vpn.retain_route_target_all = True
+    assert "retain" not in render_bgp_instance(instance)
+
+
 def test_vpn_block_empty_renders_nothing():
     instance = _new_instance()
     text = render_bgp_instance(instance)

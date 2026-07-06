@@ -24,8 +24,10 @@ including no leading "!". #}
    families in bgp_config_write_family()'s emission order: distance,
    network, aggregate-address, redistribute, nexthop prefer-global,
    dampening, (neighbors, appended by the caller), maximum-paths,
-   table-map, vpn leaking. Families lack some groupings (e.g. vpn has
-   no network/redistribute), hence the 'is defined' guards. #}
+   table-map, retain route-target (vpn only), vpn leaking. Families
+   lack some groupings (e.g. vpn has no redistribute, and its
+   'network' entries carry rd/label instead of label-index/backdoor),
+   hence the 'is defined' guards. #}
 {% macro af_head_lines(af) %}
 {% if af.distance.ebgp is not none %}
   distance bgp {{ af.distance.ebgp }} {{ af.distance.ibgp }} {{ af.distance.local }}
@@ -35,10 +37,17 @@ including no leading "!". #}
   distance {{ dp.distance }} {{ dp.prefix }}{{ dp_acl }}
 {% endfor %}
 {% for net in (af.network if af.network is defined else []) %}
+{% if net.rd is defined %}
+{# MPLS-VPN static form (bgp_config_write_network_vpn in
+   bgp_route.c): rd + label mandatory, no backdoor/label-index. #}
+{% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
+  network {{ net.prefix }} rd {{ rd_text(net.rd) }} label {{ net.label }}{{ net_rmap }}
+{% else %}
 {% set net_label = " label-index " ~ net.label_index if net.label_index is not none else "" %}
 {% set net_rmap = " route-map " ~ net.route_map if net.route_map else "" %}
 {% set net_backdoor = " backdoor" if net.backdoor is defined and net.backdoor else "" %}
   network {{ net.prefix }}{{ net_label }}{{ net_rmap }}{{ net_backdoor }}
+{% endif %}
 {% endfor %}
 {% for agg in (af.aggregate_address if af.aggregate_address is defined else []) %}
 {% set agg_as_set = " as-set" if agg.as_set else "" %}
@@ -85,6 +94,9 @@ including no leading "!". #}
 {% endif %}
 {% if af.table_map %}
   table-map {{ af.table_map }}
+{% endif %}
+{% if af.retain_route_target_all is defined and af.retain_route_target_all is false %}
+  no bgp retain route-target all
 {% endif %}
 {% if af.export_vpn is defined and af.export_vpn %}
   export vpn
