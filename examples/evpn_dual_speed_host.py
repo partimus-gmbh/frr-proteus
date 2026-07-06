@@ -258,13 +258,26 @@ def build_default_instance() -> Instance:
         af.filters.route_map_out = f"SPINES-UNDERLAY-{speed}-OUT"
         inst.peer_group.append(pg)
 
-    for spine, overlay_addr, ifaces in SPINE_NEIGHBORS:
+    # Overlay peers first, then all underlay interface peers -- multi-line
+    # comment annotations on the first peer of each block double as
+    # section separators in the rendered config.
+    for spine, overlay_addr, _ in SPINE_NEIGHBORS:
         overlay_peer = Instance.Neighbor(
             address=overlay_addr, peer_group="SPINES-OVERLAY",
             description=f"anon-spine-{spine}",
         )
         set_asdot(overlay_peer.remote_as, SPINE_AS[spine])
         inst.neighbor.append(overlay_peer)
+    annotate(
+        inst.neighbor[0],
+        comment=(
+            "----------------------------------------\n"
+            "EVPN overlay sessions (loopback-to-loopback, eBGP multihop via SPINES-OVERLAY)\n"
+            "----------------------------------------"
+        ),
+    )
+    first_underlay = len(inst.neighbor)
+    for spine, _, ifaces in SPINE_NEIGHBORS:
         for ifname in ifaces:
             speed = "100G" if ifname in UPLINKS_100G else "25G"
             underlay_peer = Instance.Neighbor(
@@ -274,6 +287,14 @@ def build_default_instance() -> Instance:
             )
             set_asdot(underlay_peer.remote_as, SPINE_AS[spine])
             inst.neighbor.append(underlay_peer)
+    annotate(
+        inst.neighbor[first_underlay],
+        comment=(
+            "----------------------------------------\n"
+            "Unnumbered underlay sessions (per-port, dual-speed 100G/25G)\n"
+            "----------------------------------------"
+        ),
+    )
 
     inst.afi_safis.ipv4_unicast.network.extend(
         Instance.AfiSafis.Ipv4Unicast.Network(prefix=f"{addr}/32")
