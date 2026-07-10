@@ -145,7 +145,7 @@ Building a wheel therefore ships a self-contained artifact with bindings, Jinja 
 scripts/build_package.sh
 
 # install it into the consuming project (non-editable), e.g.:
-other-project/.venv/bin/pip install /path/to/frr-proteus/dist/frr_proteus-0.1.0-py3-none-any.whl
+other-project/.venv/bin/pip install /path/to/frr-proteus/dist/frr_proteus-0.1.1-py3-none-any.whl
 ```
 
 The consuming project then just imports it. No source checkout, no codegen or no submodules.

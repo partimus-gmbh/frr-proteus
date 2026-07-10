@@ -10,5 +10,7 @@ dist/
 src/frr_proteus/_generated/frr_bgp/
 src/frr_proteus/_generated/proteus/
 
+handoffs/
+
 # Example output
 out/

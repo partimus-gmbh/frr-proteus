@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "frr-proteus"
-version = "0.1.0"
+version = "0.1.1"
 description = "Generate FRR daemon text configuration from structured Python config data, using FRR's YANG models as the data schema."
 license = "MPL-2.0"
 license-files = ["LICENSE"]
