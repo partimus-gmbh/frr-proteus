@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -112,12 +114,14 @@ def test_set_lines():
     s.large_comm_list_delete = "LSTRIP"
     s.as_path_exclude_access_list = "ASP"
     s.aggregator.plain = 65001
-    s.aggregator.address = "192.0.2.1"
+    s.aggregator.address = ipaddress.ip_address("192.0.2.1")
     s.extcommunity_rt.as2.append(
         type(s.extcommunity_rt).As2(global_admin=65001, local_admin=10)
     )
     s.extcommunity_soo.ipv4.append(
-        type(s.extcommunity_soo).Ipv4(global_admin="192.0.2.1", local_admin=7)
+        type(s.extcommunity_soo).Ipv4(
+            global_admin=ipaddress.ip_address("192.0.2.1"), local_admin=7
+        )
     )
     s.extcommunity_bandwidth.value = "cumulative"
     s.extcommunity_bandwidth.non_transitive = True

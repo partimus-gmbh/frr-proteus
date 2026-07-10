@@ -20,6 +20,7 @@ root). Run with the generated bindings on the path, e.g.:
     PYTHONPATH=src python3 examples/basic_bgp.py
 """
 
+import ipaddress
 import pathlib
 import sys
 from typing import TypeAlias
@@ -89,7 +90,10 @@ class Router:
         )
 
 
-def _neighbor(addr: str, remote_as: int | str) -> Instance.Neighbor:
+def _neighbor(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    remote_as: int | str,
+) -> Instance.Neighbor:
     """One neighbor; remote_as is a plain ASN (int) or one of the
     internal/external/auto relationship keywords (str)."""
     neighbor = Instance.Neighbor(address=addr)
@@ -104,9 +108,9 @@ def build_router(
     *,
     local_as: int,
     router_id: str,
-    neighbor_addr: str,
+    neighbor_addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
     neighbor_remote_as: int | str,
-    network: str,
+    network: ipaddress.IPv4Network,
 ) -> Router:
     router = Router()
     instance = Instance(
@@ -129,7 +133,10 @@ def add_import_policy(router: Router) -> None:
     validate_tree checks the names resolve."""
     pl = PrefixList4(name="PEER-ROUTES", description="what r2 may send")
     entry5 = PrefixList4.Entry(
-        sequence=5, action="permit", prefix="198.51.100.0/24", le=32
+        sequence=5,
+        action="permit",
+        prefix=ipaddress.ip_network("198.51.100.0/24"),
+        le=32,
     )
     # A comment on a list entry. Placement is group-accurate: this
     # renders at the top of the PEER-ROUTES lines (above the
@@ -177,17 +184,17 @@ def main() -> None:
     r1 = build_router(
         local_as=65001,
         router_id="192.168.255.1",
-        neighbor_addr="192.168.255.2",
+        neighbor_addr=ipaddress.ip_address("192.168.255.2"),
         neighbor_remote_as="external",
-        network="192.0.2.0/24",
+        network=ipaddress.ip_network("192.0.2.0/24"),
     )
     add_import_policy(r1)
     r2 = build_router(
         local_as=65002,
         router_id="192.168.255.2",
-        neighbor_addr="192.168.255.1",
+        neighbor_addr=ipaddress.ip_address("192.168.255.1"),
         neighbor_remote_as="external",
-        network="198.51.100.0/24",
+        network=ipaddress.ip_network("198.51.100.0/24"),
     )
 
     OUT_DIR.mkdir(exist_ok=True)

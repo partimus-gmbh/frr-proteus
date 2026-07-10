@@ -41,6 +41,7 @@ Run with the generated bindings on the path:
     PYTHONPATH=src python3 examples/evpn_experimental.py
 """
 
+import ipaddress
 import pathlib
 import sys
 import warnings
@@ -88,7 +89,7 @@ def build_underlay_instance() -> Instance:
     inst = Instance(vrf=UNDERLAY_VRF, router_id=ROUTER_ID)
     inst.autonomous_system.plain = LOCAL_AS
 
-    neighbor = Instance.Neighbor(address="10.30.30.30")
+    neighbor = Instance.Neighbor(address=ipaddress.ip_address("10.30.30.30"))
     neighbor.remote_as.type = "external"
     neighbor.afi_safis.l2vpn_evpn.activate = True
     inst.neighbor.append(neighbor)

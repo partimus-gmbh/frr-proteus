@@ -293,7 +293,30 @@ same shape (one `.j2` template, thin Python glue module, thin
   >=3.12); inline anonymous enums stay inlined. YANG lists are plain
   `list[Entry]` (key leaves are ordinary fields,
   e.g. `neighbor.remote_address`; keyed-ness/uniqueness not enforced);
-  config-false subtrees are omitted. The backend generates validation
+  config-false subtrees are omitted. **Native IP types** (on by
+  default in the backend; opt-out `--no-dataclass-native-ip-types`):
+  leaves typed via the RFC 6991 ietf-inet-types address/prefix
+  typedefs hold stdlib `ipaddress` objects -- IPv4Address/IPv6Address
+  for the address(-no-zone) typedefs, IPv4Network/IPv6Network for
+  prefixes, the `ip-*` unions as `T4 | T6`. Validation is
+  isinstance-based, so a plain string like "10.0.0.0/24" is REJECTED
+  on assignment -- build trees with `ipaddress.ip_address()` /
+  `ip_network()`; serde encodes `str()` and decodes back to native
+  objects; Jinja renders them via `str()` to the same text as before,
+  so templates need nothing. Unions mixing an IP member with a string
+  member (neighbor `address`, `update-source`: ip-or-ifname) keep
+  `str` for interface names only -- pass native objects for real IPs.
+  yang:dotted-quad values (router-id/cluster-id/originator-id), MACs
+  and hex-strings stay plain strings. `ipaddress.IPv4Interface` /
+  `IPv6Interface` (ADDR/PREFIXLEN, host bits meaningful -- the shape
+  RFC 6991 has no typedef for) are NOT in the built-in table: they
+  need an explicit repeatable `--dataclass-native-type
+  MODULE:TYPEDEF=ipaddress.IPv4Interface` mapping at generation time
+  (see ifupdown2-proteus's generate_bindings.py; mappings override
+  the built-in table and survive `--no-dataclass-native-ip-types`).
+  No yang/custom typedef needs one today -- add the mapping in
+  scripts/generate_bindings.py the moment an interface-address
+  typedef appears. The backend generates validation
   and YANG defaults by default (opt-outs: `--no-dataclass-validation`,
   `--no-dataclass-defaults`; pyang is optparse-based so there are no
   automatic argparse-style --no-* complements -- the negatives are

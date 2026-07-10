@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -98,7 +100,9 @@ def test_neighbor_without_remote_as_not_rendered():
 def test_network_statement_under_address_family():
     instance = _new_instance()
     instance.afi_safis.ipv4_unicast.network.append(
-        Instance.AfiSafis.Ipv4Unicast.Network(prefix="192.0.2.0/24")
+        Instance.AfiSafis.Ipv4Unicast.Network(
+            prefix=ipaddress.ip_network("192.0.2.0/24")
+        )
     )
 
     text = render_bgp_instance(instance)
@@ -113,7 +117,9 @@ def test_network_statement_under_address_family():
 def test_ipv6_network_statement():
     instance = _new_instance()
     instance.afi_safis.ipv6_unicast.network.append(
-        Instance.AfiSafis.Ipv6Unicast.Network(prefix="2001:db8::/48")
+        Instance.AfiSafis.Ipv6Unicast.Network(
+            prefix=ipaddress.ip_network("2001:db8::/48")
+        )
     )
 
     text = render_bgp_instance(instance)
@@ -691,7 +697,10 @@ def test_cluster_id_confederation_and_listen():
     )
     instance.listen_limit = 100
     group = _new_peer_group(instance, "DYN")
-    group.listen_range = ["192.0.2.0/24", "2001:db8::/48"]
+    group.listen_range = [
+        ipaddress.ip_network("192.0.2.0/24"),
+        ipaddress.ip_network("2001:db8::/48"),
+    ]
     text = render_bgp_instance(instance)
     assert " bgp cluster-id 10.0.0.1\n" in text
     assert " bgp confederation identifier 64999\n" in text
@@ -828,7 +837,7 @@ def test_network_options_and_backdoor():
     instance = _new_instance()
     instance.afi_safis.ipv4_unicast.network.append(
         Instance.AfiSafis.Ipv4Unicast.Network(
-            prefix="192.0.2.0/24",
+            prefix=ipaddress.ip_network("192.0.2.0/24"),
             label_index=10,
             backdoor=True,
         )
@@ -841,7 +850,7 @@ def test_aggregate_address_full_options():
     instance = _new_instance()
     instance.afi_safis.ipv4_unicast.aggregate_address.append(
         Instance.AfiSafis.Ipv4Unicast.AggregateAddress(
-            prefix="10.0.0.0/8",
+            prefix=ipaddress.ip_network("10.0.0.0/8"),
             as_set=True,
             summary_only=True,
             origin="igp",
@@ -895,7 +904,7 @@ def test_distance_admin_and_prefix_overrides():
     af.distance.local = 210
     af.distance.prefix.append(
         Instance.AfiSafis.Ipv4Unicast.Distance.Prefix(
-            prefix="192.0.2.0/24", distance=90
+            prefix=ipaddress.ip_network("192.0.2.0/24"), distance=90
         )
     )
     text = render_bgp_instance(instance)
@@ -939,7 +948,7 @@ def test_vpn_policy_block_full_in_config_write_order():
     vpn.label_export.allocation_mode = "per-nexthop"
     vpn.rd_export.as2.administrator = 65001
     vpn.rd_export.as2.assigned_number = 100
-    vpn.nexthop_export = "192.0.2.1"
+    vpn.nexthop_export = ipaddress.ip_address("192.0.2.1")
     vpn.rt_import.as2.append(
         Instance.AfiSafis.Ipv4Unicast.Vpn.RtImport.As2(
             global_admin=65001, local_admin=101
@@ -952,7 +961,7 @@ def test_vpn_policy_block_full_in_config_write_order():
     )
     vpn.rt_export.ipv4.append(
         Instance.AfiSafis.Ipv4Unicast.Vpn.RtExport.Ipv4(
-            global_admin="192.0.2.2", local_admin=7
+            global_admin=ipaddress.ip_address("192.0.2.2"), local_admin=7
         )
     )
     text = render_bgp_instance(instance)
@@ -973,7 +982,7 @@ def test_vpn_label_export_auto_and_ipv6_nexthop():
     instance = _new_instance()
     vpn = instance.afi_safis.ipv6_unicast.vpn
     vpn.label_export.auto = True
-    vpn.nexthop_export = "2001:db8::1"
+    vpn.nexthop_export = ipaddress.ip_address("2001:db8::1")
     text = render_bgp_instance(instance)
     assert " address-family ipv6 unicast\n" in text
     assert "  label vpn export auto\n" in text
@@ -985,7 +994,7 @@ def test_vpn_af_static_network_statements():
     net4 = instance.afi_safis.ipv4_vpn.network
     net4.as2.append(
         Instance.AfiSafis.Ipv4Vpn.Network.As2(
-            prefix="10.0.0.0/24",
+            prefix=ipaddress.ip_network("10.0.0.0/24"),
             administrator=65001,
             assigned_number=1,
             label=100,
@@ -994,14 +1003,14 @@ def test_vpn_af_static_network_statements():
     )
     net4.raw.append(
         Instance.AfiSafis.Ipv4Vpn.Network.Raw(
-            prefix="10.1.0.0/24", rd="65001:2", label=101
+            prefix=ipaddress.ip_network("10.1.0.0/24"), rd="65001:2", label=101
         )
     )
     net6 = instance.afi_safis.ipv6_vpn.network
     net6.ipv4.append(
         Instance.AfiSafis.Ipv6Vpn.Network.Ipv4(
-            prefix="2001:db8::/48",
-            administrator="192.0.2.1",
+            prefix=ipaddress.ip_network("2001:db8::/48"),
+            administrator=ipaddress.ip_address("192.0.2.1"),
             assigned_number=2,
             label=200,
         )
@@ -1022,7 +1031,7 @@ def test_vpn_af_same_prefix_under_two_rds():
     for assigned, label in ((1, 100), (2, 200)):
         net4.as2.append(
             Instance.AfiSafis.Ipv4Vpn.Network.As2(
-                prefix="10.0.0.0/24",
+                prefix=ipaddress.ip_network("10.0.0.0/24"),
                 administrator=65001,
                 assigned_number=assigned,
                 label=label,

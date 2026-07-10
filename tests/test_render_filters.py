@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -32,7 +34,11 @@ def test_ipv4_prefix_list_lines():
     pl = PrefixList4(name="LOOPBACKS", description="host routes")
     pl.entry.append(
         PrefixList4.Entry(
-            sequence=5, action="permit", prefix="10.0.0.0/8", ge=32, le=32
+            sequence=5,
+            action="permit",
+            prefix=ipaddress.ip_network("10.0.0.0/8"),
+            ge=32,
+            le=32,
         )
     )
     pl.entry.append(PrefixList4.Entry(sequence=10, action="deny", any=True))
@@ -49,7 +55,12 @@ def test_ge_zero_is_rendered():
     root = ProteusFilter()
     pl = PrefixList4(name="ZERO")
     pl.entry.append(
-        PrefixList4.Entry(sequence=5, action="permit", prefix="0.0.0.0/0", ge=0)
+        PrefixList4.Entry(
+            sequence=5,
+            action="permit",
+            prefix=ipaddress.ip_network("0.0.0.0/0"),
+            ge=0,
+        )
     )
     root.prefix_lists.ipv4.prefix_list.append(pl)
     assert "seq 5 permit 0.0.0.0/0 ge 0\n" in render_filters(root)
@@ -59,7 +70,11 @@ def test_ipv6_prefix_list_keyword():
     root = ProteusFilter()
     pl = PrefixList6(name="V6")
     pl.entry.append(
-        PrefixList6.Entry(sequence=5, action="permit", prefix="2001:db8::/32")
+        PrefixList6.Entry(
+            sequence=5,
+            action="permit",
+            prefix=ipaddress.ip_network("2001:db8::/32"),
+        )
     )
     root.prefix_lists.ipv6.prefix_list.append(pl)
     assert "ipv6 prefix-list V6 seq 5 permit 2001:db8::/32\n" in render_filters(root)
@@ -83,7 +98,10 @@ def test_ipv6_access_list_exact_match():
     acl = AccessList6(name="V6ONLY")
     acl.entry.append(
         AccessList6.Entry(
-            sequence=5, action="permit", prefix="2001:db8::/32", exact_match=True
+            sequence=5,
+            action="permit",
+            prefix=ipaddress.ip_network("2001:db8::/32"),
+            exact_match=True,
         )
     )
     root.access_lists.ipv6.access_list.append(acl)

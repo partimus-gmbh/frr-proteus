@@ -23,6 +23,7 @@ Run with the generated bindings on the path:
     PYTHONPATH=src python3 examples/evpn_dual_speed_host.py
 """
 
+import ipaddress
 import pathlib
 import sys
 from typing import TypeAlias
@@ -70,16 +71,16 @@ RT_AS, LC_AS = 65099, 4210000000  # route-target admin / community admin
 # The large community LC_AS:1:N tags each class end-to-end; the four
 # route-maps below are all derived from this one table.
 LOOPBACKS = [
-    ("PRIMARY", "10.44.8.21", 1),
-    ("25G-PREFERRED", "10.44.9.21", 2),
-    ("100G-ONLY", "10.44.10.21", 3),
-    ("25G-ONLY", "10.44.11.21", 4),
+    ("PRIMARY", ipaddress.ip_address("10.44.8.21"), 1),
+    ("25G-PREFERRED", ipaddress.ip_address("10.44.9.21"), 2),
+    ("100G-ONLY", ipaddress.ip_address("10.44.10.21"), 3),
+    ("25G-ONLY", ipaddress.ip_address("10.44.11.21"), 4),
 ]
 ROUTER_ID = LOOPBACKS[0][1]
 
 SPINE_NEIGHBORS = [  # (spine number, overlay address, underlay interfaces)
-    (1, "10.44.4.1", ["cx100g_p1", "e25g_top_p4"]),
-    (2, "10.44.4.2", ["cx100g_p2", "e25g_bot_p4"]),
+    (1, ipaddress.ip_address("10.44.4.1"), ["cx100g_p1", "e25g_top_p4"]),
+    (2, ipaddress.ip_address("10.44.4.2"), ["cx100g_p2", "e25g_bot_p4"]),
 ]
 UPLINKS_100G = ["cx100g_p1", "cx100g_p2"]
 
@@ -152,7 +153,10 @@ def build_policy_objects() -> tuple[ProteusFilter, ProteusBgpFilter, ProteusRout
     for role, addr, ld2 in LOOPBACKS:
         pl = PrefixList4(name=f"LOOPBACK-{role}")
         pl.entry.append(
-            PrefixList4.Entry(sequence=10, action="permit", prefix=f"{addr}/32")
+            PrefixList4.Entry(
+                # ip_network() of a bare host address is its /32
+                sequence=10, action="permit", prefix=ipaddress.ip_network(addr)
+            )
         )
         filters.prefix_lists.ipv4.prefix_list.append(pl)
 
@@ -228,7 +232,9 @@ def add_rts(rt_set, *values: int) -> None:
 
 
 def build_default_instance() -> Instance:
-    inst = Instance(vrf="default", as_notation="dot", router_id=ROUTER_ID)
+    inst = Instance(
+        vrf="default", as_notation="dot", router_id=str(ROUTER_ID)
+    )
     set_asdot(inst.autonomous_system, HOST_AS)
     inst.default.ipv4_unicast = False
     inst.deterministic_med = False
@@ -297,7 +303,7 @@ def build_default_instance() -> Instance:
     )
 
     inst.afi_safis.ipv4_unicast.network.extend(
-        Instance.AfiSafis.Ipv4Unicast.Network(prefix=f"{addr}/32")
+        Instance.AfiSafis.Ipv4Unicast.Network(prefix=ipaddress.ip_network(addr))
         for _, addr, _ in LOOPBACKS
     )
 
@@ -315,7 +321,7 @@ def build_default_instance() -> Instance:
 
 
 def build_vrf_instance(vrf: str, l3vni: int) -> Instance:
-    inst = Instance(vrf=vrf, as_notation="dot", router_id=ROUTER_ID)
+    inst = Instance(vrf=vrf, as_notation="dot", router_id=str(ROUTER_ID))
     set_asdot(inst.autonomous_system, HOST_AS)
     inst.deterministic_med = False
     evpn = inst.afi_safis.l2vpn_evpn

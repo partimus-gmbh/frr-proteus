@@ -48,6 +48,8 @@ The data model and renderer supports comments via the `proteus-meta:comment` bas
 
 From `examples/minimal_bgp.py`:
 ```python
+import ipaddress
+
 from frr_proteus._generated.proteus import ProteusBgp, validate_tree
 from frr_proteus.render import render_bgp_instance
 
@@ -59,12 +61,16 @@ instance = ProteusBgp.Instance(vrf="default", router_id="192.0.2.1")
 instance.autonomous_system.plain = 65000
 
 # Add a neighbor to the instance with a simple remote AS
-neighbor = ProteusBgp.Instance.Neighbor(address="192.0.2.2")
+neighbor = ProteusBgp.Instance.Neighbor(
+    address=ipaddress.ip_address("192.0.2.2")
+)
 neighbor.remote_as.plain = 65001
 instance.neighbor.append(neighbor)
 
 instance.afi_safis.ipv4_unicast.network.append(
-    ProteusBgp.Instance.AfiSafis.Ipv4Unicast.Network(prefix="198.51.100.0/24")
+    ProteusBgp.Instance.AfiSafis.Ipv4Unicast.Network(
+        prefix=ipaddress.ip_network("198.51.100.0/24")
+    )
 )
 
 pr_bgp.instance.append(instance)
@@ -90,6 +96,8 @@ router bgp 65000
 ### Codegen (pyangbind fork)
 `scripts/generate_bindings.py` runs [pyang](https://github.com/mbj4668/pyang) with our [pyangbind fork](https://github.com/robinchrist/pyangbind) (the `pyangbind/` git submodule) as plugin against `yang/custom/`. This producies plain, fully type-hinted dataclass-based bindings under `src/frr_proteus/_generated/`.
 Validation is on by default, so many YANG value restrictions (ranges, patterns, enum/identityref sets, ...) are enforced at runtime on assignment (`YangValidationError`). For more complex checks, a module-level `validate_tree(*roots)` exists. It checks the structural/referential rules that can only be judged on a finished tree (leafref integrity, mandatory leaves, list keys/`unique`, min-/max-elements, choice exclusivity, and `must`/`when` XPath constraints, evaluated by an XPath 1.0 subset engine embedded in the generated runtime)
+
+IP-valued leaves (anything typed via the RFC 6991 `ietf-inet-types` address/prefix typedefs) are native stdlib [`ipaddress`](https://docs.python.org/3/library/ipaddress.html) objects, not pattern-checked strings: `IPv4Address`/`IPv6Address` for addresses, `IPv4Network`/`IPv6Network` for prefixes. Build trees with `ipaddress.ip_address(...)` / `ipaddress.ip_network(...)` — plain strings are rejected on assignment. Schema-defined typedefs can be mapped to further classes (e.g. `ipaddress.IPv4Interface` for ADDR/PREFIXLEN values) via the generator's repeatable `--dataclass-native-type MODULE:TYPEDEF=CLASS` flag.
 
 ### Rendering / Generator (Using Jinja2)
 `src/frr_proteus/render/templates/*.j2` walk the generated binding's dataclasses almost to directly and emit FRR text config. The renderer has some options for nicer formatting of the generated text config, e.g. `heading`. The renderer has some helper functions, e.g. `heading.py`.

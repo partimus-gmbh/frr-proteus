@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -72,7 +74,7 @@ def test_flooding(value):
 def test_vni_block():
     instance = _new_instance()
     vni = EvpnAf.Vni(vni_id=101, flooding="disable")
-    vni.rd.ipv4.administrator = "10.10.10.10"
+    vni.rd.ipv4.administrator = ipaddress.ip_address("10.10.10.10")
     vni.rd.ipv4.assigned_number = 101
     vni.route_target_import.as2.append(
         EvpnAf.Vni.RouteTargetImport.As2(global_admin=65000, local_admin=101)
@@ -98,7 +100,7 @@ def test_vni_block():
 def test_vrf_rd_and_route_target():
     instance = _new_instance(vrf="vrf-red")
     evpn = instance.afi_safis.l2vpn_evpn
-    evpn.rd.ipv4.administrator = "10.10.10.10"
+    evpn.rd.ipv4.administrator = ipaddress.ip_address("10.10.10.10")
     evpn.rd.ipv4.assigned_number = 101
     evpn.route_target_import.as2.append(
         EvpnAf.RouteTargetImport.As2(global_admin=65000, local_admin=300)
@@ -132,7 +134,9 @@ def test_vrf_route_target_export_all_encodings():
         EvpnAf.RouteTargetExport.As4(global_admin=4200000000, local_admin=100)
     )
     export.ipv4.append(
-        EvpnAf.RouteTargetExport.Ipv4(global_admin="10.10.10.10", local_admin=100)
+        EvpnAf.RouteTargetExport.Ipv4(
+            global_admin=ipaddress.ip_address("10.10.10.10"), local_admin=100
+        )
     )
 
     text = render_bgp_instance(instance)
@@ -273,7 +277,7 @@ def test_autort_and_mac_vrf_soo():
     instance = _new_instance()
     evpn = instance.afi_safis.l2vpn_evpn
     evpn.autort_rfc8365_compatible = True
-    evpn.mac_vrf_soo.ipv4.global_admin = "192.0.2.10"
+    evpn.mac_vrf_soo.ipv4.global_admin = ipaddress.ip_address("192.0.2.10")
     evpn.mac_vrf_soo.ipv4.local_admin = 100
     text = render_bgp_instance(instance)
     assert "  autort rfc8365-compatible\n" in text
@@ -335,7 +339,7 @@ def test_default_originate_and_advertise_pip():
     assert "  default-originate ipv6\n" in text
     assert "  no advertise-pip\n" in text
     evpn.advertise_pip.enabled = True
-    evpn.advertise_pip.ip = "192.0.2.5"
+    evpn.advertise_pip.ip = ipaddress.ip_address("192.0.2.5")
     text = render_bgp_instance(instance)
     assert "  advertise-pip ip 192.0.2.5\n" in text
     evpn.advertise_pip.mac = "00:11:22:33:44:55"
@@ -347,11 +351,11 @@ def test_evpn_type5_network_statement():
     instance = _new_instance(vrf="TEN1")
     evpn = instance.afi_safis.l2vpn_evpn
     net = EvpnAf.Network(
-        prefix="203.0.113.0/24",
+        prefix=ipaddress.ip_network("203.0.113.0/24"),
         ethtag=0,
         label=4001,
         esi="00:00:00:00:00:00:00:00:00:00",
-        gwip="192.0.2.6",
+        gwip=ipaddress.ip_address("192.0.2.6"),
         routermac="00:11:22:33:44:66",
     )
     net.rd.as2.administrator = 65000

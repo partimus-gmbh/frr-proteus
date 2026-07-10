@@ -8,6 +8,8 @@ CLAUDE.md) and that a dangling name fails.
 
 from __future__ import annotations
 
+import ipaddress
+
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -119,14 +121,29 @@ def test_vpn_network_keyed_by_rd_and_prefix():
     As2 = Instance.AfiSafis.Ipv4Vpn.Network.As2
     net = bgp_root.instance[0].afi_safis.ipv4_vpn.network
     net.as2.append(
-        As2(prefix="10.0.0.0/24", administrator=65001, assigned_number=1, label=100)
+        As2(
+            prefix=ipaddress.ip_network("10.0.0.0/24"),
+            administrator=65001,
+            assigned_number=1,
+            label=100,
+        )
     )
     net.as2.append(
-        As2(prefix="10.0.0.0/24", administrator=65001, assigned_number=2, label=200)
+        As2(
+            prefix=ipaddress.ip_network("10.0.0.0/24"),
+            administrator=65001,
+            assigned_number=2,
+            label=200,
+        )
     )
     bindings.validate_tree(*roots)
     net.as2.append(
-        As2(prefix="10.0.0.0/24", administrator=65001, assigned_number=2, label=300)
+        As2(
+            prefix=ipaddress.ip_network("10.0.0.0/24"),
+            administrator=65001,
+            assigned_number=2,
+            label=300,
+        )
     )
     with pytest.raises(bindings.YangValidationError, match="unique|duplicate"):
         bindings.validate_tree(*roots)

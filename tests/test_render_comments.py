@@ -10,6 +10,8 @@ and empty / whitespace-only comments render nothing."""
 
 from __future__ import annotations
 
+import ipaddress
+
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -90,7 +92,7 @@ def test_af_and_network_comments():
     af = instance.afi_safis.ipv4_unicast
     annotate(af, comment="v4 table")
     network = ProteusBgp.Instance.AfiSafis.Ipv4Unicast.Network(
-        prefix="203.0.113.0/24"
+        prefix=ipaddress.ip_network("203.0.113.0/24")
     )
     annotate(network, comment="customer prefix")
     af.network.append(network)
@@ -205,7 +207,7 @@ def test_prefix_list_and_entry_comments():
     prefix_list = bindings.ProteusFilter.PrefixLists.Ipv4.PrefixList(name="PL")
     annotate(prefix_list, comment="bogon filter")
     entry = bindings.ProteusFilter.PrefixLists.Ipv4.PrefixList.Entry(
-        sequence=5, action="deny", prefix="10.0.0.0/8", le=32
+        sequence=5, action="deny", prefix=ipaddress.ip_network("10.0.0.0/8"), le=32
     )
     annotate(entry, comment="rfc1918")
     prefix_list.entry.append(entry)

@@ -7,6 +7,8 @@ kwargs. These tests pin the behaviors frr-proteus relies on; the
 exhaustive per-restriction coverage belongs in the pyangbind fork.
 """
 
+import ipaddress
+
 import sys
 from pathlib import Path
 
@@ -59,7 +61,7 @@ def test_wrong_type_rejected():
 
 
 def test_enum_value_rejected():
-    neighbor = Bgp.Neighbors.Neighbor(remote_address="192.0.2.1")
+    neighbor = Bgp.Neighbors.Neighbor(remote_address=ipaddress.ip_address("192.0.2.1"))
     with pytest.raises(bindings.YangValidationError, match="allowed values"):
         neighbor.neighbor_remote_as.remote_as_type = "bogus"
 
@@ -78,6 +80,15 @@ def test_pattern_violation_rejected():
     bgp = Bgp()
     with pytest.raises(bindings.YangValidationError, match="pattern"):
         bgp.global_.router_id = "999.999.999.999"  # not an ipv4-address
+
+
+def test_native_ip_leaf_accepts_object_rejects_string():
+    # inet:ip-address-typed leaves hold stdlib ipaddress objects; the
+    # isinstance-based check rejects plain strings even when well-formed.
+    Bgp.Neighbors.Neighbor(remote_address=ipaddress.ip_address("192.0.2.1"))
+    Bgp.Neighbors.Neighbor(remote_address=ipaddress.ip_address("2001:db8::1"))
+    with pytest.raises(bindings.YangValidationError):
+        Bgp.Neighbors.Neighbor(remote_address="192.0.2.1")
 
 
 def test_leaf_list_elements_validated_on_assignment():

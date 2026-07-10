@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -92,7 +94,7 @@ def test_large_and_ext_community_lists():
     )
     ec.route_origin.ipv4.append(
         ExtcommunityList.Entry.Extcommunities.RouteOrigin.Ipv4(
-            global_admin="192.0.2.1", local_admin=7
+            global_admin=ipaddress.ip_address("192.0.2.1"), local_admin=7
         )
     )
     ecl.entry.append(eentry)

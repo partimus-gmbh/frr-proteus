@@ -17,6 +17,7 @@ Run with the generated bindings on the path:
 """
 
 import dataclasses
+import ipaddress
 import pathlib
 import sys
 from typing import TypeAlias
@@ -45,21 +46,26 @@ RouteMap: TypeAlias = ProteusRouteMap.RouteMap
 PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
 
 RT_AS = 65000  # route-target administrator, shared fabric-wide
-LOOPBACK_RANGE = "10.90.0.0/24"
+LOOPBACK_RANGE = ipaddress.ip_network("10.90.0.0/24")
 TENANTS = {"blue": (4001, [10101, 10102]), "red": (4002, [10201])}
+
+
+def _loopback(offset: int) -> ipaddress.IPv4Address:
+    """Loopback N is the Nth host address of the fabric loopback range."""
+    return LOOPBACK_RANGE.network_address + offset
 
 
 @dataclasses.dataclass
 class Device:
     name: str
     asn: int
-    loopback: str
+    loopback: ipaddress.IPv4Address
     is_spine: bool = False
 
 
-SPINES = [Device("spine1", 65001, "10.90.0.1", is_spine=True),
-          Device("spine2", 65002, "10.90.0.2", is_spine=True)]
-LEAVES = [Device(f"leaf{n}", 65100 + n, f"10.90.0.{10 + n}")
+SPINES = [Device("spine1", 65001, _loopback(1), is_spine=True),
+          Device("spine2", 65002, _loopback(2), is_spine=True)]
+LEAVES = [Device(f"leaf{n}", 65100 + n, _loopback(10 + n))
           for n in (1, 2, 3)]
 
 
@@ -112,7 +118,7 @@ def build_interfaces(device: Device) -> ProteusInterface:
 
 
 def build_default_instance(device: Device) -> Instance:
-    inst = Instance(vrf="default", router_id=device.loopback)
+    inst = Instance(vrf="default", router_id=str(device.loopback))
     inst.autonomous_system.plain = device.asn
     inst.default.ipv4_unicast = False
     inst.bestpath.as_path_multipath_relax.enabled = True
@@ -153,7 +159,10 @@ def build_default_instance(device: Device) -> Instance:
     )
 
     inst.afi_safis.ipv4_unicast.network.append(
-        Instance.AfiSafis.Ipv4Unicast.Network(prefix=f"{device.loopback}/32")
+        # ip_network() of a bare host address is its /32
+        Instance.AfiSafis.Ipv4Unicast.Network(
+            prefix=ipaddress.ip_network(device.loopback)
+        )
     )
 
     if not device.is_spine:  # leaves are the VTEPs
@@ -171,7 +180,7 @@ def build_default_instance(device: Device) -> Instance:
 
 
 def build_tenant_instance(device: Device, tenant: str, l3vni: int) -> Instance:
-    inst = Instance(vrf=f"vrf-{tenant}", router_id=device.loopback)
+    inst = Instance(vrf=f"vrf-{tenant}", router_id=str(device.loopback))
     inst.autonomous_system.plain = device.asn
     evpn = inst.afi_safis.l2vpn_evpn
     for rt_set in (evpn.route_target_import, evpn.route_target_export):

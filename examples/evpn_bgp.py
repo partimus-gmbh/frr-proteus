@@ -15,6 +15,7 @@ Run with the generated bindings on the path, e.g.:
     PYTHONPATH=src python3 examples/evpn_bgp.py
 """
 
+import ipaddress
 import pathlib
 import sys
 from typing import TypeAlias
@@ -39,7 +40,7 @@ def build_default_instance(*, local_as: int, router_id: str) -> Instance:
     instance = Instance(vrf="default", router_id=router_id)
     instance.autonomous_system.plain = local_as
 
-    neighbor = Instance.Neighbor(address="10.30.30.30")
+    neighbor = Instance.Neighbor(address=ipaddress.ip_address("10.30.30.30"))
     neighbor.remote_as.type = "internal"
     neighbor.afi_safis.l2vpn_evpn.activate = True
     # Inbound policy on the EVPN session -- a leafref into
@@ -51,7 +52,8 @@ def build_default_instance(*, local_as: int, router_id: str) -> Instance:
     evpn.advertise_all_vni = True
     evpn.advertise_svi_ip = True
 
-    for vni_id, rd_ip in [(101, "10.10.10.10"), (102, "10.10.10.10")]:
+    rd_ip = ipaddress.ip_address("10.10.10.10")
+    for vni_id in (101, 102):
         vni = EvpnAf.Vni(vni_id=vni_id)
         # RDs and route targets are structured: an explicit RFC 4364 /
         # RFC 4360 encoding with typed components, not "X:NN" strings.

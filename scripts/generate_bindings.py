@@ -56,6 +56,28 @@ COMMON_FLAGS = [
     # for debugging and tests.
     "--dataclass-serde",
     "--dataclass-xpaths",
+    # Native IP types are ON by default in the backend: leaves typed via
+    # the RFC 6991 ietf-inet-types address/prefix typedefs become the
+    # stdlib ipaddress classes (IPv4Address/IPv6Address for the
+    # address(-no-zone) typedefs, IPv4Network/IPv6Network for the
+    # prefixes; the ip-* unions as T4 | T6). (ip-or-interface unions
+    # keep their string member for interface names; the address member
+    # still decodes natively.)
+    #
+    # IMPORTANT: ipaddress.IPv4Interface / IPv6Interface (ADDR/PREFIXLEN
+    # with meaningful host bits -- the one shape RFC 6991 has no typedef
+    # for) are NOT part of the built-in table and only appear via an
+    # explicit, repeatable mapping flag, as in ifupdown2-proteus:
+    #
+    #   "--dataclass-native-type",
+    #   "proteus-types:ipv4-interface-address=ipaddress.IPv4Interface",
+    #   "--dataclass-native-type",
+    #   "proteus-types:ipv6-interface-address=ipaddress.IPv6Interface",
+    #
+    # Today no module under yang/custom defines such a typedef (every
+    # IP-valued leaf is a plain RFC 6991 address or prefix), so no
+    # mapping is passed. The moment an interface-address typedef is
+    # added, add its --dataclass-native-type mapping here.
 ]
 
 # YANG modules needed to fully resolve the FRR BGP model (frr-bgp.yang
