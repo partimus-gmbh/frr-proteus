@@ -933,13 +933,17 @@ module proteus-bgp {
     }
 
     container soo {
+      presence
+        "A site-of-origin is configured (the encoding choice inside
+         is mandatory once present; without 'presence' that would
+         propagate up and make every neighbor AF require an soo,
+         RFC 7950 section 3 'mandatory node').";
       description
         "'neighbor X soo ASN:NN_OR_IP-ADDRESS:NN': site-of-origin
          extended community stamped on routes from this peer. A Route
          Origin (RFC 4360 subtype 0x03) -- deliberately NOT the
          route-target grouping, which is a different extended
-         community (subtype 0x02). Unconfigured when no encoding is
-         set.";
+         community (subtype 0x02).";
       uses pt:route-origin;
     }
 
@@ -1980,12 +1984,14 @@ module proteus-bgp {
         }
       }
       container rd-export {
+        presence
+          "An export RD is configured (the encoding choice inside is
+           mandatory once present; 'presence' keeps it from
+           propagating up as a mandatory node).";
         description
           "'rd vpn export <ASN:NN|A.B.C.D:NN>'
            (af_rd_vpn_export_cmd): route distinguisher stamped on
-           routes leaked to the VPN table. All-empty counts as
-           unconfigured (the choice inside is only checked once
-           any member is set).";
+           routes leaked to the VPN table.";
         uses pt:route-distinguisher;
       }
       leaf nexthop-export {
@@ -2185,9 +2191,9 @@ module proteus-bgp {
     must "autonomous-system/plain or autonomous-system/asdot/high" {
       error-message
         "autonomous-system is mandatory: every 'router bgp' block
-         carries its ASN (an all-empty container counts as
-         unconfigured, so the requirement lives here on the
-         parent, not as a mandatory choice).";
+         carries its ASN (the shared notation choice is deliberately
+         not mandatory -- other usage sites are optional -- so the
+         requirement lives here on the parent).";
     }
     description
       "One 'router bgp ASN [<view|vrf> NAME]' block. FRR allows
@@ -2713,6 +2719,11 @@ module proteus-bgp {
     }
 
     container tcp-keepalive {
+      presence
+        "TCP keepalives are configured ('presence' scopes the must
+         below to configured instances: a non-presence container
+         exists implicitly, so libyang would evaluate the must --
+         and fail it -- on every unconfigured instance).";
       must "idle and interval and probes" {
         error-message
           "'bgp tcp-keepalive' takes idle, interval and probes
@@ -2974,11 +2985,10 @@ module proteus-bgp {
       description
         "One BGP peer: its session-level 'neighbor X ...' lines
          plus per-address-family blocks. remote-as must come from
-         the neighbor itself or its peer-group (the 'must',
-         spelled against remote-as's choice members since an
-         all-empty container always 'exists' -- the
-         conditional-mandatory rule the shared remote-as node
-         cannot state).";
+         the neighbor itself or its peer-group -- a conditional
+         requirement only this 'must' can state (the shared
+         remote-as node's choice stays non-mandatory so peer-group
+         members may omit it).";
 
       leaf address {
         type union {

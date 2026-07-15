@@ -77,10 +77,11 @@ module proteus-types {
    *
    * The choice is deliberately NOT mandatory here: whether an ASN is
    * required depends on the usage site (remote-as may be inherited
-   * from a peer-group), and an all-empty parent container counts as
-   * unconfigured anyway (mandatory choice inside is skipped) -- a
-   * site that requires the ASN needs a must on ITS parent, like the
-   * instance list's autonomous-system must in proteus-bgp.
+   * from a peer-group). A site that requires the ASN states it with
+   * a must on ITS parent, like the instance list's autonomous-system
+   * must in proteus-bgp. (A mandatory choice would also propagate:
+   * RFC 7950 makes a non-presence container with a mandatory child
+   * itself mandatory wherever its context exists.)
    */
   grouping asdot-as-number {
     description
@@ -158,9 +159,10 @@ module proteus-types {
   grouping route-distinguisher {
     description
       "One route distinguisher; exactly one encoding must be chosen
-       when the enclosing node is configured (mandatory choice --
-       like the route-target grouping, an all-empty container counts
-       as unconfigured).";
+       (mandatory choice). RFC 7950 gotcha for users: a non-presence
+       enclosing container becomes mandatory itself wherever its
+       context exists, so an OPTIONAL enclosing container must carry
+       a 'presence' statement.";
 
     choice format {
       mandatory true;
@@ -360,8 +362,9 @@ module proteus-types {
   grouping community-value {
     description
       "Exactly one community value -- standard, well-known, or large
-       -- with a raw fallback. Empty enclosing container counts as
-       unconfigured (mandatory choice, route-target semantics).";
+       -- with a raw fallback (mandatory choice; an OPTIONAL
+       enclosing container needs 'presence', or RFC 7950 propagation
+       makes it required).";
 
     choice value {
       mandatory true;
@@ -585,8 +588,8 @@ module proteus-types {
     description
       "One fully qualified route origin (site-of-origin, RFC 4360
        subtype 0x03); exactly one encoding must be chosen (mandatory
-       choice -- an all-empty enclosing container counts as
-       unconfigured).";
+       choice; an OPTIONAL enclosing container needs 'presence', or
+       RFC 7950 propagation makes it required).";
 
     choice format {
       mandatory true;

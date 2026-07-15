@@ -480,10 +480,14 @@ module proteus-route-map {
                route.";
           }
           container rd {
+            presence
+              "An RD match is configured (the encoding choice inside
+               is mandatory once present; 'presence' keeps it from
+               propagating up as a mandatory node).";
             description
               "'match evpn rd ASN:NN_OR_IP-ADDRESS:NN'.
-               Unconfigured when no encoding is set; the raw case
-               exists precisely for matching malformed RDs.";
+               The raw case exists precisely for matching malformed
+               RDs.";
             uses pt:route-distinguisher;
           }
           leaf route-type {
@@ -588,6 +592,11 @@ module proteus-route-map {
         }
 
         container metric {
+          presence
+            "A set metric is configured (the operand choice inside
+             is mandatory once present; 'presence' keeps it from
+             propagating up and making every route-map entry
+             require one).";
           description
             "'set metric <(-4294967295-4294967295)|rtt|+rtt|-rtt|
              igp|aigp>' (lib/routemap_cli.c; the semantics live in
@@ -596,8 +605,7 @@ module proteus-route-map {
              subtracts from the existing one). Structured instead
              of a sign-carrying value: 'operation' is the prefix,
              the operand is either a real uint32 'value' or one of
-             the rtt/igp/aigp 'variable's. Unconfigured when
-             empty.";
+             the rtt/igp/aigp 'variable's.";
           leaf operation {
             type enumeration {
               enum set {
@@ -624,9 +632,9 @@ module proteus-route-map {
             mandatory true;
             description
               "What to set/adjust the metric with -- exactly one
-               (mandatory choice; like every structured value, an
-               all-empty container counts as unconfigured, so the
-               choice only bites once something here is set).";
+               (mandatory choice; the enclosing metric container is
+               a presence container, so the choice only bites once
+               'set metric' is configured at all).";
 
             case value {
               leaf value {
@@ -749,6 +757,11 @@ module proteus-route-map {
         }
 
         container aggregator {
+          presence
+            "A set aggregator is configured ('presence' scopes the
+             must below to configured instances: a non-presence
+             container exists implicitly and would fail it on every
+             route-map entry).";
           must "(plain or asdot/high) and address" {
             error-message
               "'set aggregator as' takes AS number and address

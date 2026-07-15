@@ -217,13 +217,16 @@ module proteus-bgp-evpn {
     }
 
     container mac-vrf-soo {
+      presence
+        "A MAC-VRF site-of-origin is configured (the encoding choice
+         inside is mandatory once present; 'presence' keeps it from
+         propagating up as a mandatory node).";
       description
         "'mac-vrf soo ASN:NN_OR_IP-ADDRESS:NN': site-of-origin for
          all MAC-VRFs, loop protection for anycast VTEPs
          (macvrf_soo_global_cmd). A Route Origin (RFC 4360 subtype
          0x03) -- deliberately NOT the route-target grouping, which
-         is a different extended community (subtype 0x02).
-         Unconfigured when no encoding is set.";
+         is a different extended community (subtype 0x02).";
       uses pt:route-origin;
     }
 
@@ -343,9 +346,12 @@ module proteus-bgp-evpn {
       }
 
       container rd {
+        presence
+          "A per-VNI RD is configured (the encoding choice inside is
+           mandatory once present; 'presence' keeps it from
+           propagating up as a mandatory node).";
         description
-          "'rd <ASN:NN|A.B.C.D:NN>' (bgp_evpn_vni_rd_cmd).
-           Unconfigured when no encoding is set.";
+          "'rd <ASN:NN|A.B.C.D:NN>' (bgp_evpn_vni_rd_cmd).";
         uses pt:route-distinguisher;
       }
 
@@ -382,9 +388,13 @@ module proteus-bgp-evpn {
     }
 
     container rd {
+      presence
+        "A per-VRF RD is configured (the encoding choice inside is
+         mandatory once present; 'presence' keeps it from
+         propagating up as a mandatory node).";
       description
         "'rd <ASN:NN|A.B.C.D:NN>'. Per-VRF instance only.
-         Unconfigured when no encoding is set. (bgp_evpn_vrf_rd_cmd)";
+         (bgp_evpn_vrf_rd_cmd)";
       uses pt:route-distinguisher;
     }
 
@@ -469,9 +479,11 @@ module proteus-bgp-evpn {
       }
       container rd {
         description
-          "'rd ASN:NN_OR_IP-ADDRESS:NN'. Required (the 'must' on the
-           network entry -- 'mandatory' can't express it because an
-           all-empty container counts as unconfigured).";
+          "'rd ASN:NN_OR_IP-ADDRESS:NN'. Required: a non-presence
+           container with a mandatory choice is itself mandatory
+           wherever the network entry exists (RFC 7950 section 3);
+           the 'must' on the network entry restates it with a
+           clearer message.";
         uses pt:route-distinguisher;
       }
       leaf ethtag {
