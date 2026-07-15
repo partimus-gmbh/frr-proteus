@@ -105,18 +105,82 @@ def test_experimental_instance_renders_native_syntax():
     assert "  exit-evi\n" in text
 
 
-def test_experimental_instance_removes_legacy_syntax():
+def test_experimental_instance_removes_replaced_legacy_syntax():
+    # Only the legacy constructs the scheme REPLACES disappear from the
+    # experimental output: advertise-all-vni (-> vxlan-underlay) and the
+    # per-VNI 'vni' blocks (-> vlan-based-evi).
     instance = _new_instance()
     evpn = instance.afi_safis.l2vpn_evpn
     evpn.advertise_all_vni = True
-    evpn.rd = "10.0.0.1:1"
-    evpn.vni.append(EvpnAf.Vni(vni_id=101, rd="10.0.0.1:101"))
+    evpn.vni.append(EvpnAf.Vni(vni_id=101))
     evpn.auto_discover_vnis = True
 
     text = render_experimental_bgp_instance(instance)
     assert "  auto-discover-vnis\n" in text
-    for legacy in ("advertise-all-vni", "  rd ", "vni 101"):
+    for legacy in ("advertise-all-vni", "vni 101"):
         assert legacy not in text, legacy
+
+
+def test_experimental_instance_passes_shared_legacy_knobs_through():
+    # Legacy knobs orthogonal to the scheme split are shared vocabulary:
+    # identical lines in the experimental format.
+    instance = _new_instance()
+    evpn = instance.afi_safis.l2vpn_evpn
+    evpn.vxlan_underlay = True
+    evpn.advertise_svi_ip = True
+    evpn.advertise_default_gw = True
+    evpn.autort_rfc8365_compatible = True
+    evpn.enable_resolve_overlay_index = True
+    evpn.mac_vrf_soo.as2.global_admin = 65000
+    evpn.mac_vrf_soo.as2.local_admin = 1
+    evpn.multihoming.ead_es_frag_evi_limit = 100
+    evpn.multihoming.use_es_l3nhg = False
+    evpn.dup_addr_detection.max_moves = 7
+    evpn.dup_addr_detection.time = 300
+    evpn.flooding = "disable"
+    evpn.default_originate.ipv4 = True
+    evpn.advertise_pip.enabled = False
+    evpn.rd.as2.administrator = 65000
+    evpn.rd.as2.assigned_number = 1
+
+    text = render_experimental_bgp_instance(instance)
+    for line in (
+        "  vxlan-underlay\n",
+        "  advertise-svi-ip\n",
+        "  advertise-default-gw\n",
+        "  autort rfc8365-compatible\n",
+        "  enable-resolve-overlay-index\n",
+        "  mac-vrf soo 65000:1\n",
+        "  ead-es-frag evi-limit 100\n",
+        "  no use-es-l3nhg\n",
+        "  dup-addr-detection max-moves 7 time 300\n",
+        "  flooding disable\n",
+        "  default-originate ipv4\n",
+        "  no advertise-pip\n",
+        "  rd 65000:1\n",
+    ):
+        assert line in text, line
+
+
+def test_experimental_evi_renders_per_vni_compat_knobs():
+    # The per-EVI equivalents of the stock per-VNI knobs (rd, flooding,
+    # advertise overrides) render inside the EVI block.
+    instance = _new_instance()
+    evi = _evi("v100", l2vni=100)
+    evi.rd.as2.administrator = 65000
+    evi.rd.as2.assigned_number = 100
+    evi.flooding = "disable"
+    evi.advertise_default_gw = True
+    evi.advertise_svi_ip = True
+    evi.advertise_subnet = True
+    instance.afi_safis.l2vpn_evpn.vlan_based_evi.append(evi)
+
+    text = render_experimental_bgp_instance(instance)
+    assert "   rd 65000:100\n" in text
+    assert "   flooding disable\n" in text
+    assert "   advertise-default-gw\n" in text
+    assert "   advertise-svi-ip\n" in text
+    assert "   advertise-subnet\n" in text
 
 
 def test_experimental_evpn_global_renders():
@@ -319,6 +383,36 @@ def test_translate_origination_l3vni_tenant_to_vrf_block():
     )
 
 
+def test_type5_advertisement_is_explicit_never_synthesized():
+    # origination-l3vni deliberately does NOT imply type-5
+    # advertisement: the translator synthesizes no advertise lines.
+    instance = _new_instance(vrf="blue")
+    instance.afi_safis.l2vpn_evpn.origination_l3vni.vni = 5001
+    result, _ = _translate(_bgp(instance))
+    assert "advertise ipv4 unicast" not in render_bgp_instance(
+        result.bgp.instance[0]
+    )
+
+    # Explicitly configured advertisement (shared vocabulary) passes
+    # through both paths, decoration and all.
+    instance = _new_instance(vrf="blue")
+    evpn = instance.afi_safis.l2vpn_evpn
+    evpn.origination_l3vni.vni = 5001
+    evpn.advertise_ipv4_unicast.enabled = True
+    evpn.advertise_ipv4_unicast.route_map = "TENANT-EXPORT"
+    evpn.advertise_ipv6_unicast.enabled = True
+
+    exp_text = render_experimental_bgp_instance(instance)
+    assert "  advertise ipv4 unicast route-map TENANT-EXPORT\n" in exp_text
+    assert "  advertise ipv6 unicast\n" in exp_text
+
+    result, msgs = _translate(_bgp(instance))
+    text = render_bgp_instance(result.bgp.instance[0])
+    assert "  advertise ipv4 unicast route-map TENANT-EXPORT\n" in text
+    assert "  advertise ipv6 unicast\n" in text
+    assert not [m for m in msgs if "advertise" in m]
+
+
 def test_translate_origination_l3vni_default_to_global_scalar():
     instance = _new_instance(vrf="default")
     instance.afi_safis.l2vpn_evpn.origination_l3vni.vni = 4000
@@ -355,13 +449,81 @@ def test_translate_underlay_vrf_nondefault_warns():
     assert not [m for m in msgs if "multi-underlay" in m]
 
 
-def test_translate_global_block_dropped_warns():
+def test_translate_global_block_evis_land_in_default_instance():
+    # Global-block EVIs translate like instance-level ones, into the
+    # default instance's 'vni' list; only the (non-default)
+    # default-underlay-vrf is a real loss.
     evpn = GlobalEvpn()
     evpn.default_underlay_vrf = "underlay-red"
-    evpn.vlan_based_evi.append(_evi("g100", underlay="underlay-red", l2vni=100))
-    _, msgs = _translate(_bgp(), evpn)
+    evi = _evi("g100", underlay="underlay-red", l2vni=100)
+    evi.route_target_both.as2.append(
+        EvpnAf.VlanBasedEvi.RouteTargetBoth.As2(global_admin=65000, local_admin=100)
+    )
+    evpn.vlan_based_evi.append(evi)
+    result, msgs = _translate(_bgp(_new_instance()), evpn)
+
+    (vni,) = result.bgp.instance[0].afi_safis.l2vpn_evpn.vni
+    assert vni.vni_id == 100
+    text = render_bgp_instance(result.bgp.instance[0])
+    assert "  ! vlan-based-evi g100\n  vni 100\n" in text
+    assert "   route-target both 65000:100\n" in text
     assert any("default-underlay-vrf underlay-red" in m for m in msgs)
-    assert any("vlan-based-evi 'g100'" in m for m in msgs)
+    # the EVI's own multi-underlay ref still warns
+    assert any("vlan-based-evi 'g100'" in m and "multi-underlay" in m for m in msgs)
+
+
+def test_translate_evi_dropped_without_default_instance():
+    # No default-VRF instance -> nowhere stock FRR accepts a 'vni'
+    # block; both global and tenant-declared EVIs are dropped, loudly.
+    evpn = GlobalEvpn()
+    evpn.vlan_based_evi.append(_evi("g100", l2vni=100))
+    tenant = _new_instance(vrf="blue")
+    tenant.afi_safis.l2vpn_evpn.vlan_based_evi.append(_evi("t200", l2vni=200))
+    result, msgs = _translate(_bgp(tenant), evpn)
+
+    assert not result.bgp.instance[0].afi_safis.l2vpn_evpn.vni
+    assert len([m for m in msgs if "no default-VRF BGP instance" in m]) == 2
+
+
+def test_translate_tenant_evi_relocates_to_default_instance():
+    # 'vni' blocks are default-instance-only in stock FRR: an EVI
+    # declared on a tenant instance translates into the DEFAULT
+    # instance's vni list, not the tenant's.
+    default = _new_instance(vrf="default")
+    default.afi_safis.l2vpn_evpn.vxlan_underlay = True
+    default.afi_safis.l2vpn_evpn.auto_discover_vnis = True
+    tenant = _new_instance(vrf="blue", asn=65001)
+    tenant.afi_safis.l2vpn_evpn.vlan_based_evi.append(_evi("t200", l2vni=200))
+    result, _ = _translate(_bgp(default, tenant))
+
+    assert not result.bgp.instance[1].afi_safis.l2vpn_evpn.vni
+    (vni,) = result.bgp.instance[0].afi_safis.l2vpn_evpn.vni
+    assert vni.vni_id == 200
+    assert "  vni 200\n" in render_bgp_instance(result.bgp.instance[0])
+
+
+def test_translate_evi_per_vni_compat_knobs_carried_over():
+    # rd / flooding / advertise overrides ride onto the synthesized
+    # legacy 'vni' block.
+    instance = _new_instance()
+    evi = _evi("v100", l2vni=100)
+    evi.rd.as2.administrator = 65000
+    evi.rd.as2.assigned_number = 100
+    evi.flooding = "disable"
+    evi.advertise_default_gw = True
+    evi.advertise_svi_ip = True
+    evi.advertise_subnet = True
+    instance.afi_safis.l2vpn_evpn.vlan_based_evi.append(evi)
+    result, msgs = _translate(_bgp(instance))
+
+    text = render_bgp_instance(result.bgp.instance[0])
+    assert "  vni 100\n" in text
+    assert "   rd 65000:100\n" in text
+    assert "   flooding disable\n" in text
+    assert "   advertise-default-gw\n" in text
+    assert "   advertise-svi-ip\n" in text
+    assert "   advertise-subnet\n" in text
+    assert not msgs  # fully representable -> nothing lossy
 
 
 def test_translate_does_not_mutate_input():
@@ -383,7 +545,8 @@ def test_translate_does_not_mutate_input():
 
 def test_translated_default_vrf_has_no_evpn_af_block():
     # A tenant whose only EVPN config is origination-l3vni translates to
-    # a vrf block, leaving its router-bgp EVPN AF empty -> not emitted.
+    # a vrf block, leaving its router-bgp EVPN AF empty -> not emitted
+    # (type-5 advertisement is explicit config, never synthesized).
     instance = _new_instance(vrf="blue")
     instance.afi_safis.l2vpn_evpn.origination_l3vni.vni = 5001
     result, _ = _translate(_bgp(instance))

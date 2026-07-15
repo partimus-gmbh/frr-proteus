@@ -168,6 +168,17 @@ def _copy_rt_values(src, dst) -> None:
             )
 
 
+def _copy_rd(src, dst) -> None:
+    """Copy a pt:route-distinguisher container's encoding fields onto
+    another instance of the grouping (the EVI's rd class and the legacy
+    Vni's rd class are distinct generated types)."""
+    for enc in ("as2", "ipv4", "as4"):
+        getattr(dst, enc).administrator = getattr(src, enc).administrator
+        getattr(dst, enc).assigned_number = getattr(src, enc).assigned_number
+    dst.mac = src.mac
+    dst.raw = src.raw
+
+
 def _dropped_evi_rt_options(evi) -> list[str]:
     """RT options on `evi` a stock 'vni' block cannot express: import
     wildcard '*:NN', import auto, export auto."""
@@ -195,15 +206,24 @@ def translate_experimental_to_standard(bgp, evpn_global=None):
       - vxlan-underlay -> advertise-all-vni (warns when auto-discover-vnis
         is unset: advertise-all-vni auto-discovers regardless).
       - vlan-based-evi with origination-l2vni N -> a legacy 'vni N' block
-        carrying its fully qualified route-targets (import wildcard/auto
-        and export auto are dropped, with a warning; an EVI without an
-        origination-l2vni is dropped entirely, with a warning).
+        (rd, flooding, the advertise-default-gw/-svi-ip/-subnet overrides
+        and the fully qualified route-targets are carried over; import
+        wildcard/auto and export auto are dropped, with a warning; an EVI
+        without an origination-l2vni is dropped entirely, with a
+        warning). The block is placed in the DEFAULT-VRF instance
+        regardless of where the EVI was declared -- including EVIs of
+        the global 'evpn' block -- because stock FRR accepts 'vni'
+        blocks only there; if no default-VRF instance exists, the EVI is
+        dropped with a warning.
       - origination-l3vni -> a named 'vrf NAME / vni N' block (tenant
-        VRFs) or the default VRF's global top-level 'vni N' line.
+        VRFs) or the default VRF's global top-level 'vni N' line. It
+        does NOT imply type-5 advertisement: 'advertise ipv4|ipv6
+        unicast' is explicit config via the legacy
+        advertise-ipv4-/ipv6-unicast containers (shared vocabulary,
+        passed through untouched).
       - non-'default' underlay-vrf (instance, EVI, or the global
-        default-underlay-vrf) and the whole global 'evpn' block have no
-        stock-FRR equivalent and are dropped (with warnings for the
-        multi-underlay references).
+        default-underlay-vrf) has no stock-FRR equivalent and is dropped
+        with a warning (FRR has no multi-underlay EVPN).
     """
     # Lazy import: the render layer stays importable without generated
     # bindings (tests importorskip them); only translation needs them.
@@ -220,6 +240,62 @@ def translate_experimental_to_standard(bgp, evpn_global=None):
     vrfs = ProteusVrf()
     default_l3vni: int | None = None
     default_l3vni_prefix_routes_only = False
+
+    # Stock FRR accepts 'vni' blocks only in the default-VRF instance, so
+    # every translated EVI lands there, wherever it was declared.
+    default_instance = next(
+        (i for i in std.instance if not i.vrf or i.vrf == "default"), None
+    )
+
+    def translate_evi(evi, eat: str) -> None:
+        """Translate one vlan-based-evi (instance-level or global) into a
+        legacy 'vni' block on the default instance, warning per lossy
+        drop. `eat` names the EVI's declaration site in warnings."""
+        if evi.underlay_vrf and evi.underlay_vrf != "default":
+            _warn(f"{eat}: " + _MULTI_UNDERLAY.format(vrf=evi.underlay_vrf))
+        if evi.origination_l2vni is None:
+            _warn(
+                f"{eat}: EVI has no origination-l2vni, so it has no "
+                "stock-FRR 'vni' block to translate to and is dropped "
+                "entirely."
+            )
+            return
+        if default_instance is None:
+            _warn(
+                f"{eat}: no default-VRF BGP instance exists to hold the "
+                "translated 'vni' block (stock FRR accepts 'vni' blocks "
+                "only in the default instance), so the EVI is dropped "
+                "entirely."
+            )
+            return
+        dropped = _dropped_evi_rt_options(evi)
+        if dropped:
+            _warn(
+                f"{eat}: route-target option(s) {', '.join(dropped)} have "
+                "no equivalent in a stock-FRR 'vni' block and are dropped."
+            )
+        vni = Vni(vni_id=evi.origination_l2vni)
+        _copy_rd(evi.rd, vni.rd)
+        vni.flooding = evi.flooding
+        _copy_rt_values(evi.route_target_import, vni.route_target_import)
+        _copy_rt_values(evi.route_target_export, vni.route_target_export)
+        _copy_rt_values(evi.route_target_both, vni.route_target_both)
+        vni.advertise_default_gw = evi.advertise_default_gw
+        vni.advertise_svi_ip = evi.advertise_svi_ip
+        vni.advertise_subnet = evi.advertise_subnet
+        # A stock 'vni N' block has no field for the EVI's name, so
+        # preserve it as a comment on the synthesized node -- the
+        # standard renderer emits it as a '!' line above the block.
+        # Any comment the EVI itself carried is kept above it.
+        name_comment = f"vlan-based-evi {evi.name}"
+        existing = annotations(evi).get("comment")
+        annotate(
+            vni,
+            comment=(
+                f"{existing}\n{name_comment}" if existing else name_comment
+            ),
+        )
+        default_instance.afi_safis.l2vpn_evpn.vni.append(vni)
 
     for instance in std.instance:
         evpn = instance.afi_safis.l2vpn_evpn
@@ -240,39 +316,7 @@ def translate_experimental_to_standard(bgp, evpn_global=None):
             _warn(f"{at}: " + _MULTI_UNDERLAY.format(vrf=evpn.underlay_vrf))
 
         for evi in evpn.vlan_based_evi:
-            eat = f"{at} vlan-based-evi {evi.name!r}"
-            if evi.underlay_vrf and evi.underlay_vrf != "default":
-                _warn(f"{eat}: " + _MULTI_UNDERLAY.format(vrf=evi.underlay_vrf))
-            if evi.origination_l2vni is None:
-                _warn(
-                    f"{eat}: EVI has no origination-l2vni, so it has no "
-                    "stock-FRR 'vni' block to translate to and is dropped "
-                    "entirely."
-                )
-                continue
-            dropped = _dropped_evi_rt_options(evi)
-            if dropped:
-                _warn(
-                    f"{eat}: route-target option(s) {', '.join(dropped)} have "
-                    "no equivalent in a stock-FRR 'vni' block and are dropped."
-                )
-            vni = Vni(vni_id=evi.origination_l2vni)
-            _copy_rt_values(evi.route_target_import, vni.route_target_import)
-            _copy_rt_values(evi.route_target_export, vni.route_target_export)
-            _copy_rt_values(evi.route_target_both, vni.route_target_both)
-            # A stock 'vni N' block has no field for the EVI's name, so
-            # preserve it as a comment on the synthesized node -- the
-            # standard renderer emits it as a '!' line above the block.
-            # Any comment the EVI itself carried is kept above it.
-            name_comment = f"vlan-based-evi {evi.name}"
-            existing = annotations(evi).get("comment")
-            annotate(
-                vni,
-                comment=(
-                    f"{existing}\n{name_comment}" if existing else name_comment
-                ),
-            )
-            evpn.vni.append(vni)
+            translate_evi(evi, f"{at} vlan-based-evi {evi.name!r}")
 
         l3 = evpn.origination_l3vni
         if l3.vni is not None:
@@ -301,27 +345,23 @@ def translate_experimental_to_standard(bgp, evpn_global=None):
         evpn.vlan_based_evi.clear()
 
     if evpn_global is not None:
-        _translate_global_losses(evpn_global)
+        # The block itself has no stock-FRR equivalent, but its EVIs
+        # translate exactly like instance-level ones; only the
+        # default-underlay-vrf (when non-default) is a real loss.
+        if (
+            evpn_global.default_underlay_vrf
+            and evpn_global.default_underlay_vrf != "default"
+        ):
+            _warn(
+                "global 'evpn' block: 'default-underlay-vrf "
+                f"{evpn_global.default_underlay_vrf}' has no equivalent in "
+                "the standard (stock FRR) model and is dropped: FRR "
+                "supports only a single default-VRF EVPN underlay (no "
+                "multi-underlay EVPN)."
+            )
+        for evi in evpn_global.vlan_based_evi:
+            translate_evi(evi, f"global 'evpn' vlan-based-evi {evi.name!r}")
 
     return StandardTranslation(
         std, vrfs, default_l3vni, default_l3vni_prefix_routes_only
     )
-
-
-def _translate_global_losses(evpn) -> None:
-    """The global 'evpn' block has no stock-FRR equivalent (it is dropped
-    entirely); surface the multi-underlay references inside it, which are
-    the ones that silently change intent."""
-    if evpn.default_underlay_vrf and evpn.default_underlay_vrf != "default":
-        _warn(
-            "global 'evpn' block: 'default-underlay-vrf "
-            f"{evpn.default_underlay_vrf}' has no equivalent in the standard "
-            "(stock FRR) model and is dropped: FRR supports only a single "
-            "default-VRF EVPN underlay (no multi-underlay EVPN)."
-        )
-    for evi in evpn.vlan_based_evi:
-        if evi.underlay_vrf and evi.underlay_vrf != "default":
-            _warn(
-                f"global 'evpn' vlan-based-evi {evi.name!r}: "
-                + _MULTI_UNDERLAY.format(vrf=evi.underlay_vrf)
-            )

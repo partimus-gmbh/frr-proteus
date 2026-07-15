@@ -25,12 +25,14 @@ module proteus-bgp-evpn-experimental {
      schema and coexist with the legacy EVPN nodes in one tree, so a
      config object can carry both. Opting in happens at the
      *renderer*, not the schema: render format 'experimental' emits
-     this scheme's syntax and drops the legacy EVPN command syntax;
-     the default 'frr' format emits legacy syntax and translates
-     these nodes where stock FRR has an equivalent (vxlan-underlay ->
-     'advertise-all-vni', vlan-based-evi -> 'vni' block), leaving out
-     what has none (auto-discover-vnis, underlay-vrf,
-     origination-l3vni, the global block, ...).
+     this scheme's syntax and drops the legacy EVPN command syntax it
+     replaces; the default 'frr' format emits legacy syntax and
+     translates these nodes where stock FRR has an equivalent
+     (vxlan-underlay -> 'advertise-all-vni', vlan-based-evi -> a
+     default-instance 'vni' block, origination-l3vni -> the zebra
+     VRF L3VNI mapping), leaving out what has none
+     (auto-discover-vnis, underlay-vrf, the global block's
+     default-underlay-vrf, ...).
 
      This module is the one place the custom models use 'augment',
      deliberately: its underlay references are leafrefs into
@@ -44,7 +46,48 @@ module proteus-bgp-evpn-experimental {
      verifiable against bgpd's config-write code -- the scheme is
      experimental and the rendering follows its specification
      example, with FRR-style block conventions (exit-address-family,
-     exit-evi, a bare 'exit' closing the global block).";
+     exit-evi, a bare 'exit' closing the global block).
+
+     Backwards compatibility with the legacy EVPN surface
+     (proteus-bgp-evpn.yang):
+
+     - The scheme REPLACES only what it redesigns: 'advertise-all-vni'
+       (-> vxlan-underlay) and the per-VNI 'vni' blocks
+       (-> vlan-based-evi). Every other legacy EVPN knob
+       (advertise <ipv4|ipv6> unicast, advertise-svi-ip,
+       advertise-default-gw, autort rfc8365-compatible, mac-vrf soo,
+       enable-resolve-overlay-index, the multihoming and
+       dup-addr-detection containers, flooding, default-originate,
+       advertise-pip, the per-VRF rd, type-5 'network' statements) is
+       SHARED VOCABULARY: identical CLI text in both output formats,
+       rendered from the legacy nodes -- this module deliberately does
+       not duplicate them.
+
+     - origination-l3vni does NOT imply type-5 advertisement:
+       advertising the VRF's unicast routes is configured EXPLICITLY
+       via the legacy advertise-ipv4-/ipv6-unicast containers (shared
+       vocabulary, incl. their gateway-ip / route-map options), same
+       as stock FRR. origination-l3vni carries only the L3VNI/label
+       side.
+
+     - vlan-based-evi carries the per-EVI equivalents of the legacy
+       per-VNI knobs (rd, flooding, advertise-default-gw,
+       advertise-svi-ip, advertise-subnet) so nothing expressible in
+       a stock 'vni' block is lost by moving to EVI blocks; the
+       frr-format translation copies them onto the synthesized 'vni'
+       block, which lives in the default instance (the only place
+       stock FRR accepts one) regardless of where the EVI was
+       declared.";
+
+  revision 2026-07-11 {
+    description
+      "Backwards-compatibility extension: per-EVI rd / flooding /
+       advertise-default-gw / advertise-svi-ip / advertise-subnet
+       (the stock per-VNI knobs); the module description states which
+       legacy nodes are shared vocabulary (type-5 advertisement stays
+       explicit via the legacy advertise-ipv4-/ipv6-unicast
+       containers).";
+  }
 
   revision 2026-07-05 {
     description
@@ -96,7 +139,59 @@ module proteus-bgp-evpn-experimental {
            the given L2VNI.";
       }
 
+      container rd {
+        presence
+          "A per-EVI RD is configured (the encoding choice inside is
+           mandatory once present; 'presence' keeps it from
+           propagating up as a mandatory node).";
+        description
+          "'rd <ASN:NN|A.B.C.D:NN>': pin this EVI's route
+           distinguisher instead of auto-deriving it (RFC 7432
+           section 7.9 assigns one RD per MAC-VRF). Translates to
+           the 'rd' line of the synthesized stock 'vni' block
+           (bgp_evpn_vni_rd_cmd).";
+        uses pt:route-distinguisher;
+      }
+
+      leaf flooding {
+        type evpn:flooding-mode;
+        description
+          "Per-EVI BUM flooding control (RFC 7432 section 11 ingress
+           replication; 'disable' suppresses BUM replication to remote
+           VTEPs entirely). Unset means FRR's default
+           (head-end-replication). Translates to the per-VNI
+           'flooding' line (bgp_evpn_flood_control_vni_cmd).";
+      }
+
       uses evpn:vrf-route-targets;
+
+      leaf advertise-default-gw {
+        type boolean;
+        default "false";
+        description
+          "Advertise this EVI's gateway MAC/IP with the Default
+           Gateway extended community (RFC 9135 asymmetric gateway
+           signalling). Translates to the per-VNI
+           'advertise-default-gw' override
+           (bgp_evpn_advertise_default_gw_vni_cmd).";
+      }
+      leaf advertise-svi-ip {
+        type boolean;
+        default "false";
+        description
+          "Advertise this EVI's SVI MAC/IP as a type-2 route (RFC
+           9135 IRB with per-VTEP SVI addresses). Translates to the
+           per-VNI 'advertise-svi-ip' override
+           (bgp_evpn_advertise_svi_ip_vni_cmd).";
+      }
+      leaf advertise-subnet {
+        type boolean;
+        default "false";
+        description
+          "Advertise this EVI's subnet as a type-5 route. Translates
+           to the per-VNI 'advertise-subnet' line
+           (bgp_evpn_advertise_vni_subnet_cmd).";
+      }
     }
   }
 
@@ -150,7 +245,11 @@ module proteus-bgp-evpn-experimental {
     container origination-l3vni {
       description
         "'origination-l3vni NNN [prefix-routes-only]': originate this
-         VRF's routes with the given L3VNI.";
+         VRF's routes with the given L3VNI. Carries only the
+         L3VNI/label side -- it does NOT imply type-5 advertisement;
+         enable that explicitly via the legacy
+         advertise-ipv4-/ipv6-unicast containers (shared vocabulary
+         in both output formats), same as stock FRR.";
       leaf vni {
         type pt:vni;
         description

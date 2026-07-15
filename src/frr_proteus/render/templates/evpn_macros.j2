@@ -36,5 +36,21 @@ Macro bodies deliberately don't end in a newline: the caller's
 {% if evi.origination_l2vni %}
 {{ pad }} origination-l2vni {{ evi.origination_l2vni }}
 {% endif %}
+{% set evi_rd = rd_text(evi.rd) %}
+{% if evi_rd %}
+{{ pad }} rd {{ evi_rd }}
+{% endif %}
+{% if evi.flooding %}
+{{ pad }} flooding {{ evi.flooding }}
+{% endif %}
 {{ vrf_route_targets(evi, pad ~ " ") -}}
+{% if evi.advertise_default_gw %}
+{{ pad }} advertise-default-gw
+{% endif %}
+{% if evi.advertise_svi_ip %}
+{{ pad }} advertise-svi-ip
+{% endif %}
+{% if evi.advertise_subnet %}
+{{ pad }} advertise-subnet
+{% endif %}
 {{ pad }}exit-evi{% endmacro %}

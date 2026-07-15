@@ -96,7 +96,8 @@ same shape (one `.j2` template, thin Python glue module, thin
   plain-decimal leaf and an `asdot` container of two uint16 halves
   (ASN = high*65536 + low; `0.0` blocked by a must; `0.<low>` is
   asdot+), reused by instance autonomous-system (required via a
-  must on the instance list -- all-empty-container gotcha),
+  must on the instance list -- the shared notation choice stays
+  non-mandatory because other usage sites are optional),
   neighbor remote-as (choice extended with the
   internal/external/auto keyword case), local-as, confederation
   identifier, and route-map set aggregator; confederation peers
@@ -169,10 +170,21 @@ same shape (one `.j2` template, thin Python glue module, thin
   FRR can't parse yet are still modeled but BLOCKED with `must
   "false()"` + explanatory error-message (e.g. the type-6 MAC RD) so
   unblocking is a one-line delete; do NOT simply omit standard
-  encodings. Gotcha: an all-empty container counts as unconfigured
-  (mandatory choice inside is skipped), so "this container is
-  required" needs a `must` on the PARENT (see the EVPN type-5 network
-  rd), and a must on the container itself won't fire when it's empty.
+  encodings. Presence rule (RFC 7950 sect. 3, enforced by libyang AND
+  by validate_tree since the fork's 2026-07-15 conformance fixes): a
+  non-presence container with a mandatory child (mandatory
+  leaf/choice, min-elements) is itself a MANDATORY node, propagating
+  up through container chains until a presence container, an
+  unselected case, or a list entry stops it -- so every OPTIONAL
+  feature container wrapping a mandatory encoding choice MUST carry
+  `presence` (soo, rd-export, mac-vrf-soo, per-VNI/per-VRF rd,
+  match-evpn rd, set metric all do). Omitting presence is how you
+  say "required wherever the parent exists" (the EVPN type-5 network
+  rd does this deliberately; its parent-must only adds the message).
+  Also: musts on non-presence containers are evaluated even when the
+  container is empty (it exists implicitly) -- all-or-nothing musts
+  like tcp-keepalive's / set aggregator's therefore need `presence`
+  too, or a must written to pass on empty.
   (2) No `augment` unless it REALLY earns its keep --
   FRR's augment-everything style is what made their model unreadable;
   sibling modules contribute content via plain `import` + `uses`
@@ -529,6 +541,24 @@ same shape (one `.j2` template, thin Python glue module, thin
       experimental); sharing it is NOT pollution (no experimental logic
       in it). Per-neighbor lines are shared vocabulary
       (`bgp_evpn_neighbors.j2`), RT/EVI rendering `evpn_macros.j2`.
+      Since the 2026-07-12 backwards-compat pass the experimental AF
+      template also emits every legacy EVPN knob that is orthogonal to
+      the scheme split (type-5 `network` statements, autort,
+      advertise-default-gw/-svi-ip, mac-vrf soo,
+      enable-resolve-overlay-index, multihoming, dup-addr-detection,
+      flooding, explicit advertise ipv4/ipv6 unicast, default-originate,
+      advertise-pip, per-VRF rd) with the same CLI text as the standard
+      format -- only advertise-all-vni and `vni` blocks are replaced by
+      the scheme. Those shared-vocabulary lines are deliberately
+      DUPLICATED in `bgp_evpn_af_experimental.j2`, NOT shared via a
+      common include: the user explicitly forbade deduplicating
+      templates between experimental and standard rendering ("working
+      on [experimental] in any way MUST NOT affect the standard
+      rendering that is considered stable") -- when `bgp_evpn_af.j2`
+      changes, update the copy by hand. `vlan-based-evi` additionally
+      carries the per-VNI compat knobs (rd, flooding,
+      advertise-default-gw/-svi-ip/-subnet) so nothing a stock `vni`
+      block can say is lost.
     - `translate_experimental_to_standard(bgp, evpn_global=None)` is the
       bridge for stock-FRR output: it deep-copies the tree (never
       mutates input), converts the experimental typing INTO the legacy
@@ -538,20 +568,29 @@ same shape (one `.j2` template, thin Python glue module, thin
       translate -> standard model -> standard renderer (which has no idea
       it originated from the experimental model). Translations:
       vxlan-underlay -> `advertise-all-vni`; vlan-based-evi with
-      origination-l2vni -> a legacy `vni` block (its qualified RTs
-      copied; wildcard/auto dropped) with the EVI **name preserved as a
-      `comment` annotation on the synthesized Vni** (a stock `vni` block
-      has no name field -- the standard renderer emits it as a `!` line
-      above the block); origination-l3vni -> a named `vrf NAME / vni N`
-      block in the returned ProteusVrf, EXCEPT the default instance's,
-      which is the default VRF's GLOBAL top-level `vni N` line (no `vrf
-      default` block; verified: vni_mapping_cmd is installed at
-      CONFIG_NODE and zebra_vrf_indent_cli_write emits no indent for the
-      default VRF). That global vni has NO proteus-vrf data node by
-      design (user forbade one twice) -- it rides out as the
-      `default_l3vni` / `default_l3vni_prefix_routes_only` SCALAR params
-      of `render_vrfs` (the `vni N` line is stock FRR syntax, so this is
-      a standard-renderer capability, not experimental pollution; it is
+      origination-l2vni -> a legacy `vni` block (rd, flooding, the
+      advertise overrides and qualified RTs copied; wildcard/auto RTs
+      dropped) with the EVI **name preserved as a `comment` annotation
+      on the synthesized Vni** (a stock `vni` block has no name field --
+      the standard renderer emits it as a `!` line above the block);
+      every translated `vni` block -- including from tenant-declared and
+      global-block EVIs -- is appended to the DEFAULT-VRF instance
+      (stock FRR accepts `vni` blocks only there; no default instance ->
+      EVI dropped with a warning); origination-l3vni -> a named `vrf
+      NAME / vni N` block in the returned ProteusVrf, EXCEPT the default
+      instance's, which is the default VRF's GLOBAL top-level `vni N`
+      line (no `vrf default` block; verified: vni_mapping_cmd is
+      installed at CONFIG_NODE and zebra_vrf_indent_cli_write emits no
+      indent for the default VRF). origination-l3vni deliberately does
+      NOT imply type-5 advertisement (the user rejected an implied
+      variant): `advertise ipv4|ipv6 unicast` is explicit config via
+      the legacy advertise containers, shared vocabulary passed through
+      untouched, never synthesized. That global vni has NO
+      proteus-vrf data node by design (user forbade one twice) -- it
+      rides out as the `default_l3vni` /
+      `default_l3vni_prefix_routes_only` SCALAR params of `render_vrfs`
+      (the `vni N` line is stock FRR syntax, so this is a
+      standard-renderer capability, not experimental pollution; it is
       the one construct with no data-model node). Lossy drops each emit
       an `EvpnTranslationWarning` (defined in / raised from
       experimental.py, exported from `render/__init__`) via the stdlib
@@ -559,9 +598,10 @@ same shape (one `.j2` template, thin Python glue module, thin
       warns): vxlan-underlay without auto-discover-vnis, any non-`default`
       underlay-vrf / EVI underlay-vrf / global default-underlay-vrf,
       dropped EVI import-wildcard/import-auto/export-auto RTs, an EVI
-      dropped for lacking origination-l2vni, and the whole global block.
-      Messages name the instance/EVI so `warnings.warn`'s (message,
-      location) de-dup doesn't collapse them.
+      dropped for lacking origination-l2vni or for lacking a default
+      instance to hold its `vni` block. Messages name the instance/EVI
+      so `warnings.warn`'s (message, location) de-dup doesn't collapse
+      them.
   **Whitespace gotcha:** with `trim_blocks=True`, *any* line ending in a
   `{% %}` tag has its trailing newline eaten -- including a content line
   that just happens to end with an inline `{% endif %}` (not only

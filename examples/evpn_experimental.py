@@ -26,9 +26,14 @@ config object and emits it two ways -- via two SEPARATE code paths:
 
      The conversion is lossy where stock FRR has no equivalent
      (auto-discover-vnis, non-default underlay-vrf, wildcard/auto RTs on
-     a translated EVI, an EVI with no L2VNI, the whole global block);
-     the translator raises an EvpnTranslationWarning for each, which
-     this example captures and prints.
+     a translated EVI, an EVI with no L2VNI, the global block's
+     default-underlay-vrf); the translator raises an
+     EvpnTranslationWarning for each, which this example captures and
+     prints. Where stock FRR does have an equivalent the translation is
+     faithful: EVIs (including the global block's) become 'vni' blocks
+     in the default instance, and origination-l3vni becomes the zebra
+     L3VNI mapping ('advertise ipv4/ipv6 unicast' is explicit shared
+     config, never synthesized).
 
 Topology: one EVPN VTEP. The default instance is the VXLAN underlay
 (marked vxlan-underlay, VNIs auto-discovered, a default-VRF L3VNI) with
@@ -129,10 +134,13 @@ def build_underlay_instance() -> Instance:
 
 
 def build_tenant_instance(vrf: str, l3vni: int) -> Instance:
-    """A tenant VRF riding the underlay: underlay-vrf leafref +
-    origination-l3vni (both dropped in frr format -- so the frr output
-    keeps only the route-targets and no longer originates the L3VNI;
-    that loss is the intended lossy translation, not a bug), plus the
+    """A tenant VRF riding the underlay: an underlay-vrf leafref (its
+    'default' target is representable, so no warning) plus
+    origination-l3vni, which the frr format turns into the zebra
+    'vrf NAME / vni N' mapping. Type-5 advertisement is EXPLICIT
+    config (origination-l3vni deliberately does not imply it): the
+    legacy advertise-ipv4-/ipv6-unicast containers are shared
+    vocabulary rendering identically in both formats, like the
     auto/wildcard route-targets."""
     inst = Instance(vrf=vrf)
     inst.autonomous_system.plain = LOCAL_AS
@@ -141,6 +149,8 @@ def build_tenant_instance(vrf: str, l3vni: int) -> Instance:
     evpn.underlay_vrf = UNDERLAY_VRF
     evpn.origination_l3vni.vni = l3vni
     evpn.origination_l3vni.prefix_routes_only = True
+    evpn.advertise_ipv4_unicast.enabled = True
+    evpn.advertise_ipv6_unicast.enabled = True
     evpn.route_target_import.auto = True
     evpn.route_target_export.auto = True
     evpn.route_target_import.wildcard = [l3vni]
@@ -148,9 +158,10 @@ def build_tenant_instance(vrf: str, l3vni: int) -> Instance:
 
 
 def build_global_evpn() -> GlobalEvpn:
-    """The global `evpn` block: no stock-FRR equivalent at all, so the
-    translator drops it entirely (with warnings) and only the
-    experimental renderer emits it."""
+    """The global `evpn` block: only the experimental renderer emits the
+    block itself, but its EVIs still translate -- stock FRR has no
+    global EVI construct, so the translator moves them into the default
+    instance's 'vni' list (the only place a 'vni' block may live)."""
     evpn = GlobalEvpn()
     evpn.default_underlay_vrf = UNDERLAY_VRF
 
