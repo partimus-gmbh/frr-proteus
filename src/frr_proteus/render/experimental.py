@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import copy
 import warnings
+import typing
 from typing import NamedTuple
 
 from frr_proteus.render import helpers
@@ -129,8 +130,10 @@ class StandardTranslation(NamedTuple):
         )
     """
 
-    bgp: object
-    vrfs: object
+    # typing.Any, not the bindings classes: the generated package is
+    # imported lazily so the render layer stays importable without it
+    bgp: typing.Any
+    vrfs: typing.Any
     default_l3vni: int | None
     default_l3vni_prefix_routes_only: bool
 

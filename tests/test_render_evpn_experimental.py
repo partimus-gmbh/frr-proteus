@@ -47,8 +47,12 @@ def _new_instance(vrf: str = "default", asn: int = 65000) -> Instance:
     return instance
 
 
-def _evi(name: str, *, underlay: str | None = None, l2vni: int | None = None):
-    evi = EvpnAf.VlanBasedEvi(name=name)
+def _evi(name: str, *, underlay: str | None = None, l2vni: int | None = None,
+         cls: type = EvpnAf.VlanBasedEvi):
+    # instance-level and global-block EVIs are distinct generated classes
+    # from the same grouping; pass cls=GlobalEvpn.VlanBasedEvi for the
+    # global block so the types line up.
+    evi = cls(name=name)
     if underlay:
         evi.underlay_vrf = underlay
     if l2vni:
@@ -186,9 +190,12 @@ def test_experimental_evi_renders_per_vni_compat_knobs():
 def test_experimental_evpn_global_renders():
     evpn = GlobalEvpn()
     evpn.default_underlay_vrf = "yellow"
-    evi = _evi("shared-l2", underlay="underlay-red", l2vni=999)
+    evi = _evi("shared-l2", underlay="underlay-red", l2vni=999,
+               cls=GlobalEvpn.VlanBasedEvi)
     evi.route_target_import.as2.append(
-        EvpnAf.VlanBasedEvi.RouteTargetImport.As2(global_admin=65000, local_admin=999)
+        GlobalEvpn.VlanBasedEvi.RouteTargetImport.As2(
+            global_admin=65000, local_admin=999
+        )
     )
     evpn.vlan_based_evi.append(evi)
 
@@ -455,9 +462,12 @@ def test_translate_global_block_evis_land_in_default_instance():
     # default-underlay-vrf is a real loss.
     evpn = GlobalEvpn()
     evpn.default_underlay_vrf = "underlay-red"
-    evi = _evi("g100", underlay="underlay-red", l2vni=100)
+    evi = _evi("g100", underlay="underlay-red", l2vni=100,
+               cls=GlobalEvpn.VlanBasedEvi)
     evi.route_target_both.as2.append(
-        EvpnAf.VlanBasedEvi.RouteTargetBoth.As2(global_admin=65000, local_admin=100)
+        GlobalEvpn.VlanBasedEvi.RouteTargetBoth.As2(
+            global_admin=65000, local_admin=100
+        )
     )
     evpn.vlan_based_evi.append(evi)
     result, msgs = _translate(_bgp(_new_instance()), evpn)
@@ -476,7 +486,9 @@ def test_translate_evi_dropped_without_default_instance():
     # No default-VRF instance -> nowhere stock FRR accepts a 'vni'
     # block; both global and tenant-declared EVIs are dropped, loudly.
     evpn = GlobalEvpn()
-    evpn.vlan_based_evi.append(_evi("g100", l2vni=100))
+    evpn.vlan_based_evi.append(
+        _evi("g100", l2vni=100, cls=GlobalEvpn.VlanBasedEvi)
+    )
     tenant = _new_instance(vrf="blue")
     tenant.afi_safis.l2vpn_evpn.vlan_based_evi.append(_evi("t200", l2vni=200))
     result, msgs = _translate(_bgp(tenant), evpn)
@@ -587,7 +599,9 @@ def test_underlay_vrf_must_enforces_vxlan_underlay_role():
     tenant.afi_safis.l2vpn_evpn.vlan_based_evi.append(evi)
     root.instance.extend([underlay, tenant])
     exp_root.evpn.default_underlay_vrf = "underlay-red"
-    exp_root.evpn.vlan_based_evi.append(_evi("shared", underlay="underlay-red"))
+    exp_root.evpn.vlan_based_evi.append(
+        _evi("shared", underlay="underlay-red", cls=GlobalEvpn.VlanBasedEvi)
+    )
 
     bindings.validate_tree(root, exp_root)  # all point at a marked VRF
 

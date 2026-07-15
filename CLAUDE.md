@@ -294,7 +294,10 @@ same shape (one `.j2` template, thin Python glue module, thin
   end-to-end by mypy/pyright (the package ships `py.typed`). Semantics
   to keep in mind: an unset leaf is always `None` -- YANG defaults are
   *not* applied, so templates can rely on "falsy means not explicitly
-  configured"; enums and identityrefs are `typing.Literal` strings
+  configured"; assigning an UNKNOWN attribute name raises
+  AttributeError (a typo'd field would otherwise be set silently and
+  ignored by validation/serde/rendering -- this caught a real
+  `pg.profile` for `pg.bfd.profile` bug in evpn_fabric); enums and identityrefs are `typing.Literal` strings
   (identityref values accepted both bare and module-prefixed, e.g.
   "l2vpn-evpn" or "frr-routing:l2vpn-evpn" -- helpers strip the prefix).
   identityrefs and *named-typedef* enums are hoisted to module-level

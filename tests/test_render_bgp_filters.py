@@ -94,7 +94,7 @@ def test_large_and_ext_community_lists():
     )
     ec.route_origin.ipv4.append(
         ExtcommunityList.Entry.Extcommunities.RouteOrigin.Ipv4(
-            global_admin=ipaddress.ip_address("192.0.2.1"), local_admin=7
+            global_admin=ipaddress.IPv4Address("192.0.2.1"), local_admin=7
         )
     )
     ecl.entry.append(eentry)

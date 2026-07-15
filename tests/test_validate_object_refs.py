@@ -122,7 +122,7 @@ def test_vpn_network_keyed_by_rd_and_prefix():
     net = bgp_root.instance[0].afi_safis.ipv4_vpn.network
     net.as2.append(
         As2(
-            prefix=ipaddress.ip_network("10.0.0.0/24"),
+            prefix=ipaddress.IPv4Network("10.0.0.0/24"),
             administrator=65001,
             assigned_number=1,
             label=100,
@@ -130,7 +130,7 @@ def test_vpn_network_keyed_by_rd_and_prefix():
     )
     net.as2.append(
         As2(
-            prefix=ipaddress.ip_network("10.0.0.0/24"),
+            prefix=ipaddress.IPv4Network("10.0.0.0/24"),
             administrator=65001,
             assigned_number=2,
             label=200,
@@ -139,7 +139,7 @@ def test_vpn_network_keyed_by_rd_and_prefix():
     bindings.validate_tree(*roots)
     net.as2.append(
         As2(
-            prefix=ipaddress.ip_network("10.0.0.0/24"),
+            prefix=ipaddress.IPv4Network("10.0.0.0/24"),
             administrator=65001,
             assigned_number=2,
             label=300,
@@ -182,7 +182,7 @@ def test_neighbor_bfd_profile_and_source_interface_refs():
     roots = _all_roots()
     bgp_root, *_ , bfd_root, intf_root = roots
     neighbor = _bgp_neighbor(bgp_root)
-    neighbor.profile = "fast"
+    neighbor.bfd.profile = "fast"
     neighbor.source_interface = "swp1"
     with pytest.raises(bindings.YangValidationError, match="no matching instance"):
         bindings.validate_tree(*roots)

@@ -38,17 +38,17 @@ PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
 AsPathList: TypeAlias = ProteusBgpFilter.AsPathAccessList
 
 LOCAL_AS, TRANSIT_AS = 64620, 64720
-LOOPBACK = ipaddress.ip_address("192.0.2.1")
+LOOPBACK = ipaddress.IPv4Address("192.0.2.1")
 OUR_PREFIXES = [
-    ipaddress.ip_network(p) for p in ("192.0.2.0/24", "198.51.100.0/24")
+    ipaddress.IPv4Network(p) for p in ("192.0.2.0/24", "198.51.100.0/24")
 ]
 BOGONS = [
-    ipaddress.ip_network(p)
+    ipaddress.IPv4Network(p)
     for p in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10")
 ]
 IXP_PEERS = [  # (address, remote-as, description)
-    (ipaddress.ip_address("203.0.113.10"), 64801, "ixp-rs-1"),
-    (ipaddress.ip_address("203.0.113.11"), 64802, "ixp-rs-2"),
+    (ipaddress.IPv4Address("203.0.113.10"), 64801, "ixp-rs-1"),
+    (ipaddress.IPv4Address("203.0.113.11"), 64802, "ixp-rs-2"),
 ]
 
 
@@ -121,7 +121,7 @@ def build_instance() -> Instance:
     )
 
     transit = Instance.Neighbor(
-        address=ipaddress.ip_address("203.0.113.129"),
+        address=ipaddress.IPv4Address("203.0.113.129"),
         remote_as=RemoteAs(plain=TRANSIT_AS),
         description="transit uplink", password="transit-md5",
         ttl_security_hops=1,
@@ -137,7 +137,7 @@ def build_instance() -> Instance:
     inst.neighbor.append(transit)
 
     core = Instance.Neighbor(
-        address=ipaddress.ip_address("192.0.2.2"),
+        address=ipaddress.IPv4Address("192.0.2.2"),
         remote_as=RemoteAs(type="internal"),
         description="core rr", update_source=LOOPBACK,
     )

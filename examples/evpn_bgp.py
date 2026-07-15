@@ -40,7 +40,7 @@ def build_default_instance(*, local_as: int, router_id: str) -> Instance:
     instance = Instance(vrf="default", router_id=router_id)
     instance.autonomous_system.plain = local_as
 
-    neighbor = Instance.Neighbor(address=ipaddress.ip_address("10.30.30.30"))
+    neighbor = Instance.Neighbor(address=ipaddress.IPv4Address("10.30.30.30"))
     neighbor.remote_as.type = "internal"
     neighbor.afi_safis.l2vpn_evpn.activate = True
     # Inbound policy on the EVPN session -- a leafref into
@@ -52,7 +52,7 @@ def build_default_instance(*, local_as: int, router_id: str) -> Instance:
     evpn.advertise_all_vni = True
     evpn.advertise_svi_ip = True
 
-    rd_ip = ipaddress.ip_address("10.10.10.10")
+    rd_ip = ipaddress.IPv4Address("10.10.10.10")
     for vni_id in (101, 102):
         vni = EvpnAf.Vni(vni_id=vni_id)
         # RDs and route targets are structured: an explicit RFC 4364 /

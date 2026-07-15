@@ -46,7 +46,7 @@ RouteMap: TypeAlias = ProteusRouteMap.RouteMap
 PrefixList4: TypeAlias = ProteusFilter.PrefixLists.Ipv4.PrefixList
 
 RT_AS = 65000  # route-target administrator, shared fabric-wide
-LOOPBACK_RANGE = ipaddress.ip_network("10.90.0.0/24")
+LOOPBACK_RANGE = ipaddress.IPv4Network("10.90.0.0/24")
 TENANTS = {"blue": (4001, [10101, 10102]), "red": (4002, [10201])}
 
 
@@ -129,7 +129,7 @@ def build_default_instance(device: Device) -> Instance:
         name="UNDERLAY", remote_as=RemoteAs(type="external")
     )
     underlay.bfd.enabled = True
-    underlay.profile = "fabric"
+    underlay.bfd.profile = "fabric"
     u_af = underlay.afi_safis.ipv4_unicast
     u_af.activate = True
     u_af.filters.route_map_out = "LOOPBACKS-ONLY"
@@ -159,9 +159,9 @@ def build_default_instance(device: Device) -> Instance:
     )
 
     inst.afi_safis.ipv4_unicast.network.append(
-        # ip_network() of a bare host address is its /32
+        # IPv4Network() of a bare host address is its /32
         Instance.AfiSafis.Ipv4Unicast.Network(
-            prefix=ipaddress.ip_network(device.loopback)
+            prefix=ipaddress.IPv4Network(device.loopback)
         )
     )
 
@@ -170,11 +170,14 @@ def build_default_instance(device: Device) -> Instance:
         evpn.advertise_all_vni = True
         for l3vni, l2vnis in TENANTS.values():
             for vni_id in l2vnis:
-                vni = type(evpn).Vni(vni_id=vni_id)
-                for rt_set in (vni.route_target_import, vni.route_target_export):
-                    rt_set.as2.append(type(rt_set).As2(
-                        global_admin=RT_AS, local_admin=vni_id
-                    ))
+                Vni = type(evpn).Vni
+                vni = Vni(vni_id=vni_id)
+                vni.route_target_import.as2.append(Vni.RouteTargetImport.As2(
+                    global_admin=RT_AS, local_admin=vni_id
+                ))
+                vni.route_target_export.as2.append(Vni.RouteTargetExport.As2(
+                    global_admin=RT_AS, local_admin=vni_id
+                ))
                 evpn.vni.append(vni)
     return inst
 
@@ -183,10 +186,13 @@ def build_tenant_instance(device: Device, tenant: str, l3vni: int) -> Instance:
     inst = Instance(vrf=f"vrf-{tenant}", router_id=str(device.loopback))
     inst.autonomous_system.plain = device.asn
     evpn = inst.afi_safis.l2vpn_evpn
-    for rt_set in (evpn.route_target_import, evpn.route_target_export):
-        rt_set.as2.append(type(rt_set).As2(
-            global_admin=RT_AS, local_admin=l3vni
-        ))
+    EvpnAf = type(evpn)
+    evpn.route_target_import.as2.append(EvpnAf.RouteTargetImport.As2(
+        global_admin=RT_AS, local_admin=l3vni
+    ))
+    evpn.route_target_export.as2.append(EvpnAf.RouteTargetExport.As2(
+        global_admin=RT_AS, local_admin=l3vni
+    ))
     evpn.advertise_ipv4_unicast.enabled = True
     return inst
 

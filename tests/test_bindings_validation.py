@@ -61,7 +61,7 @@ def test_wrong_type_rejected():
 
 
 def test_enum_value_rejected():
-    neighbor = Bgp.Neighbors.Neighbor(remote_address=ipaddress.ip_address("192.0.2.1"))
+    neighbor = Bgp.Neighbors.Neighbor(remote_address=ipaddress.IPv4Address("192.0.2.1"))
     with pytest.raises(bindings.YangValidationError, match="allowed values"):
         neighbor.neighbor_remote_as.remote_as_type = "bogus"
 
@@ -85,8 +85,8 @@ def test_pattern_violation_rejected():
 def test_native_ip_leaf_accepts_object_rejects_string():
     # inet:ip-address-typed leaves hold stdlib ipaddress objects; the
     # isinstance-based check rejects plain strings even when well-formed.
-    Bgp.Neighbors.Neighbor(remote_address=ipaddress.ip_address("192.0.2.1"))
-    Bgp.Neighbors.Neighbor(remote_address=ipaddress.ip_address("2001:db8::1"))
+    Bgp.Neighbors.Neighbor(remote_address=ipaddress.IPv4Address("192.0.2.1"))
+    Bgp.Neighbors.Neighbor(remote_address=ipaddress.IPv6Address("2001:db8::1"))
     with pytest.raises(bindings.YangValidationError):
         Bgp.Neighbors.Neighbor(remote_address="192.0.2.1")
 

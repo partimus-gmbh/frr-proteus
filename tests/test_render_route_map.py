@@ -4,7 +4,7 @@ import ipaddress
 
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias, Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -21,7 +21,9 @@ ProteusRouteMap: TypeAlias = bindings.ProteusRouteMap
 RouteMap: TypeAlias = bindings.ProteusRouteMap.RouteMap
 
 
-def _root_with_entry(sequence: int = 10, action: str = "permit"):
+def _root_with_entry(
+    sequence: int = 10, action: Literal["permit", "deny"] = "permit"
+):
     root = ProteusRouteMap()
     rm = RouteMap(name="RM")
     rm.entry.append(RouteMap.Entry(sequence=sequence, action=action))
@@ -114,13 +116,13 @@ def test_set_lines():
     s.large_comm_list_delete = "LSTRIP"
     s.as_path_exclude_access_list = "ASP"
     s.aggregator.plain = 65001
-    s.aggregator.address = ipaddress.ip_address("192.0.2.1")
+    s.aggregator.address = ipaddress.IPv4Address("192.0.2.1")
     s.extcommunity_rt.as2.append(
         type(s.extcommunity_rt).As2(global_admin=65001, local_admin=10)
     )
     s.extcommunity_soo.ipv4.append(
         type(s.extcommunity_soo).Ipv4(
-            global_admin=ipaddress.ip_address("192.0.2.1"), local_admin=7
+            global_admin=ipaddress.IPv4Address("192.0.2.1"), local_admin=7
         )
     )
     s.extcommunity_bandwidth.value = "cumulative"

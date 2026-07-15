@@ -18,14 +18,14 @@ instance.autonomous_system.plain = 65000
 
 # Add a neighbor to the instance with a simple remote AS
 neighbor = ProteusBgp.Instance.Neighbor(
-    address=ipaddress.ip_address("192.0.2.2")
+    address=ipaddress.IPv4Address("192.0.2.2")
 )
 neighbor.remote_as.plain = 65001
 instance.neighbor.append(neighbor)
 
 instance.afi_safis.ipv4_unicast.network.append(
     ProteusBgp.Instance.AfiSafis.Ipv4Unicast.Network(
-        prefix=ipaddress.ip_network("198.51.100.0/24")
+        prefix=ipaddress.IPv4Network("198.51.100.0/24")
     )
 )
 

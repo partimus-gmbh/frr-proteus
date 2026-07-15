@@ -36,7 +36,7 @@ def test_ipv4_prefix_list_lines():
         PrefixList4.Entry(
             sequence=5,
             action="permit",
-            prefix=ipaddress.ip_network("10.0.0.0/8"),
+            prefix=ipaddress.IPv4Network("10.0.0.0/8"),
             ge=32,
             le=32,
         )
@@ -58,7 +58,7 @@ def test_ge_zero_is_rendered():
         PrefixList4.Entry(
             sequence=5,
             action="permit",
-            prefix=ipaddress.ip_network("0.0.0.0/0"),
+            prefix=ipaddress.IPv4Network("0.0.0.0/0"),
             ge=0,
         )
     )
@@ -73,7 +73,7 @@ def test_ipv6_prefix_list_keyword():
         PrefixList6.Entry(
             sequence=5,
             action="permit",
-            prefix=ipaddress.ip_network("2001:db8::/32"),
+            prefix=ipaddress.IPv6Network("2001:db8::/32"),
         )
     )
     root.prefix_lists.ipv6.prefix_list.append(pl)
@@ -100,7 +100,7 @@ def test_ipv6_access_list_exact_match():
         AccessList6.Entry(
             sequence=5,
             action="permit",
-            prefix=ipaddress.ip_network("2001:db8::/32"),
+            prefix=ipaddress.IPv6Network("2001:db8::/32"),
             exact_match=True,
         )
     )

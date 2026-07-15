@@ -128,7 +128,9 @@ def _plugin_dir() -> pathlib.Path:
     editable install, and __path__ then points at the wrong level.
     """
     try:
-        import pyangbind.plugin.pybind
+        # the editable pyangbind install resolves at runtime; the
+        # namespace-package layout hides it from static checkers
+        import pyangbind.plugin.pybind  # type: ignore[import-not-found] # pyright: ignore[reportMissingImports]
     except ImportError:
         sys.exit(
             "pyangbind is not installed in this interpreter.\n"
@@ -161,7 +163,7 @@ def _run_pyang(
     modules: list[pathlib.Path],
     output_package: pathlib.Path,
 ) -> None:
-    import pyang.scripts.pyang_tool
+    import pyang.scripts.pyang_tool  # type: ignore[import-untyped]
 
     argv = [
         "pyang",

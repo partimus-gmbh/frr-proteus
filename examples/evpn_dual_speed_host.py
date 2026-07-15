@@ -71,16 +71,16 @@ RT_AS, LC_AS = 65099, 4210000000  # route-target admin / community admin
 # The large community LC_AS:1:N tags each class end-to-end; the four
 # route-maps below are all derived from this one table.
 LOOPBACKS = [
-    ("PRIMARY", ipaddress.ip_address("10.44.8.21"), 1),
-    ("25G-PREFERRED", ipaddress.ip_address("10.44.9.21"), 2),
-    ("100G-ONLY", ipaddress.ip_address("10.44.10.21"), 3),
-    ("25G-ONLY", ipaddress.ip_address("10.44.11.21"), 4),
+    ("PRIMARY", ipaddress.IPv4Address("10.44.8.21"), 1),
+    ("25G-PREFERRED", ipaddress.IPv4Address("10.44.9.21"), 2),
+    ("100G-ONLY", ipaddress.IPv4Address("10.44.10.21"), 3),
+    ("25G-ONLY", ipaddress.IPv4Address("10.44.11.21"), 4),
 ]
 ROUTER_ID = LOOPBACKS[0][1]
 
 SPINE_NEIGHBORS = [  # (spine number, overlay address, underlay interfaces)
-    (1, ipaddress.ip_address("10.44.4.1"), ["cx100g_p1", "e25g_top_p4"]),
-    (2, ipaddress.ip_address("10.44.4.2"), ["cx100g_p2", "e25g_bot_p4"]),
+    (1, ipaddress.IPv4Address("10.44.4.1"), ["cx100g_p1", "e25g_top_p4"]),
+    (2, ipaddress.IPv4Address("10.44.4.2"), ["cx100g_p2", "e25g_bot_p4"]),
 ]
 UPLINKS_100G = ["cx100g_p1", "cx100g_p2"]
 
@@ -154,8 +154,8 @@ def build_policy_objects() -> tuple[ProteusFilter, ProteusBgpFilter, ProteusRout
         pl = PrefixList4(name=f"LOOPBACK-{role}")
         pl.entry.append(
             PrefixList4.Entry(
-                # ip_network() of a bare host address is its /32
-                sequence=10, action="permit", prefix=ipaddress.ip_network(addr)
+                # IPv4Network() of a bare host address is its /32
+                sequence=10, action="permit", prefix=ipaddress.IPv4Network(addr)
             )
         )
         filters.prefix_lists.ipv4.prefix_list.append(pl)
@@ -303,7 +303,7 @@ def build_default_instance() -> Instance:
     )
 
     inst.afi_safis.ipv4_unicast.network.extend(
-        Instance.AfiSafis.Ipv4Unicast.Network(prefix=ipaddress.ip_network(addr))
+        Instance.AfiSafis.Ipv4Unicast.Network(prefix=ipaddress.IPv4Network(addr))
         for _, addr, _ in LOOPBACKS
     )
 

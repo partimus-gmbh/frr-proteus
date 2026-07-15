@@ -34,7 +34,9 @@ def _plugin_dir() -> pathlib.Path:
     __path__ then points at the wrong level.
     """
     try:
-        import pyangbind.plugin.pybind
+        # the editable pyangbind install resolves at runtime; the
+        # namespace-package layout hides it from static checkers
+        import pyangbind.plugin.pybind  # type: ignore[import-not-found] # pyright: ignore[reportMissingImports]
     except ImportError:
         sys.exit(
             "pyangbind is not installed in this interpreter.\n"
@@ -137,7 +139,7 @@ def main() -> None:
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    import pyang.scripts.pyang_tool
+    import pyang.scripts.pyang_tool  # type: ignore[import-untyped]
 
     argv = [
         "pyang",
@@ -179,6 +181,7 @@ def main() -> None:
         total = sum(f.stat().st_size for f in files)
         print(f"wrote {len(files)} files ({total} bytes) under {args.output_dir}")
     else:
+        assert args.output is not None
         print(f"wrote {args.output} ({args.output.stat().st_size} bytes)")
 
 

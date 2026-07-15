@@ -23,7 +23,7 @@ root). Run with the generated bindings on the path, e.g.:
 import ipaddress
 import pathlib
 import sys
-from typing import TypeAlias
+from typing import TypeAlias, Literal
 
 sys.path.insert(0, "src")
 
@@ -92,7 +92,7 @@ class Router:
 
 def _neighbor(
     addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
-    remote_as: int | str,
+    remote_as: int | Literal["internal", "external", "auto"],
 ) -> Instance.Neighbor:
     """One neighbor; remote_as is a plain ASN (int) or one of the
     internal/external/auto relationship keywords (str)."""
@@ -109,7 +109,7 @@ def build_router(
     local_as: int,
     router_id: str,
     neighbor_addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
-    neighbor_remote_as: int | str,
+    neighbor_remote_as: int | Literal["internal", "external", "auto"],
     network: ipaddress.IPv4Network,
 ) -> Router:
     router = Router()
@@ -135,7 +135,7 @@ def add_import_policy(router: Router) -> None:
     entry5 = PrefixList4.Entry(
         sequence=5,
         action="permit",
-        prefix=ipaddress.ip_network("198.51.100.0/24"),
+        prefix=ipaddress.IPv4Network("198.51.100.0/24"),
         le=32,
     )
     # A comment on a list entry. Placement is group-accurate: this
@@ -184,17 +184,17 @@ def main() -> None:
     r1 = build_router(
         local_as=65001,
         router_id="192.168.255.1",
-        neighbor_addr=ipaddress.ip_address("192.168.255.2"),
+        neighbor_addr=ipaddress.IPv4Address("192.168.255.2"),
         neighbor_remote_as="external",
-        network=ipaddress.ip_network("192.0.2.0/24"),
+        network=ipaddress.IPv4Network("192.0.2.0/24"),
     )
     add_import_policy(r1)
     r2 = build_router(
         local_as=65002,
         router_id="192.168.255.2",
-        neighbor_addr=ipaddress.ip_address("192.168.255.1"),
+        neighbor_addr=ipaddress.IPv4Address("192.168.255.1"),
         neighbor_remote_as="external",
-        network=ipaddress.ip_network("198.51.100.0/24"),
+        network=ipaddress.IPv4Network("198.51.100.0/24"),
     )
 
     OUT_DIR.mkdir(exist_ok=True)

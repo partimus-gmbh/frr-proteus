@@ -1,5 +1,5 @@
 """RFC 7952 metadata annotations on the generated bindings: the
-annotate()/annotations() API, value validation against the annotation's
+annotate()/yang_annotations() API, value validation against the annotation's
 YANG type, and the RFC 7952 section 5.2 JSON encoding (metadata objects
 under '@' / '@member', always module-qualified annotation names,
 null-padded arrays for leaf-list entries)."""
@@ -21,7 +21,7 @@ else:
 
 ProteusBgp = bindings.ProteusBgp
 annotate = bindings.annotate
-annotations = bindings.annotations
+yang_annotations = bindings.annotations
 
 
 def _instance() -> bindings.ProteusBgp.Instance:
@@ -32,26 +32,26 @@ def _instance() -> bindings.ProteusBgp.Instance:
 
 def test_node_annotation_roundtrip_via_api():
     neighbor = ProteusBgp.Instance.Neighbor(address="192.0.2.1")
-    assert annotations(neighbor) == {}
+    assert yang_annotations(neighbor) == {}
     annotate(neighbor, comment="uplink")
-    assert annotations(neighbor) == {"comment": "uplink"}
+    assert yang_annotations(neighbor) == {"comment": "uplink"}
     annotate(neighbor, comment=None)  # None removes
-    assert annotations(neighbor) == {}
+    assert yang_annotations(neighbor) == {}
 
 
 def test_leaf_member_and_leaf_list_entry_addressing():
     instance = _instance()
     neighbor = ProteusBgp.Instance.Neighbor(address="192.0.2.1")
     annotate(neighbor, "description", comment="leaf comment")
-    assert annotations(neighbor, "description") == {"comment": "leaf comment"}
-    assert annotations(neighbor) == {}  # distinct from the node's own
+    assert yang_annotations(neighbor, "description") == {"comment": "leaf comment"}
+    assert yang_annotations(neighbor) == {}  # distinct from the node's own
 
     instance.confederation.peers.plain = [65010, 65020]
     annotate(instance.confederation.peers, "plain", 1, comment="second peer")
-    assert annotations(instance.confederation.peers, "plain", 1) == {
+    assert yang_annotations(instance.confederation.peers, "plain", 1) == {
         "comment": "second peer"
     }
-    assert annotations(instance.confederation.peers, "plain", 0) == {}
+    assert yang_annotations(instance.confederation.peers, "plain", 0) == {}
 
 
 def test_unknown_annotation_and_bad_addressing_rejected():
@@ -111,9 +111,9 @@ def test_rfc7952_json_encoding():
 
     decoded = bindings.from_ietf_json(ProteusBgp, encoded)
     decoded_neighbor = decoded.instance[0].neighbor[0]
-    assert annotations(decoded_neighbor) == {"comment": "node comment"}
-    assert annotations(decoded_neighbor, "description") == {"comment": "leaf comment"}
-    assert annotations(decoded.instance[0].confederation.peers, "plain", 1) == {
+    assert yang_annotations(decoded_neighbor) == {"comment": "node comment"}
+    assert yang_annotations(decoded_neighbor, "description") == {"comment": "leaf comment"}
+    assert yang_annotations(decoded.instance[0].confederation.peers, "plain", 1) == {
         "comment": "second peer"
     }
 
